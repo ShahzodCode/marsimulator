@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { EventBus } from './EventBus';
-import { GameClock } from './GameClock';
+import { SimulationRunner } from './SimulationRunner';
 import { GameLoop } from './GameLoop';
 import { InputController } from './InputController';
 import { Terrain } from '../planet/Terrain';
@@ -11,7 +11,6 @@ import { SETTLEMENT } from '../data/settlement';
 import { SettlementManager } from '../settlement/SettlementManager';
 import { loadBuildingModels } from '../settlement/buildings/glbModels';
 import { renderBuildingThumbnails } from '../settlement/buildings/thumbnails';
-import { SimulationEngine } from '../simulation/SimulationEngine';
 import { SaveManager } from '../persistence/SaveManager';
 import { LocalPrefs } from '../persistence/LocalPrefs';
 import { gameStore, regionManager, watch } from '../state/gameStore';
@@ -26,6 +25,7 @@ import { Alerts } from '../ui/Alerts';
 import { PlacementHint, Toolbar } from '../ui/Toolbar';
 import { MapControls } from '../ui/MapControls';
 import { MapLabels } from '../ui/MapLabels';
+import { WorldPopups } from '../ui/WorldPopups';
 import { LoadingScreen, WelcomeScreen } from '../ui/Screens';
 
 const GLOBE_ALTITUDE = 235;
@@ -49,10 +49,10 @@ export class Game {
   private fog!: FogOfWar;
   private settlement!: SettlementManager;
   private input!: InputController;
-  private sim = new SimulationEngine(this.events);
-  private clock = new GameClock();
+  private sim = new SimulationRunner(this.events);
   private saves = new SaveManager();
   private labels!: MapLabels;
+  private popups!: WorldPopups;
   private mapControls!: MapControls;
   private loop = new GameLoop((dt, t) => this.frame(dt, t));
   private width = 1;
@@ -152,7 +152,8 @@ export class Game {
   private buildUI(terrain: Terrain): void {
     const ui = this.ui;
     this.labels = new MapLabels(ui, terrain, this.events);
-    new HUD(ui);
+    this.popups = new WorldPopups(ui, this.events, terrain, this.settlement.grid);
+    new HUD(ui, this.events);
     new Alerts(ui);
     new SidePanel(ui, [
       new ConstructionMenu(),
@@ -364,7 +365,7 @@ export class Game {
   }
 
   private frame(dt: number, time: number): void {
-    this.sim.advance(this.clock.tick(dt));
+    this.sim.frame(dt);
 
     this.input.update(dt);
     this.camera.update(dt);
@@ -378,6 +379,7 @@ export class Game {
     this.updateLight(alt);
 
     this.labels.update(cam, alt, this.width, this.height);
+    this.popups.update(cam, alt, this.width, this.height, dt);
     this.mapControls.update();
     this.renderer.render(this.scene, cam);
   }

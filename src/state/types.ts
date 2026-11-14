@@ -1,7 +1,26 @@
 import type { BuildingType } from '../data/buildings';
 import type { ResourceId } from '../data/resources';
+import type { RecipeId } from '../data/recipes';
 
 export type SimSpeed = 1 | 2 | 4;
+
+/** Why a building is (or is not) working — shown to the player. */
+export type BuildingStatus =
+  | 'operational'
+  | 'waiting_materials'
+  | 'insufficient_power'
+  | 'storage_full'
+  | 'under_construction'
+  | 'disabled'
+  | 'no_road';
+
+/** Progress of one production recipe inside a building. */
+export interface RecipeState {
+  /** 0..1 progress of the current cycle. */
+  progress: number;
+  /** Inputs for the current cycle have been taken from storage. */
+  loaded: boolean;
+}
 
 export interface BuildingInstance {
   id: string;
@@ -18,10 +37,17 @@ export interface BuildingInstance {
   /** 0..1 */
   constructionProgress: number;
   isOperational: boolean;
-  /** 0..1 — fraction of normal output (reduced when energy or inputs are short). */
+  /** The player can switch a finished building off (and on again). */
+  enabled: boolean;
+  status: BuildingStatus;
+  /** 0..1 — share of its recipes running right now (for the UI). */
   efficiency: number;
-  /** Why the building is not running at full output (for the UI). */
+  /** Extra detail for the status, in plain words. */
   statusNote: string | null;
+  /** Per-recipe cycle progress. */
+  recipes: Partial<Record<RecipeId, RecipeState>>;
+  /** Got electricity in the last simulation step. */
+  powered: boolean;
   placedAtSol: number;
   /** A depot-connected road runs along this building (computed by the simulation). */
   connected: boolean;
@@ -41,6 +67,11 @@ export interface Mission {
   durationSols: number;
   progress: number;
   status: MissionStatus;
+  /** What was paid to launch it. */
+  cost: Partial<Record<ResourceId, number>>;
+  energyKwh: number;
+  /** Reward collected on arrival (filled in when complete). */
+  reward?: { resources: Partial<Record<ResourceId, number>>; ice: number; xp: number; find: string };
 }
 
 export type AlertLevel = 'info' | 'success' | 'warning' | 'critical';
@@ -57,11 +88,24 @@ export interface Alert {
   persistent: boolean;
 }
 
-export interface EnergyState {
-  generation: number;
-  consumption: number;
-  /** min(1, generation / consumption) */
-  satisfaction: number;
+/** Electricity: flows in kW, battery storage in kWh. */
+export interface PowerState {
+  /** Solar output right now. */
+  generationKw: number;
+  /** What switched-on buildings want right now. */
+  demandKw: number;
+  /** What they actually got. */
+  suppliedKw: number;
+  /** Average solar output over a whole sol (day + night). */
+  avgGenerationKw: number;
+  /** Most the switched-on buildings could draw (used for construction checks). */
+  plannedDemandKw: number;
+  batteryKwh: number;
+  batteryCapacityKwh: number;
+  /** 0..1 sun height. */
+  sun: number;
+  /** Buildings waiting for electricity. */
+  unpowered: number;
 }
 
 export interface ColonyStats {
@@ -70,9 +114,16 @@ export interface ColonyStats {
 }
 
 export interface Progression {
+  /** Rank level (1 = Junior Pioneer). */
   level: number;
   xp: number;
+  /** Goals reached and other one-time rewards. */
   milestones: string[];
+}
+
+export interface SimStats {
+  /** Lifetime production per resource (for goals). */
+  produced: Record<ResourceId, number>;
 }
 
 export type PanelId = 'construction' | 'exploration' | 'missions' | 'research' | 'settlement';
@@ -94,7 +145,10 @@ export interface GameState {
   storage: Record<ResourceId, number>;
   /** Net change per sol (computed by the simulation). */
   rates: Record<ResourceId, number>;
-  energy: EnergyState;
+  power: PowerState;
+  /** Mineable deposits (kg). */
+  deposits: { ice: number };
+  stats: SimStats;
   colony: ColonyStats;
   buildings: BuildingInstance[];
   /** Player-built road tiles, as "tx,ty" keys (see settlement/RoadRules). */

@@ -37,4 +37,6 @@ export const STARTING_BUILDINGS: StartingBuilding[] = [
   { type: 'greenhouse', gridX: 13, gridY: -3, rotation: 0 },
   { type: 'life_support', gridX: -20, gridY: -3, rotation: 0 },
   { type: 'solar_farm', gridX: -5, gridY: -22, rotation: 0 },
+  // The ice drill keeps the water supply steady (life support splits water into oxygen).
+  { type: 'ice_drill', gridX: 12, gridY: 12, rotation: 0 },
 ];

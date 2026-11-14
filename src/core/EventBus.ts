@@ -1,3 +1,5 @@
+import type { ResourceId } from '../data/resources';
+
 /**
  * Typed pub/sub for transient, fire-and-forget events (things that *happened*).
  * Persistent game data lives in the Zustand store, never in events.
@@ -5,6 +7,8 @@
 export interface GameEvents {
   'building:completed': { id: string };
   'region:discovered': { id: string };
+  /** A production cycle finished and its goods were stored. */
+  'production:delivered': { buildingId: string; delivered: Partial<Record<ResourceId, number>> };
   'camera:flyTo': { lat: number; lon: number; altitude?: number };
   'camera:home': void;
   'camera:globe': void;

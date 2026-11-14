@@ -1,10 +1,12 @@
 import { REGIONS, HOME_REGION_ID } from '../data/regions';
-import { SURVEY } from '../data/progression';
+import { SURVEY, rewardFor } from '../data/missions';
+import { rankById } from '../data/progression';
+import { MissionManager } from '../simulation/MissionManager';
 import { RESOURCES, type ResourceId } from '../data/resources';
 import { SETTLEMENT } from '../data/settlement';
 import type { EventBus } from '../core/EventBus';
 import { gameStore, regionManager, type GameStore } from '../state/gameStore';
-import { clear, h } from './dom';
+import { clear, h, setText } from './dom';
 import { ICONS, RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
 
@@ -35,6 +37,8 @@ export class ExplorationPanel implements Panel {
   private summary: HTMLElement;
   private unsub: (() => void) | null = null;
   private lastKey = '';
+  /** Live bar + countdown for a rover on its way to the selected region. */
+  private live: { fill: HTMLElement; eta: HTMLElement; missionId: string } | null = null;
 
   constructor(private events: EventBus) {
     this.summary = h('div', { class: 'explore-summary' });
@@ -57,18 +61,28 @@ export class ExplorationPanel implements Panel {
   private render(): void {
     const s = gameStore.getState();
     // Re-render only when something relevant changed (not on every resource tick).
-    const affordable = s.resources.iron >= (SURVEY.cost.iron ?? 0) && s.resources.regolith >= (SURVEY.cost.regolith ?? 0);
+    const id = s.selectedRegionId ?? HOME_REGION_ID;
+    const check = s.surveyCheck(id);
     const key = [
-      s.selectedRegionId,
+      id,
       Object.values(s.discoveredRegions).filter(Boolean).length,
       s.missions.map((m) => `${m.id}:${m.status}`).join(','),
-      affordable,
+      check.ok ? 'ok' : check.reason.replace(/\d+ kWh\. Wait/, 'kWh. Wait'),
+      s.progression.level,
     ].join('|');
-    if (key === this.lastKey) return;
-    this.lastKey = key;
-    this.renderSummary(s);
-    this.renderDetail(s);
-    this.renderList(s);
+    if (key !== this.lastKey) {
+      this.lastKey = key;
+      this.renderSummary(s);
+      this.renderDetail(s);
+      this.renderList(s);
+    }
+    if (this.live) {
+      const m = s.missions.find((x) => x.id === this.live!.missionId);
+      if (m) {
+        this.live.fill.style.transform = `scaleX(${m.progress.toFixed(3)})`;
+        setText(this.live.eta, `${MissionManager.remainingSols(m).toFixed(1)} sols to go`);
+      }
+    }
   }
 
   private renderSummary(s: GameStore): void {
@@ -90,9 +104,18 @@ export class ExplorationPanel implements Panel {
 
     const check = gameStore.getState().surveyCheck(id);
     const sols = SURVEY.baseSols + km / SURVEY.kmPerSol;
-    const costEls = (Object.entries(SURVEY.cost) as [ResourceId, number][]).map(([rid, v]) =>
-      h('span', { class: 'cost', style: { ['--chip-color' as never]: RESOURCES[rid].color } }, [h('span', { class: 'cost-icon', html: RESOURCE_ICONS[rid] }), `${v}`]),
-    );
+    const reward = rewardFor(id);
+    const chip = (rid: ResourceId, v: number, plus = false) =>
+      h('span', { class: 'cost', style: { ['--chip-color' as never]: RESOURCES[rid].color } }, [h('span', { class: 'cost-icon', html: RESOURCE_ICONS[rid] }), `${plus ? '+' : ''}${v}`]);
+    const costEls = [
+      ...(Object.entries(SURVEY.cost) as [ResourceId, number][]).map(([rid, v]) => chip(rid, v)),
+      h('span', { class: 'cost', style: { ['--chip-color' as never]: '#ffd34d' }, title: 'Battery charge for the rover' }, [`🔋 ${SURVEY.energyKwh} kWh`]),
+    ];
+    const rewardEls = [
+      ...(Object.entries(reward.resources ?? {}) as [ResourceId, number][]).map(([rid, v]) => chip(rid, v, true)),
+      reward.ice ? h('span', { class: 'cost', style: { ['--chip-color' as never]: RESOURCES.water.color } }, [`🧊 +${(reward.ice / 1000).toFixed(0)} t ice`]) : null,
+      h('span', { class: 'cost xp', style: { ['--chip-color' as never]: '#ffb03d' } }, [`★ +${reward.xp} XP`]),
+    ];
     const launch = h(
       'button',
       {
@@ -108,6 +131,19 @@ export class ExplorationPanel implements Panel {
       [h('span', { class: 'btn-icon', html: ICONS.rover }), `Send survey rover · ${sols.toFixed(1)} sols`],
     );
     if (!check.ok) launch.setAttribute('disabled', 'true');
+    this.live = null;
+    const active = s.missions.find((m) => m.status === 'active' && m.regionId === id);
+    let liveEl: HTMLElement | null = null;
+    if (active) {
+      const fill = h('span', { class: 'progress-fill' });
+      const eta = h('span', { class: 'eta' });
+      this.live = { fill, eta, missionId: active.id };
+      liveEl = h('div', { class: 'mission-card live' }, [
+        h('div', { class: 'mission-head' }, [h('span', { class: 'btn-icon rover-bob', html: ICONS.rover }), h('strong', { text: 'Rover on the way' }), eta]),
+        h('div', { class: 'progress' }, [fill]),
+      ]);
+    }
+    const done = s.missions.find((m) => m.status === 'complete' && m.regionId === id && m.reward);
 
     this.detail.append(
       h('div', { class: 'region-head' }, [
@@ -137,13 +173,19 @@ export class ExplorationPanel implements Panel {
           },
           [h('span', { class: 'btn-icon', html: ICONS.target }), 'Fly there'],
         ),
-        status === 'explored' ? null : launch,
+        status === 'explored' || active ? null : launch,
       ]),
     );
-    if (status !== 'explored') {
+    if (liveEl) this.detail.append(liveEl);
+    if (status !== 'explored' && !active) {
       this.detail.append(
-        h('div', { class: 'survey-cost' }, [h('span', { text: 'Rover cost:' }), ...costEls, check.ok ? null : h('span', { class: 'reason', text: check.reason })]),
+        h('div', { class: 'survey-cost' }, [h('span', { class: 'label', text: 'Needs' }), ...costEls]),
+        h('div', { class: 'survey-cost reward' }, [h('span', { class: 'label', text: reward.rank ? `🔒 ${rankById(reward.rank).title}` : 'Reward' }), ...rewardEls]),
+        ...(check.ok ? [] : [h('p', { class: 'reason', text: check.reason })]),
       );
+    }
+    if (done?.reward) {
+      this.detail.append(h('div', { class: 'fun-fact' }, [h('strong', { text: 'Rover report: ' }), done.reward.find]));
     }
   }
 

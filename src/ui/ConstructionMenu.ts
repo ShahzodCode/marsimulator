@@ -1,5 +1,8 @@
-import { BUILDINGS, BUILDING_TYPES, type BuildingType } from '../data/buildings';
-import { RESOURCES, type ResourceId } from '../data/resources';
+import { BUILDINGS, BUILDING_TYPES, maxPowerKw, type BuildingType } from '../data/buildings';
+import { RECIPES, recipeRatePerSol } from '../data/recipes';
+import { rankById } from '../data/progression';
+import { ConstructionManager } from '../simulation/ConstructionManager';
+import { RESOURCES, RESOURCE_IDS, type ResourceId } from '../data/resources';
 import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore } from '../state/gameStore';
 import { buildingIcon, h, setText, toggleClass } from './dom';
@@ -13,9 +16,14 @@ interface Card {
   root: HTMLButtonElement;
   costs: Map<ResourceId, HTMLElement>;
   note: HTMLElement;
+  badge: HTMLElement;
 }
 
-const SUB: Record<ResourceId, string> = { regolith: 'regolith', iron: 'iron', water: 'water', oxygen: 'O₂', food: 'food' };
+const SUB: Record<ResourceId, string> = { regolith: 'regolith', iron: 'iron', water: 'water', oxygen: 'O₂', food: 'food', hydrogen: 'H₂' };
+
+function fmt(v: number): string {
+  return v >= 10 ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, '');
+}
 
 /** Construction menu: pick a building, then click a spot on the map to place it. */
 export class ConstructionMenu implements Panel {
@@ -45,13 +53,20 @@ export class ConstructionMenu implements Panel {
         costRow.append(el);
       }
       const effects: string[] = [];
-      if (def.energy > 0) effects.push(`⚡ makes ${def.energy} kW`);
-      if (def.energy < 0) effects.push(`⚡ uses ${-def.energy} kW`);
+      if (def.solarPeakKw > 0) effects.push(`☀ up to ${fmt(def.solarPeakKw)} kW in sunshine`);
+      if (def.batteryKwh > 0) effects.push(`🔋 stores ${def.batteryKwh} kWh`);
+      const kw = maxPowerKw(type);
+      if (kw > 0) effects.push(`⚡ uses ${fmt(kw)} kW`);
       const flows: string[] = [];
-      for (const [id, v] of Object.entries(def.production) as [ResourceId, number][]) flows.push(`+${v} ${SUB[id]}`);
-      for (const [id, v] of Object.entries(def.consumption) as [ResourceId, number][]) flows.push(`−${v} ${SUB[id]}`);
+      for (const id of RESOURCE_IDS) {
+        const v = def.recipes.reduce((sum, r) => sum + recipeRatePerSol(RECIPES[r], id), 0);
+        if (Math.abs(v) > 1e-6) flows.push(`${v > 0 ? '+' : '−'}${fmt(Math.abs(v))} ${SUB[id]}`);
+      }
       if (flows.length) effects.push(`${flows.join(', ')} per sol`);
       if (def.housing) effects.push(`🛏 ${def.housing} beds`);
+      const stores = (Object.keys(def.storage) as ResourceId[]).length;
+      if (stores && def.buildable) effects.push('📦 more storage for every resource');
+      const badge = h('span', { class: 'lock-badge' });
       const note = h('div', { class: 'card-note' });
       const root = h(
         'button',
@@ -63,7 +78,7 @@ export class ConstructionMenu implements Panel {
         [
           buildingIcon('card-icon', buildingThumbnail(type), def.icon),
           h('div', { class: 'card-main' }, [
-            h('div', { class: 'card-title', text: def.name }),
+            h('div', { class: 'card-title' }, [def.name, badge]),
             h('div', { class: 'card-desc', text: def.description }),
             h('div', { class: 'card-effects', text: effects.join(' · ') }),
             h('div', { class: 'card-foot' }, [costRow, h('span', { class: 'build-time', text: `⏱ ${def.buildTimeSols} sol` })]),
@@ -71,7 +86,7 @@ export class ConstructionMenu implements Panel {
           ]),
         ],
       );
-      this.cards.push({ type, root, costs, note });
+      this.cards.push({ type, root, costs, note, badge });
       this.el.append(root);
     }
   }
@@ -135,21 +150,20 @@ export class ConstructionMenu implements Panel {
 
   private refresh(): void {
     const s = gameStore.getState();
-    const spare = s.energy.generation - s.energy.consumption;
     const roadOk = ResourceManager.canAfford(s.resources, ROAD_COST);
     toggleClass(this.roadCard, 'disabled', !roadOk);
     setText(this.roadNote, roadOk ? '' : ResourceManager.describeMissing(s.resources, ROAD_COST));
     for (const c of this.cards) {
       const def = BUILDINGS[c.type];
-      const affordable = ResourceManager.canAfford(s.resources, def.constructionCost);
-      toggleClass(c.root, 'disabled', !affordable);
-      c.root.setAttribute('aria-disabled', String(!affordable));
-      for (const [id, el] of c.costs) toggleClass(el, 'short', (def.constructionCost[id] ?? 0) > s.resources[id]);
-      let note = '';
-      if (!affordable) note = ResourceManager.describeMissing(s.resources, def.constructionCost);
-      else if (def.energy < 0 && spare < -def.energy) note = '⚠ Needs more power — build a Solar Farm too';
-      setText(c.note, note);
-      toggleClass(c.note, 'warn', affordable && note !== '');
+      const check = ConstructionManager.canBuild(s, c.type);
+      const locked = !check.ok && check.code === 'locked';
+      toggleClass(c.root, 'disabled', !check.ok);
+      toggleClass(c.root, 'locked', locked);
+      c.root.setAttribute('aria-disabled', String(!check.ok));
+      for (const [id, el] of c.costs) toggleClass(el, 'short', (def.constructionCost[id] ?? 0) > s.resources[id] + 1e-9);
+      setText(c.badge, locked && def.unlockRank ? `🔒 ${rankById(def.unlockRank).title}` : '');
+      setText(c.note, check.ok ? '' : check.code === 'power' ? `⚡ ${check.reason}` : check.code === 'locked' ? `Earn XP to reach ${rankById(def.unlockRank!).title} — finish buildings, goals and missions.` : check.reason);
+      toggleClass(c.note, 'warn', !check.ok && check.code === 'power');
     }
   }
 }

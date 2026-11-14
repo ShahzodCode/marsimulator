@@ -1,314 +1,219 @@
-import { BUILDINGS, DEPOT_SUPPLY, storageCapacity } from '../data/buildings';
-import { COLONIST_NEEDS_PER_SOL, RESOURCES, RESOURCE_IDS, type ResourceId } from '../data/resources';
+import { BUILDINGS, DEPOT_SUPPLY } from '../data/buildings';
 import { XP_REWARDS } from '../data/progression';
-import { ResourceManager, type ResourceBag } from './ResourceManager';
-import { gameStore, regionManager, roadSet } from '../state/gameStore';
-import { connectedBuildingIds } from '../settlement/RoadRules';
-import type { Alert, BuildingInstance, Mission } from '../state/types';
-import type { EventBus } from '../core/EventBus';
+import { COLONIST_NEEDS_PER_SOL, RESOURCES, RESOURCE_IDS, WATER_RECOVERY, emptyResources, type ResourceId } from '../data/resources';
+import type { RegionManager } from '../planet/RegionManager';
+import type { BuildingInstance, GameState } from '../state/types';
+import { ConstructionManager } from './ConstructionManager';
+import { MissionManager } from './MissionManager';
+import { PowerManager, PowerPool } from './PowerManager';
+import { ProductionManager, type ProductionContext } from './ProductionManager';
+import { ProgressionManager } from './ProgressionManager';
+import { ResourceManager } from './ResourceManager';
+import { StorageManager } from './StorageManager';
+import { RoadTransport, type TransportNetwork } from './Transport';
+import { computeWarnings, type AlertSpec } from './Warnings';
 
-/** Fixed simulation step in sols (≈0.4 s of real time at 1×). */
-export const SIM_STEP_SOLS = 0.01;
+export { SIM_STEP_SOLS } from './SimulationClock';
 
-type AlertSpec = Omit<Alert, 'id' | 'sol' | 'persistent'>;
+export type SimEvent =
+  | { type: 'building:completed'; id: string }
+  | { type: 'region:discovered'; id: string }
+  | { type: 'production'; buildingId: string; delivered: Partial<Record<ResourceId, number>> };
 
-/** A building without a road keeps working and stores up to this many sols of output. */
-export const STORAGE_SOLS = 3;
-/** How fast stored goods are hauled to the base once a road reaches the building (per resource, per sol). */
-export const DELIVERY_PER_SOL = 80;
-
-function listNames(ids: ResourceId[]): string {
-  return ids.map((id) => RESOURCES[id].name.toLowerCase()).join(' and ');
+export interface StepResult {
+  state: GameState;
+  events: SimEvent[];
+  /** One-off messages (toasts). */
+  notices: AlertSpec[];
+  /** Messages that stay while their problem lasts. */
+  warnings: AlertSpec[];
 }
 
+export interface StepOptions {
+  /** Override how goods move (tests use EVERYWHERE). Defaults to the road network. */
+  transport?: TransportNetwork;
+}
+
+/** The parts of the game state the simulation owns and writes back to the store. */
+export const SIM_KEYS = [
+  'timeSols',
+  'resources',
+  'storage',
+  'rates',
+  'power',
+  'deposits',
+  'stats',
+  'colony',
+  'buildings',
+  'missions',
+  'discoveredRegions',
+  'progression',
+] as const satisfies readonly (keyof GameState)[];
+
 /**
- * Stage-1 colony simulation: construction, energy balance, production / consumption,
- * colonist needs, survey missions and warnings. Runs on fixed steps.
+ * One fixed simulation step — a pure function of the game state, with no store, no
+ * rendering and no clock. `dt = 0` recomputes statuses and rates without advancing time.
  *
- * Design rules: shortages reduce output and raise warnings — nothing is ever destroyed
- * and no one is harmed.
+ * Order: construction → power + production (by priority) → crew needs → missions →
+ * progression → warnings.
  */
-export class SimulationEngine {
-  private accumulator = 0;
-  private connCache: { roads: string[]; sig: string; ids: Set<string> } | null = null;
+export function stepSimulation(state: GameState, dt: number, regions: RegionManager, opts: StepOptions = {}): StepResult {
+  const events: SimEvent[] = [];
+  const notices: AlertSpec[] = [];
 
-  constructor(private events: EventBus) {}
+  // 1. Construction.
+  const built = ConstructionManager.advance(state.buildings, dt);
+  let buildings = built.buildings;
 
-  /** Advance by `sols` of game time (already scaled by speed). */
-  advance(sols: number): void {
-    this.accumulator += sols;
-    let steps = 0;
-    while (this.accumulator >= SIM_STEP_SOLS && steps < 40) {
-      this.step(SIM_STEP_SOLS);
-      this.accumulator -= SIM_STEP_SOLS;
-      steps++;
+  // 2. Storage, transport and power for this step.
+  const capacity = StorageManager.capacity(buildings);
+  const inv = new ResourceManager(state.resources, capacity);
+  const transport = opts.transport ?? new RoadTransport(buildings, state.roads);
+  const batteryCapacityKwh = PowerManager.batteryCapacity(buildings);
+  const generationKw = PowerManager.generation(buildings, state.timeSols);
+  const pool = new PowerPool(generationKw, Math.min(state.power.batteryKwh, batteryCapacityKwh), batteryCapacityKwh, dt);
+  const ctx: ProductionContext = { inventory: inv, deposits: { ...state.deposits }, transport, dt };
+  const rates = emptyResources();
+  const produced = { ...state.stats.produced };
+
+  // 3. Production, in power-priority order (life support gets electricity first).
+  const order = buildings.map((b, i) => ({ b, i })).sort((x, y) => BUILDINGS[x.b.type].powerPriority - BUILDINGS[y.b.type].powerPriority || x.i - y.i);
+  const updated = new Map<string, BuildingInstance>();
+  let unpowered = 0;
+  let housing = 0;
+  let lifeSupportWorking = false;
+  for (const { b } of order) {
+    if (!b.isOperational) {
+      updated.set(b.id, { ...b, status: 'under_construction', statusNote: null, connected: transport.canReach(b.id) });
+      continue;
     }
-    if (steps >= 40) this.accumulator = 0;
+    if (!b.enabled) {
+      updated.set(b.id, { ...b, status: 'disabled', statusNote: 'Switched off', powered: false, efficiency: 0, connected: transport.canReach(b.id) });
+      continue;
+    }
+    const plan = ProductionManager.plan(b, ctx);
+    const powered = pool.request(plan.kw);
+    const res = ProductionManager.run(plan, powered, ctx);
+    ProductionManager.addFlow(rates, res.flow);
+    const delivered = Object.entries(res.delivered) as [ResourceId, number][];
+    if (delivered.length) {
+      for (const [id, v] of delivered) produced[id] += v;
+      events.push({ type: 'production', buildingId: b.id, delivered: res.delivered });
+    }
+    if (res.building.status === 'insufficient_power') unpowered++;
+    if (powered) housing += BUILDINGS[b.type].housing;
+    if (b.type === 'life_support' && powered) lifeSupportWorking = true;
+    updated.set(b.id, sameBuilding(b, res.building) ? b : res.building);
+  }
+  buildings = buildings.map((b) => updated.get(b.id) ?? b);
+
+  // 4. Crew needs. Rationing can't take more than what is stored — never below zero.
+  const colonists = state.colony.colonists;
+  for (const id of RESOURCE_IDS) {
+    let perSol = COLONIST_NEEDS_PER_SOL[id] * colonists;
+    if (id === 'water' && lifeSupportWorking) perSol *= 1 - WATER_RECOVERY;
+    rates[id] -= perSol;
+    if (dt > 0) inv.take(id, perSol * dt);
   }
 
-  private connectedIds(buildings: BuildingInstance[], roads: string[]): Set<string> {
-    const sig = buildings.map((b) => `${b.id}:${b.gridX},${b.gridY},${b.rotation}`).join('|');
-    if (this.connCache && this.connCache.roads === roads && this.connCache.sig === sig) return this.connCache.ids;
-    const ids = connectedBuildingIds(buildings, roadSet(roads));
-    this.connCache = { roads, sig, ids };
-    return ids;
+  // 5. Depot safety net: a small drop of material every few sols, so there is never a dead end.
+  const depotWorks = buildings.some((b) => b.type === 'storage_depot' && b.isOperational);
+  if (depotWorks && dt > 0 && Math.floor((state.timeSols + dt) / DEPOT_SUPPLY.everySols) > Math.floor(state.timeSols / DEPOT_SUPPLY.everySols)) {
+    for (const [id, v] of Object.entries(DEPOT_SUPPLY.amounts) as [ResourceId, number][]) inv.put(id, v);
   }
 
-  /** Recompute rates without advancing time (used at start / after loading). */
-  refresh(): void {
-    this.step(0);
-  }
-
-  private step(dt: number): void {
-    const store = gameStore.getState();
-    const completed: BuildingInstance[] = [];
-
-    // 1. Construction progress.
-    let buildingsChanged = false;
-    const buildings = store.buildings.map((b) => {
-      if (b.constructionProgress >= 1 || dt === 0) return b;
-      const def = BUILDINGS[b.type];
-      const progress = Math.min(1, b.constructionProgress + dt / def.buildTimeSols);
-      buildingsChanged = true;
-      const nb = { ...b, constructionProgress: progress };
-      if (progress >= 1) {
-        nb.isOperational = true;
-        nb.statusNote = null;
-        nb.efficiency = 1;
-        completed.push(nb);
-      }
-      return nb;
-    });
-
-    // 2. Energy balance.
-    let generation = 0;
-    let consumption = 0;
-    let housing = 0;
-    for (const b of buildings) {
-      if (!b.isOperational) continue;
-      const def = BUILDINGS[b.type];
-      if (def.energy > 0) generation += def.energy;
-      else consumption += -def.energy;
-      housing += def.housing;
-    }
-    const satisfaction = consumption > 0 ? Math.min(1, generation / consumption) : 1;
-
-    // 3. Production and consumption. Everything goes into the storage depot, which only
-    // holds so much — extra output is lost once a resource is full.
-    const capacity = storageCapacity(buildings);
-    const resources: ResourceBag = { ...store.resources };
-    const rates = ResourceManager.empty();
-    const connected = this.connectedIds(buildings, store.roads);
-    const effById = new Map<string, { eff: number; note: string | null; stored: BuildingInstance['stored'] }>();
-    for (const b of buildings) {
-      if (!b.isOperational) continue;
-      const def = BUILDINGS[b.type];
-      const outputs = Object.keys(def.production) as ResourceId[];
-      const inputs = Object.keys(def.consumption) as ResourceId[];
-      let stored = b.stored;
-      let eff = def.energy < 0 ? satisfaction : 1;
-      let note: string | null = eff < 0.999 ? `Low power — running at ${Math.round(eff * 100)}%` : null;
-
-      if (!connected.has(b.id)) {
-        // No road: the building keeps working, but nothing can be delivered to it and
-        // what it makes piles up on site instead of reaching the colony's stores.
-        if (inputs.length) {
-          eff = 0;
-          note = `No road — can’t receive ${listNames(inputs)}`;
-        } else if (outputs.length) {
-          const full = outputs.every((id) => (stored[id] ?? 0) >= (def.production[id] ?? 0) * STORAGE_SOLS - 1e-6);
-          if (full) {
-            eff = 0;
-            note = 'Storage full — build a road to carry goods away';
-          } else {
-            note = eff < 0.999 ? `No road — goods piling up here (low power, ${Math.round(eff * 100)}%)` : 'No road — goods are piling up here';
-            if (dt > 0 && eff > 0) {
-              stored = { ...stored };
-              for (const id of outputs) {
-                const cap = (def.production[id] ?? 0) * STORAGE_SOLS;
-                stored[id] = Math.min(cap, (stored[id] ?? 0) + (def.production[id] ?? 0) * eff * dt);
-              }
-            }
-          }
-        }
-        effById.set(b.id, { eff, note, stored });
-        continue;
-      }
-
-      // Inputs: if a consumed resource is empty, output scales down.
-      for (const id of inputs) {
-        const need = (def.consumption[id] ?? 0) * eff;
-        if (need > 0 && resources[id] < need * Math.max(dt, SIM_STEP_SOLS)) {
-          eff = 0;
-          note = `Waiting for ${RESOURCES[id].name.toLowerCase()}`;
-        }
-      }
-      // Haul goods that piled up while there was no road.
-      const waiting = Object.keys(stored) as ResourceId[];
-      if (waiting.length && dt > 0) {
-        stored = { ...stored };
-        for (const id of waiting) {
-          const room = Math.max(0, capacity[id] - resources[id]);
-          const amount = Math.min(stored[id] ?? 0, DELIVERY_PER_SOL * dt, room);
-          resources[id] += amount;
-          const left = (stored[id] ?? 0) - amount;
-          if (left > 1e-6) stored[id] = left;
-          else delete stored[id];
-        }
-      }
-      if (Object.keys(stored).length) {
-        const blocked = (Object.keys(stored) as ResourceId[]).every((id) => resources[id] >= capacity[id] - 1e-6);
-        note = note ?? (blocked ? 'Storage depot is full — goods wait here' : 'Delivering stored goods by road');
-      }
-      effById.set(b.id, { eff, note, stored });
-      for (const id of outputs) rates[id] += (def.production[id] ?? 0) * eff;
-      for (const id of inputs) rates[id] -= (def.consumption[id] ?? 0) * eff;
-    }
-    const colonists = store.colony.colonists;
-    for (const id of RESOURCE_IDS) rates[id] -= COLONIST_NEEDS_PER_SOL[id] * colonists;
-    for (const id of RESOURCE_IDS) resources[id] = Math.min(capacity[id], Math.max(0, resources[id] + rates[id] * dt));
-    // Depot safety net: a small drop of material every few sols.
-    const depotWorks = buildings.some((b) => b.type === 'storage_depot' && b.isOperational);
-    if (depotWorks && dt > 0 && Math.floor((store.timeSols + dt) / DEPOT_SUPPLY.everySols) > Math.floor(store.timeSols / DEPOT_SUPPLY.everySols)) {
-      for (const [id, v] of Object.entries(DEPOT_SUPPLY.amounts) as [ResourceId, number][]) resources[id] = Math.min(capacity[id], resources[id] + v);
-    }
-
-    const finalBuildings = buildings.map((b) => {
-      const e = effById.get(b.id);
-      const isConnected = connected.has(b.id);
-      if (!e) {
-        if (b.connected === isConnected) return b;
-        buildingsChanged = true;
-        return { ...b, connected: isConnected };
-      }
-      if (Math.abs(e.eff - b.efficiency) > 0.005 || e.note !== b.statusNote || e.stored !== b.stored || b.connected !== isConnected) {
-        buildingsChanged = true;
-        return { ...b, efficiency: e.eff, statusNote: e.note, stored: e.stored, connected: isConnected };
-      }
-      return b;
-    });
-
-    // 4. Missions.
-    let missionsChanged = false;
-    const discovered: string[] = [];
-    const missions: Mission[] = store.missions.map((m) => {
-      if (m.status !== 'active' || dt === 0) return m;
-      missionsChanged = true;
-      const progress = Math.min(1, m.progress + dt / m.durationSols);
-      if (progress >= 1) {
-        discovered.push(m.regionId);
-        return { ...m, progress: 1, status: 'complete' };
-      }
-      return { ...m, progress };
-    });
-
-    const discoveredRegions = discovered.length
-      ? { ...store.discoveredRegions, ...Object.fromEntries(discovered.map((id) => [id, true])) }
-      : store.discoveredRegions;
-
-    gameStore.setState({
-      timeSols: store.timeSols + dt,
-      resources,
-      storage: capacity,
-      rates,
-      energy: { generation, consumption, satisfaction },
-      colony: { colonists, housing },
-      ...(buildingsChanged ? { buildings: finalBuildings } : {}),
-      ...(missionsChanged ? { missions } : {}),
-      ...(discovered.length ? { discoveredRegions } : {}),
-    });
-
-    // 5. Events, rewards and alerts.
-    for (const b of completed) {
-      const def = BUILDINGS[b.type];
-      store.pushAlert({ key: `done-${b.id}`, level: 'success', title: `${def.name} is ready!`, message: def.funFact });
-      store.addXp(XP_REWARDS.buildingComplete);
-      this.events.emit('building:completed', { id: b.id });
-    }
-    for (const id of discovered) {
-      const region = regionManager.get(id);
-      store.pushAlert({
-        key: `found-${id}`,
+  // 6. Missions.
+  const mis = MissionManager.advance(state.missions, dt);
+  let discoveredRegions = state.discoveredRegions;
+  let progression = state.progression;
+  const deposits = ctx.deposits;
+  const grant = (xp: number, milestone: string) => {
+    const g = ProgressionManager.grant(progression, xp, milestone);
+    progression = g.progression;
+    if (g.rankUp) {
+      notices.push({
+        key: `rank-${g.rankUp.id}`,
         level: 'success',
-        title: `New region discovered: ${region?.name ?? id}`,
-        message: region ? `${region.description} Highlights: ${region.highlights.join(', ')}.` : '',
+        title: `${g.rankUp.icon} Promoted to ${g.rankUp.title}!`,
+        message: `Unlocked: ${g.rankUp.perks.join(' · ')}.`,
       });
-      store.addXp(XP_REWARDS.regionDiscovered, `discovered-${id}`);
-      this.events.emit('region:discovered', { id });
     }
-    store.setPersistentAlerts(this.computeWarnings(resources, rates, capacity, generation, consumption, colonists, housing, finalBuildings));
+  };
+  for (const m of mis.completed) {
+    discoveredRegions = { ...discoveredRegions, [m.regionId]: true };
+    const r = m.reward!;
+    const got: string[] = [];
+    for (const [id, v] of Object.entries(r.resources) as [ResourceId, number][]) {
+      const added = inv.put(id, v);
+      if (added > 0) got.push(`+${Math.round(added)} ${RESOURCES[id].unit} ${RESOURCES[id].name.toLowerCase()}`);
+    }
+    if (r.ice > 0) {
+      deposits.ice += r.ice;
+      got.push(`+${(r.ice / 1000).toFixed(0)} t of ice for the drills`);
+    }
+    const region = regions.get(m.regionId);
+    notices.push({
+      key: `found-${m.regionId}`,
+      level: 'success',
+      title: `New region discovered: ${region?.name ?? m.regionId}`,
+      message: `${r.find}${got.length ? ` Reward: ${got.join(', ')}.` : ''} (+${r.xp} XP)`,
+    });
+    events.push({ type: 'region:discovered', id: m.regionId });
+    grant(r.xp, `mission-${m.id}`);
   }
 
-  private computeWarnings(
-    resources: ResourceBag,
-    rates: ResourceBag,
-    capacity: ResourceBag,
-    generation: number,
-    consumption: number,
-    colonists: number,
-    housing: number,
-    buildings: BuildingInstance[],
-  ): AlertSpec[] {
-    const out: AlertSpec[] = [];
-    const roadless = buildings.filter((b) => {
-      const def = BUILDINGS[b.type];
-      return b.isOperational && !b.connected && (Object.keys(def.production).length || Object.keys(def.consumption).length);
-    });
-    if (roadless.length) {
-      const names = [...new Set(roadless.map((b) => BUILDINGS[b.type].shortName))].join(', ');
-      out.push({
-        key: 'roads',
-        level: 'warning',
-        title: roadless.length === 1 ? 'A building has no road' : `${roadless.length} buildings have no road`,
-        message: `${names}: goods can’t reach the base. Open Build → Road and pave a path from the Storage Depot to it.`,
-      });
-    }
-    const full = RESOURCE_IDS.filter((id) => rates[id] > 0.05 && resources[id] >= capacity[id] - 0.5);
-    if (full.length) {
-      out.push({
-        key: 'storage',
-        level: 'warning',
-        title: 'Storage depot is full',
-        message: `No room for more ${listNames(full)} — anything extra is lost.`,
-      });
-    }
-    if (consumption > generation + 1e-6) {
-      out.push({
-        key: 'energy',
-        level: 'warning',
-        title: 'Not enough electricity',
-        message: `Buildings need ${consumption.toFixed(0)} kW but solar panels make ${generation.toFixed(0)} kW. Build another Solar Farm!`,
-      });
-    }
-    for (const id of RESOURCE_IDS) {
-      const def = RESOURCES[id];
-      if (!def.vital) continue;
-      const amount = resources[id];
-      const left = ResourceManager.solsRemaining(amount, rates[id]);
-      if (amount <= 0.01 && rates[id] < 0) {
-        out.push({
-          key: `res-${id}`,
-          level: 'critical',
-          title: `${def.name} has run out!`,
-          message: `Colonists are rationing ${def.name.toLowerCase()}. Build more production to help them.`,
-        });
-      } else if (left < def.warnSols) {
-        out.push({
-          key: `res-${id}`,
-          level: 'warning',
-          title: `${def.name} running low`,
-          message: `About ${Math.max(1, Math.floor(left))} sols left at the current rate.`,
-        });
-      }
-    }
-    if (housing < colonists) {
-      out.push({
-        key: 'housing',
-        level: 'warning',
-        title: 'Not enough beds',
-        message: `${colonists} colonists but room for only ${housing}. Build a Habitat Dome.`,
-      });
-    }
-    return out;
+  // 7. Construction rewards.
+  for (const b of built.completed) {
+    const def = BUILDINGS[b.type];
+    notices.push({ key: `done-${b.id}`, level: 'success', title: `${def.name} is ready!`, message: `${def.funFact} (+${XP_REWARDS.buildingComplete} XP)` });
+    events.push({ type: 'building:completed', id: b.id });
+    grant(XP_REWARDS.buildingComplete, `built-${b.id}`);
   }
+
+  const next: GameState = {
+    ...state,
+    timeSols: state.timeSols + dt,
+    resources: inv.snapshot(),
+    storage: capacity,
+    rates,
+    power: {
+      generationKw,
+      demandKw: pool.demandKw,
+      suppliedKw: pool.suppliedKw,
+      avgGenerationKw: PowerManager.averageGeneration(buildings),
+      plannedDemandKw: PowerManager.plannedDemand(buildings),
+      batteryKwh: pool.finish(),
+      batteryCapacityKwh,
+      sun: PowerManager.sunFactor(state.timeSols),
+      unpowered,
+    },
+    deposits,
+    stats: dt > 0 ? { produced } : state.stats,
+    colony: { colonists, housing },
+    buildings,
+    missions: mis.missions,
+    discoveredRegions,
+    progression,
+  };
+
+  // 8. Goals.
+  for (const goal of ProgressionManager.newlyReached(next)) {
+    notices.push({ key: goal.id, level: 'success', title: `${goal.icon} Goal reached: ${goal.title}`, message: `Great work, commander! +${goal.xp} XP` });
+    grant(goal.xp, goal.id);
+  }
+  next.progression = progression;
+
+  return { state: next, events, notices, warnings: computeWarnings(next) };
+}
+
+/** Avoids replacing building objects (and re-rendering) when nothing visible changed. */
+function sameBuilding(a: BuildingInstance, b: BuildingInstance): boolean {
+  if (a.status !== b.status || a.statusNote !== b.statusNote || a.powered !== b.powered || a.connected !== b.connected) return false;
+  if (Math.abs(a.efficiency - b.efficiency) > 1e-6 || a.stored !== b.stored) return false;
+  for (const k of Object.keys(b.recipes) as (keyof typeof b.recipes)[]) {
+    const x = a.recipes[k];
+    const y = b.recipes[k]!;
+    if (!x || x.progress !== y.progress || x.loaded !== y.loaded) return false;
+  }
+  return true;
 }

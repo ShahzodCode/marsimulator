@@ -1,5 +1,7 @@
 import { BUILDINGS, BUILDING_TYPES } from '../data/buildings';
-import { LEVELS, RESEARCH_UNLOCK_LEVEL, TECHNOLOGIES, levelForXp, nextLevel } from '../data/progression';
+import { GOALS, LEVELS, RESEARCH_UNLOCK_LEVEL, TECHNOLOGIES, levelForXp, nextLevel, rankForXp } from '../data/progression';
+import { ProgressionManager } from '../simulation/ProgressionManager';
+import { MissionManager } from '../simulation/MissionManager';
 import { REGION_BY_ID, HOME_REGION_ID } from '../data/regions';
 import { RESOURCES, RESOURCE_IDS, formatAmount, formatRate } from '../data/resources';
 import { SETTLEMENT } from '../data/settlement';
@@ -7,7 +9,7 @@ import type { EventBus } from '../core/EventBus';
 import type { SaveManager } from '../persistence/SaveManager';
 import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore } from '../state/gameStore';
-import { buildingIcon, clear, h, setText } from './dom';
+import { buildingIcon, clear, h, setText, toggleClass } from './dom';
 import { buildingThumbnail } from '../settlement/buildings/thumbnails';
 import { ICONS, RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
@@ -18,15 +20,52 @@ import type { Panel } from './SidePanel';
 
 export class MissionsPanel implements Panel {
   readonly id = 'missions' as const;
-  readonly title = 'Missions';
-  readonly subtitle = 'Survey rovers currently exploring Mars.';
+  readonly title = 'Missions & Goals';
+  readonly subtitle = 'Your rank, goals to reach and rovers out exploring.';
   readonly el = h('div', { class: 'missions' });
   private unsub: (() => void) | null = null;
   private bars = new Map<string, { fill: HTMLElement; eta: HTMLElement }>();
   private lastKey = '';
+  private rankTitle = h('strong', { class: 'rank-title' });
+  private rankIcon = h('span', { class: 'rank-icon' });
+  private rankXp = h('span', { class: 'muted' });
+  private rankFill = h('span', { class: 'progress-fill' });
+  private rankNext = h('p', { class: 'rank-next' });
+  private goalRows = new Map<string, { root: HTMLElement; fill: HTMLElement; count: HTMLElement }>();
+  private missionBox = h('div');
+  private doneKey: string | null = null;
+
+  constructor() {
+    const goals = h('div', { class: 'goal-list' });
+    for (const g of GOALS) {
+      const fill = h('span', { class: 'progress-fill' });
+      const count = h('span', { class: 'goal-count' });
+      const root = h('div', { class: 'goal', title: g.hint }, [
+        h('span', { class: 'goal-icon', text: g.icon }),
+        h('div', { class: 'goal-main' }, [
+          h('div', { class: 'goal-head' }, [h('strong', { text: g.title }), count]),
+          h('div', { class: 'progress' }, [fill]),
+          h('span', { class: 'goal-hint', text: g.hint }),
+        ]),
+        h('span', { class: 'goal-xp', text: `+${g.xp} XP` }),
+      ]);
+      this.goalRows.set(g.id, { root, fill, count });
+      goals.append(root);
+    }
+    this.el.append(
+      h('div', { class: 'rank-card' }, [
+        this.rankIcon,
+        h('div', { class: 'rank-main' }, [h('div', { class: 'rank-head' }, [this.rankTitle, this.rankXp]), h('div', { class: 'progress' }, [this.rankFill]), this.rankNext]),
+      ]),
+      h('h3', { class: 'section-title', text: 'Goals' }),
+      goals,
+      this.missionBox,
+    );
+  }
 
   show(): void {
     this.lastKey = '';
+    this.doneKey = null;
     this.render();
     this.unsub = gameStore.subscribe(() => this.render());
   }
@@ -38,16 +77,41 @@ export class MissionsPanel implements Panel {
 
   private render(): void {
     const s = gameStore.getState();
+    const rank = rankForXp(s.progression.xp);
+    const next = nextLevel(rank.level);
+    setText(this.rankIcon, rank.icon);
+    setText(this.rankTitle, rank.title);
+    setText(this.rankXp, `${s.progression.xp} XP`);
+    this.rankFill.style.transform = `scaleX(${(next ? Math.min(1, (s.progression.xp - rank.xp) / (next.xp - rank.xp)) : 1).toFixed(3)})`;
+    setText(this.rankNext, next ? `${next.xp - s.progression.xp} XP to ${next.icon} ${next.title}: ${next.perks.join(' · ')}` : 'Highest rank reached — the whole settlement salutes you!');
+
+    // Open goals first, finished ones at the bottom (re-ordered only when one is reached).
+    const doneKey = GOALS.filter((g) => s.progression.milestones.includes(g.id)).map((g) => g.id).join(',');
+    const reorder = doneKey !== this.doneKey;
+    this.doneKey = doneKey;
+    const ordered = [...GOALS].sort((a, b) => Number(s.progression.milestones.includes(a.id)) - Number(s.progression.milestones.includes(b.id)));
+    const list = this.goalRows.get(GOALS[0].id)!.root.parentElement!;
+    for (const g of ordered) {
+      const row = this.goalRows.get(g.id)!;
+      const done = s.progression.milestones.includes(g.id);
+      const { current, target } = ProgressionManager.goalProgress(s, g);
+      row.fill.style.transform = `scaleX(${Math.min(1, current / target).toFixed(3)})`;
+      setText(row.count, done ? '✔ Done' : `${Math.floor(Math.min(current, target))} / ${target}`);
+      toggleClass(row.root, 'done', done);
+      if (reorder) list.append(row.root);
+    }
+
     const key = s.missions.map((m) => `${m.id}:${m.status}`).join(',');
     if (key !== this.lastKey) {
       this.lastKey = key;
       this.bars.clear();
-      clear(this.el);
+      const box = this.missionBox;
+      clear(box);
       const active = s.missions.filter((m) => m.status === 'active');
       const done = s.missions.filter((m) => m.status === 'complete').slice(-8).reverse();
-      this.el.append(h('h3', { class: 'section-title', text: `Active (${active.length})` }));
+      box.append(h('h3', { class: 'section-title', text: `Rovers out exploring (${active.length})` }));
       if (!active.length) {
-        this.el.append(
+        box.append(
           h('div', { class: 'empty' }, [
             h('p', { text: 'No rovers are out right now. Pick a region next to explored land and send a survey rover!' }),
             h('button', { class: 'btn primary', text: 'Open Exploration', attrs: { type: 'button' }, on: { click: () => gameStore.getState().openPanel('exploration') } }),
@@ -59,25 +123,31 @@ export class MissionsPanel implements Panel {
         const fill = h('span', { class: 'progress-fill' });
         const eta = h('span', { class: 'eta' });
         this.bars.set(m.id, { fill, eta });
-        this.el.append(
-          h('div', { class: 'mission-card' }, [
-            h('div', { class: 'mission-head' }, [h('span', { class: 'btn-icon', html: ICONS.rover }), h('strong', { text: `Survey: ${r?.name ?? m.regionId}` }), eta]),
+        box.append(
+          h('div', { class: 'mission-card live' }, [
+            h('div', { class: 'mission-head' }, [h('span', { class: 'btn-icon rover-bob', html: ICONS.rover }), h('strong', { text: `Survey: ${r?.name ?? m.regionId}` }), eta]),
             h('div', { class: 'progress' }, [fill]),
           ]),
         );
       }
-      this.el.append(h('h3', { class: 'section-title', text: 'Completed' }));
-      if (!done.length) this.el.append(h('p', { class: 'muted', text: 'No completed missions yet.' }));
+      box.append(h('h3', { class: 'section-title', text: 'Completed' }));
+      if (!done.length) box.append(h('p', { class: 'muted', text: 'No completed missions yet.' }));
       for (const m of done) {
         const r = REGION_BY_ID[m.regionId];
-        this.el.append(h('div', { class: 'mission-done' }, [h('span', { text: '✔' }), h('span', { text: `${r?.name ?? m.regionId} explored` })]));
+        box.append(
+          h('div', { class: 'mission-done', title: m.reward?.find ?? '' }, [
+            h('span', { text: '✔' }),
+            h('span', { text: `${r?.name ?? m.regionId} explored` }),
+            m.reward ? h('span', { class: 'muted', text: `+${m.reward.xp} XP` }) : null,
+          ]),
+        );
       }
     }
     for (const m of s.missions) {
       const bar = this.bars.get(m.id);
       if (!bar) continue;
       bar.fill.style.transform = `scaleX(${m.progress.toFixed(3)})`;
-      setText(bar.eta, `${Math.max(0, (1 - m.progress) * m.durationSols).toFixed(1)} sols left`);
+      setText(bar.eta, `${MissionManager.remainingSols(m).toFixed(1)} sols left`);
     }
   }
 }
@@ -116,10 +186,10 @@ export class ResearchPanel implements Panel {
       h('div', { class: `lock-card ${locked ? '' : 'unlocked'}` }, [
         h('span', { class: 'lock-icon', html: ICONS.lock }),
         h('div', {}, [
-          h('strong', { text: locked ? `Research unlocks at Level ${RESEARCH_UNLOCK_LEVEL} (${unlockAt.title})` : 'Research Lab plans approved!' }),
+          h('strong', { text: locked ? `Research unlocks at rank ${unlockAt.title}` : 'Research Lab plans approved!' }),
           h('p', {
             text: locked
-              ? `You have ${p.xp} XP — ${unlockAt.xp - p.xp} XP to go. Earn XP by finishing buildings (+20) and discovering regions (+45).`
+              ? `You have ${p.xp} XP — ${unlockAt.xp - p.xp} XP to go. Earn XP by finishing buildings, reaching goals and exploring new regions.`
               : 'Your scientists are ready. Research projects open in the next mission update.',
           }),
         ]),
@@ -248,8 +318,10 @@ export class SettlementPanel implements Panel {
       h('div', { class: 'stat', title: hint ?? '' }, [h('span', { class: 'stat-label', text: label }), h('strong', { text: value })]);
     this.stats.append(
       stat('Crew', `${s.colony.colonists} / ${s.colony.housing} beds`),
-      stat('Energy', `${s.energy.generation.toFixed(0)} / ${s.energy.consumption.toFixed(0)} kW`, 'Generated / used'),
-      stat('Level', `${lvl.level} · ${lvl.title}`, next ? `${next.xp - s.progression.xp} XP to level ${next.level}` : 'Max level'),
+      stat('Power', `${s.power.generationKw.toFixed(0)} / ${s.power.demandKw.toFixed(0)} kW`, 'Solar now / buildings using'),
+      stat('Batteries', `${s.power.batteryKwh.toFixed(0)} / ${s.power.batteryCapacityKwh.toFixed(0)} kWh`),
+      stat('Ice to mine', `${(s.deposits.ice / 1000).toFixed(1)} t`),
+      stat('Rank', `${lvl.icon} ${lvl.title}`, next ? `${next.xp - s.progression.xp} XP to ${next.title}` : 'Highest rank'),
       stat('Explored', `${explored} / 30 regions`),
     );
     for (const id of RESOURCE_IDS) {

@@ -1,5 +1,6 @@
 import { RESOURCES, RESOURCE_IDS, formatAmount, formatRate, type ResourceId } from '../data/resources';
-import { LEVELS, levelForXp, nextLevel } from '../data/progression';
+import { rankForXp, nextLevel } from '../data/progression';
+import type { EventBus } from '../core/EventBus';
 import { SETTLEMENT } from '../data/settlement';
 import { formatMarsTime } from '../core/GameClock';
 import { ResourceManager } from '../simulation/ResourceManager';
@@ -22,8 +23,9 @@ interface ResourceChip {
  */
 export class HUD {
   readonly el: HTMLElement;
-  private chips = {} as Record<ResourceId, ResourceChip>;
+  private chips: Partial<Record<ResourceId, ResourceChip>> = {};
   private energyValue!: HTMLElement;
+  private energyLabel!: HTMLElement;
   private energyFill!: HTMLElement;
   private energyChip!: HTMLElement;
   private popValue!: HTMLElement;
@@ -34,9 +36,19 @@ export class HUD {
   private xpFill!: HTMLElement;
   private speedButtons = new Map<SimSpeed | 0, HTMLButtonElement>();
 
-  constructor(parent: HTMLElement) {
+  constructor(parent: HTMLElement, events: EventBus) {
     this.el = h('header', { class: 'topbar', attrs: { role: 'banner' } }, [this.brand(), this.resources(), this.time()]);
     parent.append(this.el);
+    // A soft glow on a resource chip whenever a production cycle delivers to it.
+    events.on('production:delivered', ({ delivered }) => {
+      for (const id of Object.keys(delivered) as ResourceId[]) {
+        const chip = this.chips[id];
+        if (!chip) continue;
+        chip.root.classList.remove('gain');
+        void chip.root.offsetWidth; // restart the animation
+        chip.root.classList.add('gain');
+      }
+    });
     gameStore.subscribe((s) => this.render(s));
     this.render(gameStore.getState());
   }
@@ -57,6 +69,7 @@ export class HUD {
     const wrap = h('div', { class: 'resources', attrs: { role: 'list', 'aria-label': 'Resources' } });
     for (const id of RESOURCE_IDS) {
       const def = RESOURCES[id];
+      if (!def.hud) continue;
       const amount = h('span', { class: 'chip-value' });
       const rate = h('span', { class: 'chip-rate' });
       const fill = h('span', { class: 'store-fill' });
@@ -72,18 +85,19 @@ export class HUD {
       wrap.append(root);
     }
     this.energyValue = h('span', { class: 'chip-value' });
+    this.energyLabel = h('span', { class: 'chip-label', text: 'Power' });
     this.energyFill = h('span', { class: 'energy-fill' });
     this.energyChip = h(
       'div',
       {
         class: 'chip energy',
-        title: 'Energy: electricity made by solar panels (left) and used by buildings (right). If buildings need more than you make, they slow down.',
+        title: '',
         style: { ['--chip-color' as never]: '#ffd34d' },
       },
       [
         h('span', { class: 'chip-icon', html: ICONS.energy }),
         h('span', { class: 'chip-body' }, [
-          h('span', { class: 'chip-label', text: 'Energy kW' }),
+          this.energyLabel,
           this.energyValue,
           h('span', { class: 'energy-bar' }, [this.energyFill]),
         ]),
@@ -130,6 +144,7 @@ export class HUD {
   private render(s: GameStore): void {
     for (const id of RESOURCE_IDS) {
       const c = this.chips[id];
+      if (!c) continue;
       const amt = s.resources[id];
       const rate = s.rates[id];
       setText(c.amount, formatAmount(amt));
@@ -148,12 +163,21 @@ export class HUD {
 Storage depot: ${formatAmount(amt)} / ${formatAmount(cap)} ${def.unit}`;
       if (c.root.title !== title) c.root.title = title;
     }
-    const e = s.energy;
-    setText(this.energyValue, `${e.generation.toFixed(0)} / ${e.consumption.toFixed(0)}`);
-    const ratio = e.generation > 0 ? Math.min(1, e.consumption / e.generation) : e.consumption > 0 ? 1 : 0;
-    this.energyFill.style.transform = `scaleX(${ratio.toFixed(3)})`;
-    toggleClass(this.energyChip, 'critical', e.consumption > e.generation + 1e-6);
-    toggleClass(this.energyChip, 'low', e.consumption <= e.generation && e.generation - e.consumption < 5);
+    const p = s.power;
+    const day = p.sun > 0;
+    setText(this.energyLabel, day ? 'Power ☀ day' : 'Power ☾ night');
+    setText(this.energyValue, `${p.generationKw.toFixed(0)} / ${p.demandKw.toFixed(0)} kW`);
+    const charge = p.batteryCapacityKwh > 0 ? p.batteryKwh / p.batteryCapacityKwh : 0;
+    this.energyFill.style.transform = `scaleX(${charge.toFixed(3)})`;
+    toggleClass(this.energyChip, 'critical', p.unpowered > 0);
+    toggleClass(this.energyChip, 'low', p.unpowered === 0 && (charge < 0.2 || p.plannedDemandKw > p.avgGenerationKw));
+    toggleClass(this.energyChip, 'charging', p.generationKw > p.suppliedKw + 0.05 && charge < 0.999);
+    const tip = `Electricity
+Solar panels now: ${p.generationKw.toFixed(1)} kW (about ${p.avgGenerationKw.toFixed(0)} kW averaged over day and night)
+Buildings using: ${p.suppliedKw.toFixed(1)} kW${p.unpowered ? ` — ${p.unpowered} waiting for power` : ''}
+Batteries (bar): ${p.batteryKwh.toFixed(0)} / ${p.batteryCapacityKwh.toFixed(0)} kWh
+Spare for new buildings: ${Math.max(0, p.avgGenerationKw - p.plannedDemandKw).toFixed(1)} kW`;
+    if (this.energyChip.title !== tip) this.energyChip.title = tip;
 
     setText(this.popValue, `${s.colony.colonists} / ${s.colony.housing}`);
     toggleClass(this.popChip, 'low', s.colony.housing < s.colony.colonists);
@@ -172,13 +196,13 @@ Storage depot: ${formatAmount(amt)} / ${formatAmount(cap)} ${def.unit}`;
       } else toggleClass(b, 'active', !s.paused && s.speed === speed);
     }
 
-    const lvl = levelForXp(s.progression.xp);
-    const next = nextLevel(lvl.level);
-    setText(this.levelEl, `Lv ${lvl.level} · ${lvl.title}`);
-    const frac = next ? (s.progression.xp - lvl.xp) / (next.xp - lvl.xp) : 1;
+    const rank = rankForXp(s.progression.xp);
+    const next = nextLevel(rank.level);
+    setText(this.levelEl, `${rank.icon} ${rank.title}`);
+    const frac = next ? (s.progression.xp - rank.xp) / (next.xp - rank.xp) : 1;
     this.xpFill.style.transform = `scaleX(${Math.min(1, frac).toFixed(3)})`;
     this.levelEl.parentElement!.title = next
-      ? `${s.progression.xp} XP — ${next.xp - s.progression.xp} XP to ${LEVELS[lvl.level]?.title ?? 'next level'}`
-      : `${s.progression.xp} XP — max level`;
+      ? `${s.progression.xp} XP — ${next.xp - s.progression.xp} XP to ${next.title}`
+      : `${s.progression.xp} XP — highest rank!`;
   }
 }

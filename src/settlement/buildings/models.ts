@@ -342,6 +342,60 @@ const storageDepot: Factory = (b) => {
   }
 };
 
+/** Rows of battery cabinets with a cooling unit and charge lights. */
+const batteryBank: Factory = (b) => {
+  const M = materials();
+  b.box(M.pad, 4, 0.72, 4, 0, -0.62, 0);
+  for (const x of [-1.05, 0, 1.05]) {
+    for (const z of [-0.9, 0.9]) {
+      b.box(M.white, 0.85, 1.05, 1.3, x, 0.1, z);
+      b.box(M.teal, 0.87, 0.1, 1.32, x, 1.15, z);
+      // Charge-level light strip facing the aisle.
+      b.box(M.glowGreen, 0.5, 0.08, 0.03, x, 0.75, z + (z < 0 ? 0.66 : -0.66));
+    }
+  }
+  b.box(M.darkMetal, 3.2, 0.06, 0.3, 0, 0.1, 0);
+  b.cyl(M.metal, 0.06, 0.06, 0.9, 1.75, 0.1, -1.75, 6);
+  b.sphere(M.glowCyan, 0.08, 1.75, 1.05, -1.75);
+};
+
+/** CO₂ intake fans, a hot oxygen-making stack and a small white oxygen tank. */
+const moxieUnit: Factory = (b) => {
+  const M = materials();
+  b.box(M.pad, 4, 0.72, 4, 0, -0.62, 0);
+  b.box(M.white, 2.0, 1.1, 1.6, -0.4, 0.1, -0.3);
+  b.box(M.orange, 2.04, 0.12, 1.64, -0.4, 1.2, -0.3);
+  for (const x of [-0.95, -0.15]) {
+    b.cyl(M.darkMetal, 0.32, 0.32, 0.12, x, 1.32, -0.3, 18);
+    b.cyl(M.metal, 0.06, 0.06, 0.14, x, 1.32, -0.3, 8);
+  }
+  b.cyl(M.metal, 0.22, 0.26, 1.3, 1.0, 0.1, -0.9, 14);
+  b.cyl(M.glowOrange, 0.16, 0.16, 0.08, 1.0, 1.4, -0.9, 14);
+  b.cyl(M.oxygenTank, 0.45, 0.45, 1.0, 0.95, 0.1, 0.95, 20);
+  b.dome(M.oxygenTank, 0.45, 0.95, 1.1, 0.95, 0.45, 16);
+  b.box(M.glowCyan, 0.5, 0.08, 0.04, -0.4, 0.75, 0.52);
+  b.hcyl(M.metal, 0.06, 1.2, 0.4, 0.35, 0.3, Math.PI / 2, 8);
+};
+
+/** Two tall silos for solids and a row of pressurised tanks for fluids. */
+const storageSilo: Factory = (b) => {
+  const M = materials();
+  b.box(M.pad, 5, 0.72, 5, 0, -0.62, 0);
+  for (const [x, mat] of [[-1.3, M.ore], [0, M.metal]] as const) {
+    b.cyl(M.panel, 0.65, 0.65, 2.2, x, 0.1, -1.0, 20);
+    b.cone(mat, 0.68, 0.5, x, 2.3, -1.0, 20);
+    b.torus(M.orange, 0.66, 0.05, x, 1.2, -1.0, Math.PI * 2, { rx: Math.PI / 2 });
+  }
+  b.cyl(M.waterTank, 0.5, 0.5, 1.2, 1.4, 0.1, -1.0, 18);
+  b.dome(M.waterTank, 0.5, 1.4, 1.3, -1.0, 0.5, 14);
+  for (const [x, mat] of [[-1.2, M.oxygenTank], [0.1, M.waterTank], [1.4, M.panel]] as const) {
+    b.hcyl(mat, 0.42, 1.1, x, 0.6, 1.2, Math.PI / 2, 16);
+    b.box(M.darkMetal, 0.9, 0.18, 0.18, x, 0.1, 0.8);
+    b.box(M.darkMetal, 0.9, 0.18, 0.18, x, 0.1, 1.6);
+  }
+  b.sphere(M.glowRed, 0.07, -1.3, 2.85, -1.0);
+};
+
 const FACTORIES: Record<BuildingType, Factory> = {
   habitat,
   solar_farm: solarFarm,
@@ -351,6 +405,9 @@ const FACTORIES: Record<BuildingType, Factory> = {
   iron_refinery: refinery,
   ice_drill: iceDrill,
   storage_depot: storageDepot,
+  battery_bank: batteryBank,
+  moxie_unit: moxieUnit,
+  storage_silo: storageSilo,
 };
 
 /** Floor height of the chicken run inside the Blender greenhouse model. */

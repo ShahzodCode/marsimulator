@@ -11,6 +11,7 @@ export const RESOURCE_ICONS: Record<ResourceId, string> = {
   water: svg('<path d="M12 3c3.5 4.6 6 8 6 11a6 6 0 0 1-12 0c0-3 2.5-6.4 6-11z" fill="currentColor"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5" stroke="#fff" stroke-width="1.4" fill="none" opacity=".7" stroke-linecap="round"/>'),
   oxygen: svg('<circle cx="9" cy="13" r="5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="17.5" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="16.5" r="1.6" fill="currentColor"/>'),
   food: svg('<path d="M12 7c-4-3-9 0-8 5 .7 4 4 8 8 8s7.3-4 8-8c1-5-4-8-8-5z" fill="currentColor"/><path d="M12 7c0-2 1-3.5 3-4.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>'),
+  hydrogen: svg('<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 8v8M15 8v8M9 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
 };
 
 export const ICONS = {

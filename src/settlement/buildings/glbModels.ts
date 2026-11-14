@@ -15,7 +15,7 @@ import { BUILDING_TYPES, type BuildingType } from '../../data/buildings';
 const cache = new Map<BuildingType, THREE.Group>();
 
 /** Buildings that only have a procedural model (no .glb exported yet). */
-const PROCEDURAL_ONLY = new Set<BuildingType>(['storage_depot']);
+const PROCEDURAL_ONLY = new Set<BuildingType>(['storage_depot', 'battery_bank', 'moxie_unit', 'storage_silo']);
 
 /** Emissive strengths from Blender are tuned for Eevee; keep them sane under ACES. */
 const MAX_EMISSIVE = 2.6;

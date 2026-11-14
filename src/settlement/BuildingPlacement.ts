@@ -8,7 +8,7 @@ import type { SettlementGrid } from './SettlementGrid';
 import { buildBuildingModel } from './buildings/models';
 import { createGhostMaterial } from './buildings/materials';
 import { disposeGeometries } from './buildings/ModelBuilder';
-import { ResourceManager } from '../simulation/ResourceManager';
+import { ConstructionManager } from '../simulation/ConstructionManager';
 
 const VALID = new THREE.Color('#58ff9a');
 const VALID_EMISSIVE = new THREE.Color('#1d7a45');
@@ -92,10 +92,9 @@ export class BuildingPlacement {
     // Rotation may have changed the footprint; re-snap around the same centre.
     const state = gameStore.getState();
     const problem = checkPlacement(this.type, this.gridX, this.gridY, this.rotation, state.buildings, roadSet(state.roads));
-    const cost = BUILDINGS[this.type].constructionCost;
-    const affordable = ResourceManager.canAfford(state.resources, cost);
-    this.valid = !problem && affordable;
-    this.message = problem ? PROBLEM_TEXT[problem] : affordable ? null : ResourceManager.describeMissing(state.resources, cost);
+    const check = ConstructionManager.canBuild(state, this.type);
+    this.valid = !problem && check.ok;
+    this.message = problem ? PROBLEM_TEXT[problem] : check.ok ? null : check.reason;
     const c = rectCenter(footprintRect(this.type, this.gridX, this.gridY, this.rotation));
     this.grid.place(this.ghost, c.x, c.y, (this.rotation * Math.PI) / 2, 0.0004);
     this.ghost.visible = true;

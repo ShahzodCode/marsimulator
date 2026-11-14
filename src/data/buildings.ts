@@ -1,9 +1,12 @@
 import type { ResourceId } from './resources';
+import { RECIPES, type RecipeId } from './recipes';
+import { POWER_PRIORITY, SOLAR_FARM_PEAK_KW } from './power';
+import type { RankId } from './progression';
 
 /**
  * Building definitions — pure data, completely separate from rendering.
  * Footprints are in settlement grid cells (x = east, y = north) for rotation 0.
- * Production / consumption values are per sol (simplified game balance).
+ * What a building makes is described by its recipes (data/recipes.ts).
  */
 
 export type BuildingType =
@@ -14,7 +17,10 @@ export type BuildingType =
   | 'regolith_excavator'
   | 'iron_refinery'
   | 'ice_drill'
-  | 'storage_depot';
+  | 'storage_depot'
+  | 'battery_bank'
+  | 'moxie_unit'
+  | 'storage_silo';
 
 export type BuildingCategory = 'living' | 'energy' | 'life_support' | 'food' | 'industry' | 'storage';
 
@@ -32,15 +38,23 @@ export interface BuildingDefinition {
   /** Construction time in sols. */
   buildTimeSols: number;
   footprint: { width: number; height: number };
-  /** kW: positive = generation, negative = consumption. */
-  energy: number;
-  production: Partial<Record<ResourceId, number>>;
-  consumption: Partial<Record<ResourceId, number>>;
+  /** Electricity the building always needs while switched on (kW) — heating, air, lights. */
+  basePowerKw: number;
+  /** Solar output at noon (kW). */
+  solarPeakKw: number;
+  /** Battery storage (kWh). */
+  batteryKwh: number;
+  /** Production recipes this facility runs (all at once). */
+  recipes: RecipeId[];
+  /** Who gets electricity first when there is not enough (lower = first). */
+  powerPriority: number;
   housing: number;
   /** How much of each resource this building can hold for the whole colony. */
   storage: Partial<Record<ResourceId, number>>;
   /** Shown in the construction menu. */
   buildable: boolean;
+  /** Rank needed before it appears in the construction menu (data/progression.ts). */
+  unlockRank?: RankId;
 }
 
 export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
@@ -56,9 +70,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     constructionCost: { regolith: 150, iron: 90 },
     buildTimeSols: 1.0,
     footprint: { width: 8, height: 8 },
-    energy: -8,
-    production: {},
-    consumption: {},
+    basePowerKw: 5,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.living,
     housing: 6,
     storage: {},
     buildable: true,
@@ -67,7 +83,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     id: 'solar_farm',
     name: 'Solar Farm',
     shortName: 'Solar',
-    description: 'Rows of solar panels that turn sunlight into electricity for the whole settlement.',
+    description: 'Rows of solar panels that turn sunlight into electricity, with batteries that keep the lights on at night.',
     funFact: 'Mars is farther from the Sun than Earth, so sunlight there is a bit less than half as strong.',
     icon: '☀️',
     model: 'solar_farm',
@@ -75,9 +91,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     constructionCost: { iron: 60, regolith: 30 },
     buildTimeSols: 0.6,
     footprint: { width: 10, height: 7 },
-    energy: 40,
-    production: {},
-    consumption: {},
+    basePowerKw: 0,
+    solarPeakKw: SOLAR_FARM_PEAK_KW,
+    batteryKwh: 300,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.living,
     housing: 0,
     storage: {},
     buildable: true,
@@ -86,7 +104,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     id: 'life_support',
     name: 'Life-Support Plant',
     shortName: 'Life Support',
-    description: 'Cleans and recycles water and makes breathable oxygen by splitting water molecules with electricity.',
+    description: 'Recycles almost all the water the crew uses and makes breathable oxygen by splitting water with electricity.',
     funFact: 'Splitting 9 kg of water gives about 8 kg of oxygen and 1 kg of hydrogen.',
     icon: '💨',
     model: 'life_support',
@@ -94,9 +112,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     constructionCost: { iron: 80, regolith: 40 },
     buildTimeSols: 0.8,
     footprint: { width: 6, height: 6 },
-    energy: -12,
-    production: { oxygen: 6, water: 9 },
-    consumption: {},
+    basePowerKw: 1,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['electrolysis'],
+    powerPriority: POWER_PRIORITY.lifeSupport,
     housing: 0,
     storage: {},
     buildable: true,
@@ -113,9 +133,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     constructionCost: { regolith: 80, iron: 50, water: 60 },
     buildTimeSols: 0.8,
     footprint: { width: 10, height: 6 },
-    energy: -10,
-    production: { food: 12, oxygen: 1.5 },
-    consumption: { water: 3 },
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['crops', 'chickens'],
+    powerPriority: POWER_PRIORITY.food,
     housing: 0,
     storage: {},
     buildable: true,
@@ -132,9 +154,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     constructionCost: { iron: 40 },
     buildTimeSols: 0.5,
     footprint: { width: 6, height: 6 },
-    energy: -6,
-    production: { regolith: 24 },
-    consumption: {},
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['excavation'],
+    powerPriority: POWER_PRIORITY.industry,
     housing: 0,
     storage: {},
     buildable: true,
@@ -151,9 +175,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     constructionCost: { regolith: 60, iron: 30 },
     buildTimeSols: 0.7,
     footprint: { width: 6, height: 6 },
-    energy: -14,
-    production: { iron: 6 },
-    consumption: { regolith: 16 },
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['iron_smelting'],
+    powerPriority: POWER_PRIORITY.industry,
     housing: 0,
     storage: {},
     buildable: true,
@@ -162,7 +188,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     id: 'ice_drill',
     name: 'Ice Drill',
     shortName: 'Ice Drill',
-    description: 'Drills down to frozen ground ice, melts it and pumps clean water to the colony.',
+    description: 'Drills down to buried ice, melts it and pumps clean water to the colony. Exploring icy regions finds more ice to mine.',
     funFact: 'Orbiting spacecraft have found ice buried just below the surface in many places on Mars.',
     icon: '🧊',
     model: 'ice_drill',
@@ -170,9 +196,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     constructionCost: { iron: 50, regolith: 20 },
     buildTimeSols: 0.6,
     footprint: { width: 5, height: 5 },
-    energy: -10,
-    production: { water: 14 },
-    consumption: {},
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['ice_mining'],
+    powerPriority: POWER_PRIORITY.water,
     housing: 0,
     storage: {},
     buildable: true,
@@ -189,13 +217,80 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     constructionCost: {},
     buildTimeSols: 0,
     footprint: { width: 6, height: 6 },
-    energy: 0,
-    production: {},
-    consumption: {},
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.living,
     housing: 0,
-    storage: { regolith: 1500, iron: 800, water: 4000, oxygen: 2000, food: 1500 },
+    storage: { regolith: 1500, iron: 800, water: 4000, oxygen: 2000, food: 1500, hydrogen: 300 },
     // There is one depot, at the centre of the base: it cannot be built again.
     buildable: false,
+  },
+  battery_bank: {
+    id: 'battery_bank',
+    name: 'Battery Bank',
+    shortName: 'Battery',
+    description: 'Big rechargeable batteries. They fill up with spare solar power during the day and keep everything running through the night.',
+    funFact: 'A Martian night lasts about 12 hours, and it gets colder than −70 °C — so night-time power really matters!',
+    icon: '🔋',
+    model: 'battery_bank',
+    category: 'energy',
+    constructionCost: { iron: 70, regolith: 20 },
+    buildTimeSols: 0.5,
+    footprint: { width: 4, height: 4 },
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 600,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.living,
+    housing: 0,
+    storage: {},
+    buildable: true,
+    unlockRank: 'mars_engineer',
+  },
+  moxie_unit: {
+    id: 'moxie_unit',
+    name: 'MOXIE Oxygen Maker',
+    shortName: 'MOXIE',
+    description: 'Breathes in the thin Martian air (mostly carbon dioxide) and splits it to make oxygen — no water needed!',
+    funFact: 'NASA’s MOXIE, a toaster-sized experiment on the Perseverance rover, made the first oxygen ever produced on another planet in April 2021.',
+    icon: '🫧',
+    model: 'moxie_unit',
+    category: 'life_support',
+    constructionCost: { iron: 90, regolith: 30 },
+    buildTimeSols: 0.8,
+    footprint: { width: 4, height: 4 },
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['moxie'],
+    powerPriority: POWER_PRIORITY.lifeSupport,
+    housing: 0,
+    storage: {},
+    buildable: true,
+    unlockRank: 'mars_engineer',
+  },
+  storage_silo: {
+    id: 'storage_silo',
+    name: 'Storage Silo & Tanks',
+    shortName: 'Silo',
+    description: 'Extra bins for regolith, iron and food, plus pressurised tanks for water, oxygen and hydrogen. Build one when the depot gets full.',
+    funFact: 'Tanks on Mars are kept warm — otherwise the water inside would freeze solid.',
+    icon: '🛢️',
+    model: 'storage_silo',
+    category: 'storage',
+    constructionCost: { regolith: 120, iron: 40 },
+    buildTimeSols: 0.6,
+    footprint: { width: 5, height: 5 },
+    basePowerKw: 0.5,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.living,
+    housing: 0,
+    storage: { regolith: 1000, iron: 500, water: 2000, oxygen: 1000, food: 800, hydrogen: 200 },
+    buildable: true,
   },
 };
 
@@ -204,7 +299,7 @@ export const BUILDING_TYPES = Object.keys(BUILDINGS) as BuildingType[];
 /**
  * Safety net (gameplay, not science): the depot's maintenance robots scavenge a small
  * amount of material on a fixed schedule, so a colony that has spent everything can
- * still save up for a new building.
+ * still save up for a new building — there is never a dead end.
  */
 export const DEPOT_SUPPLY = {
   everySols: 2,
@@ -232,10 +327,16 @@ export function rotatedFootprint(type: BuildingType, rotation: number): { width:
 
 /** Total amount of each resource the colony can hold (sum over working storage buildings). */
 export function storageCapacity(buildings: readonly { type: BuildingType; isOperational: boolean }[]): Record<ResourceId, number> {
-  const cap: Record<ResourceId, number> = { regolith: 0, iron: 0, water: 0, oxygen: 0, food: 0 };
+  const cap: Record<ResourceId, number> = { regolith: 0, iron: 0, water: 0, oxygen: 0, food: 0, hydrogen: 0 };
   for (const b of buildings) {
     if (!b.isOperational) continue;
     for (const [id, v] of Object.entries(BUILDINGS[b.type].storage) as [ResourceId, number][]) cap[id] += v;
   }
   return cap;
+}
+
+/** Most power the building can draw when everything in it runs (kW). */
+export function maxPowerKw(type: BuildingType): number {
+  const def = BUILDINGS[type];
+  return def.basePowerKw + def.recipes.reduce((sum, r) => sum + RECIPES[r].energyKw, 0);
 }

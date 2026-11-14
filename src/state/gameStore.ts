@@ -1,93 +1,26 @@
 import { createStore } from 'zustand/vanilla';
-import { BUILDINGS, demolishRefund, storageCapacity, type BuildingType } from '../data/buildings';
-import { REGIONS, HOME_REGION_ID } from '../data/regions';
-import { STARTING_COLONISTS, STARTING_RESOURCES, type ResourceId } from '../data/resources';
-import { SETTLEMENT, STARTING_BUILDINGS } from '../data/settlement';
-import { SURVEY, levelForXp } from '../data/progression';
+import { BUILDINGS, demolishRefund, maxPowerKw, type BuildingType } from '../data/buildings';
+import type { ResourceId } from '../data/resources';
 import { ResourceManager } from '../simulation/ResourceManager';
-import { checkPlacement, footprintRect, rectCenter, PROBLEM_TEXT } from '../settlement/PlacementRules';
-import { ROAD_COST, ROAD_PROBLEM_TEXT, canRemoveRoad, checkRoad, roadKey, starterRoads } from '../settlement/RoadRules';
-import { patchOffsetToLatLon } from '../planet/terrainGen';
+import { ConstructionManager, type PlaceRequest } from '../simulation/ConstructionManager';
+import { MissionManager } from '../simulation/MissionManager';
+import { PowerManager } from '../simulation/PowerManager';
+import { ProgressionManager } from '../simulation/ProgressionManager';
+import { ROAD_COST, ROAD_PROBLEM_TEXT, canRemoveRoad, checkRoad, roadKey } from '../settlement/RoadRules';
 import { RegionManager } from '../planet/RegionManager';
-import type { Alert, BuildingInstance, GameState, Mission, PanelId, SimSpeed } from './types';
+import { createInitialState, gridToLatLon, makeId } from './factory';
+import type { Alert, GameState, PanelId, SimSpeed } from './types';
 
 export const regionManager = new RegionManager();
 
-let idCounter = 0;
-export function makeId(prefix: string): string {
-  idCounter += 1;
-  return `${prefix}-${Date.now().toString(36)}-${idCounter.toString(36)}`;
-}
-
-/** Lat / lon of a grid position (pure — no rendering needed). */
-export function gridToLatLon(x: number, y: number): { lat: number; lon: number } {
-  const out = patchOffsetToLatLon(x * SETTLEMENT.cellSize, y * SETTLEMENT.cellSize, [0, 0]);
-  return { lat: out[0], lon: out[1] };
-}
-
-function makeBuilding(type: BuildingType, gridX: number, gridY: number, rotation: number, complete: boolean, sol: number): BuildingInstance {
-  const c = rectCenter(footprintRect(type, gridX, gridY, rotation));
-  const ll = gridToLatLon(c.x, c.y);
-  return {
-    id: makeId(type),
-    type,
-    latitude: ll.lat,
-    longitude: ll.lon,
-    gridX,
-    gridY,
-    rotation,
-    level: 1,
-    constructionProgress: complete ? 1 : 0,
-    isOperational: complete,
-    efficiency: complete ? 1 : 0,
-    statusNote: complete ? null : 'Under construction',
-    placedAtSol: sol,
-    connected: false,
-    stored: {},
-  };
-}
+export { createInitialState, gridToLatLon, makeId };
+export type { PlaceRequest };
 
 /** Cached Set view of the roads array (the array is replaced, never mutated). */
 let roadSetCache: { arr: string[]; set: Set<string> } | null = null;
 export function roadSet(roads: string[]): Set<string> {
   if (roadSetCache?.arr !== roads) roadSetCache = { arr: roads, set: new Set(roads) };
   return roadSetCache.set;
-}
-
-export function createInitialState(): GameState {
-  const discovered: Record<string, boolean> = {};
-  for (const r of REGIONS) discovered[r.id] = r.id === HOME_REGION_ID;
-  const buildings = STARTING_BUILDINGS.map((b) => ({ ...makeBuilding(b.type, b.gridX, b.gridY, b.rotation, true, 0), starter: true }));
-  return {
-    timeSols: 0,
-    paused: true,
-    speed: 1,
-    started: false,
-    resources: { ...STARTING_RESOURCES },
-    storage: storageCapacity(buildings),
-    rates: ResourceManager.empty(),
-    energy: { generation: 0, consumption: 0, satisfaction: 1 },
-    colony: { colonists: STARTING_COLONISTS, housing: 0 },
-    buildings,
-    // The pre-built starting base comes with its access roads already paved.
-    roads: starterRoads(buildings),
-    roadMode: false,
-    discoveredRegions: discovered,
-    selectedBuildingId: null,
-    selectedRegionId: null,
-    construction: { active: false, buildingType: null, rotation: 0 },
-    progression: { level: 1, xp: 0, milestones: [] },
-    missions: [],
-    alerts: [],
-    activePanel: null,
-  };
-}
-
-export interface PlaceRequest {
-  type: BuildingType;
-  gridX: number;
-  gridY: number;
-  rotation: number;
 }
 
 export type ActionResult = { ok: true } | { ok: false; reason: string };
@@ -109,6 +42,8 @@ export interface GameActions {
   removeRoad(tx: number, ty: number): ActionResult;
   /** Removes a player-built building and returns half its construction cost (never energy). */
   demolishBuilding(id: string): ActionResult;
+  /** Switch a finished building off or on (switching on needs enough spare power). */
+  setBuildingEnabled(id: string, enabled: boolean): ActionResult;
   selectBuilding(id: string | null): void;
   selectRegion(id: string | null): void;
   launchSurvey(regionId: string): ActionResult;
@@ -151,10 +86,8 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
 
   startPlacement(type) {
     const s = get();
-    const def = BUILDINGS[type];
-    if (!ResourceManager.canAfford(s.resources, def.constructionCost)) {
-      return { ok: false, reason: ResourceManager.describeMissing(s.resources, def.constructionCost) };
-    }
+    const check = ConstructionManager.canBuild(s, type);
+    if (!check.ok) return { ok: false, reason: check.reason };
     set({
       construction: { active: true, buildingType: type, rotation: s.construction.rotation },
       roadMode: false,
@@ -177,14 +110,11 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
   placeBuilding(req) {
     const s = get();
     const def = BUILDINGS[req.type];
-    if (!ResourceManager.canAfford(s.resources, def.constructionCost)) {
-      return { ok: false, reason: ResourceManager.describeMissing(s.resources, def.constructionCost) };
-    }
-    const problem = checkPlacement(req.type, req.gridX, req.gridY, req.rotation, s.buildings, roadSet(s.roads));
-    if (problem) return { ok: false, reason: PROBLEM_TEXT[problem] };
-    const b = makeBuilding(req.type, req.gridX, req.gridY, req.rotation, false, s.timeSols);
+    const res = ConstructionManager.place(s, req);
+    if (!res.ok) return { ok: false, reason: res.reason };
+    const b = res.building;
     set({
-      resources: ResourceManager.deduct(s.resources, def.constructionCost),
+      resources: res.resources,
       buildings: [...s.buildings, b],
       construction: { ...s.construction, active: false, buildingType: null },
       selectedBuildingId: b.id,
@@ -263,6 +193,20 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     return { ok: true };
   },
 
+  setBuildingEnabled(id, enabled) {
+    const s = get();
+    const b = s.buildings.find((x) => x.id === id);
+    if (!b) return { ok: false, reason: 'That building is gone.' };
+    if (b.enabled === enabled) return { ok: true };
+    if (enabled) {
+      const kw = maxPowerKw(b.type);
+      const power = PowerManager.canSupport(s.buildings, kw);
+      if (!power.ok) return { ok: false, reason: `It needs ${kw.toFixed(1)} kW but only ${Math.max(0, power.spareKw).toFixed(1)} kW is spare. Build a Solar Farm or switch something else off.` };
+    }
+    set({ buildings: s.buildings.map((x) => (x.id === id ? { ...x, enabled } : x)) });
+    return { ok: true };
+  },
+
   selectBuilding(id) {
     set({ selectedBuildingId: id });
   },
@@ -272,30 +216,16 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
   },
 
   surveyCheck(regionId) {
-    const s = get();
-    if (s.discoveredRegions[regionId]) return { ok: false, reason: 'Already explored.' };
-    if (s.missions.some((m) => m.status === 'active' && m.regionId === regionId)) return { ok: false, reason: 'A rover is already on its way.' };
-    if (!regionManager.isFrontier(regionId, s.discoveredRegions)) return { ok: false, reason: 'Too far — explore a neighbouring region first.' };
-    if (s.missions.filter((m) => m.status === 'active').length >= SURVEY.maxConcurrent) return { ok: false, reason: `Only ${SURVEY.maxConcurrent} rovers can be out at once.` };
-    if (!ResourceManager.canAfford(s.resources, SURVEY.cost)) return { ok: false, reason: ResourceManager.describeMissing(s.resources, SURVEY.cost) };
-    return { ok: true };
+    const c = MissionManager.check(get(), regionManager, regionId);
+    return c.ok ? { ok: true } : { ok: false, reason: c.reason };
   },
 
   launchSurvey(regionId) {
-    const check = get().surveyCheck(regionId);
-    if (!check.ok) return check;
     const s = get();
-    const km = regionManager.distanceKm(SETTLEMENT.lat, SETTLEMENT.lon, regionId);
-    const mission: Mission = {
-      id: makeId('mission'),
-      type: 'survey',
-      regionId,
-      startSol: s.timeSols,
-      durationSols: SURVEY.baseSols + km / SURVEY.kmPerSol,
-      progress: 0,
-      status: 'active',
-    };
-    set({ resources: ResourceManager.deduct(s.resources, SURVEY.cost), missions: [...s.missions, mission] });
+    const res = MissionManager.launch(s, regionManager, regionId);
+    if (!res.ok) return res;
+    const mission = res.mission;
+    set({ resources: res.resources, power: { ...s.power, batteryKwh: res.batteryKwh }, missions: [...s.missions, mission] });
     const region = regionManager.get(regionId);
     get().pushAlert({
       key: `launch-${mission.id}`,
@@ -332,23 +262,10 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
   },
 
   addXp(amount, milestone) {
-    const p = get().progression;
-    const xp = p.xp + amount;
-    const lvl = levelForXp(xp);
-    set({
-      progression: {
-        level: lvl.level,
-        xp,
-        milestones: milestone ? [...p.milestones, milestone] : p.milestones,
-      },
-    });
-    if (lvl.level > p.level) {
-      get().pushAlert({
-        key: `level-${lvl.level}`,
-        level: 'success',
-        title: `Level up! You are now a ${lvl.title}`,
-        message: 'Your settlement is growing. Keep exploring and building!',
-      });
+    const g = ProgressionManager.grant(get().progression, amount, milestone);
+    set({ progression: g.progression });
+    if (g.rankUp) {
+      get().pushAlert({ key: `rank-${g.rankUp.id}`, level: 'success', title: `${g.rankUp.icon} Promoted to ${g.rankUp.title}!`, message: `Unlocked: ${g.rankUp.perks.join(' · ')}.` });
     }
   },
 
