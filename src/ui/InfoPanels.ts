@@ -2,6 +2,8 @@ import { BUILDINGS, BUILDING_TYPES } from '../data/buildings';
 import { GOALS, LEVELS, RESEARCH_UNLOCK_LEVEL, TECHNOLOGIES, levelForXp, nextLevel, rankForXp } from '../data/progression';
 import { ProgressionManager } from '../simulation/ProgressionManager';
 import { MissionManager } from '../simulation/MissionManager';
+import { ORBITAL_SCAN } from '../data/missions';
+import { ACTIVITY_TEXT } from './ExplorationPanel';
 import { REGION_BY_ID, HOME_REGION_ID } from '../data/regions';
 import { RESOURCES, RESOURCE_IDS, formatAmount, formatRate } from '../data/resources';
 import { SETTLEMENT } from '../data/settlement';
@@ -23,10 +25,10 @@ import type { Panel } from './SidePanel';
 export class MissionsPanel implements Panel {
   readonly id = 'missions' as const;
   readonly title = 'Missions & Goals';
-  readonly subtitle = 'Your rank, goals to reach and rovers out exploring.';
+  readonly subtitle = 'Your rank, goals to reach, and orbiters and rovers out exploring.';
   readonly el = h('div', { class: 'missions' });
   private unsub: (() => void) | null = null;
-  private bars = new Map<string, { fill: HTMLElement; eta: HTMLElement }>();
+  private bars = new Map<string, { fill: HTMLElement; eta: HTMLElement; note: HTMLElement }>();
   private lastKey = '';
   private rankTitle = h('strong', { class: 'rank-title' });
   private rankIcon = h('span', { class: 'rank-icon' });
@@ -103,7 +105,7 @@ export class MissionsPanel implements Panel {
       if (reorder) list.append(row.root);
     }
 
-    const key = s.missions.map((m) => `${m.id}:${m.status}`).join(',');
+    const key = s.missions.map((m) => `${m.id}:${m.status}:${m.type === 'expedition' ? m.arrived : ''}`).join(',');
     if (key !== this.lastKey) {
       this.lastKey = key;
       this.bars.clear();
@@ -111,11 +113,11 @@ export class MissionsPanel implements Panel {
       clear(box);
       const active = s.missions.filter((m) => m.status === 'active');
       const done = s.missions.filter((m) => m.status === 'complete').slice(-8).reverse();
-      box.append(h('h3', { class: 'section-title', text: `Rovers out exploring (${active.length})` }));
+      box.append(h('h3', { class: 'section-title', text: `Missions under way (${active.length})` }));
       if (!active.length) {
         box.append(
           h('div', { class: 'empty' }, [
-            h('p', { text: 'No rovers are out right now. Pick a region next to explored land and send a survey rover!' }),
+            h('p', { text: 'Nothing is out right now. Map a region from orbit, then send a crew rover to explore it!' }),
             h('button', { class: 'btn primary', text: 'Open Exploration', attrs: { type: 'button' }, on: { click: () => gameStore.getState().openPanel('exploration') } }),
           ]),
         );
@@ -124,11 +126,14 @@ export class MissionsPanel implements Panel {
         const r = REGION_BY_ID[m.regionId];
         const fill = h('span', { class: 'progress-fill' });
         const eta = h('span', { class: 'eta' });
-        this.bars.set(m.id, { fill, eta });
+        const note = h('div', { class: 'mission-note' });
+        this.bars.set(m.id, { fill, eta, note });
+        const title = m.type === 'orbital' ? `Orbit map: ${r?.name ?? m.regionId}` : `Crew ${m.arrived ? 'returning from' : 'driving to'} ${r?.name ?? m.regionId}`;
         box.append(
           h('div', { class: 'mission-card live' }, [
-            h('div', { class: 'mission-head' }, [h('span', { class: 'btn-icon rover-bob', html: ICONS.rover }), h('strong', { text: `Survey: ${r?.name ?? m.regionId}` }), eta]),
+            h('div', { class: 'mission-head' }, [h('span', { class: 'btn-icon rover-bob', html: m.type === 'orbital' ? ICONS.satellite : ICONS.rover }), h('strong', { text: title }), eta]),
             h('div', { class: 'progress' }, [fill]),
+            note,
           ]),
         );
       }
@@ -136,11 +141,12 @@ export class MissionsPanel implements Panel {
       if (!done.length) box.append(h('p', { class: 'muted', text: 'No completed missions yet.' }));
       for (const m of done) {
         const r = REGION_BY_ID[m.regionId];
+        const reward = m.type === 'expedition' ? m.reward : undefined;
         box.append(
-          h('div', { class: 'mission-done', title: m.reward?.find ?? '' }, [
+          h('div', { class: 'mission-done', title: reward?.find ?? '' }, [
             h('span', { text: '✔' }),
-            h('span', { text: `${r?.name ?? m.regionId} explored` }),
-            m.reward ? h('span', { class: 'muted', text: `+${m.reward.xp} XP` }) : null,
+            h('span', { text: `${r?.name ?? m.regionId} ${m.type === 'orbital' ? 'mapped' : 'explored'}` }),
+            h('span', { class: 'muted', text: `+${m.type === 'orbital' ? ORBITAL_SCAN.xp : (reward?.xp ?? 0)} XP` }),
           ]),
         );
       }
@@ -149,7 +155,8 @@ export class MissionsPanel implements Panel {
       const bar = this.bars.get(m.id);
       if (!bar) continue;
       bar.fill.style.transform = `scaleX(${m.progress.toFixed(3)})`;
-      setText(bar.eta, `${MissionManager.remainingSols(m).toFixed(1)} sols left`);
+      setText(bar.eta, `${m.type === 'expedition' ? '≈ ' : ''}${MissionManager.remainingSols(m).toFixed(1)} sols left`);
+      setText(bar.note, ACTIVITY_TEXT[m.activity]);
     }
   }
 }
@@ -323,7 +330,8 @@ export class SettlementPanel implements Panel {
     const s = gameStore.getState();
     const lvl = levelForXp(s.progression.xp);
     const next = nextLevel(lvl.level);
-    const explored = Object.values(s.discoveredRegions).filter(Boolean).length;
+    const mapped = Object.values(s.discoveredRegions).filter(Boolean).length;
+    const explored = Object.values(s.exploredRegions).filter(Boolean).length;
     clear(this.stats);
     const stat = (label: string, value: string, hint?: string) =>
       h('div', { class: 'stat', title: hint ?? '' }, [h('span', { class: 'stat-label', text: label }), h('strong', { text: value })]);
@@ -333,7 +341,7 @@ export class SettlementPanel implements Panel {
       stat('Batteries', `${s.power.batteryKwh.toFixed(0)} / ${s.power.batteryCapacityKwh.toFixed(0)} kWh`),
       stat('Ice to mine', `${(s.deposits.ice / 1000).toFixed(1)} t`),
       stat('Rank', `${lvl.icon} ${lvl.title}`, next ? `${next.xp - s.progression.xp} XP to ${next.title}` : 'Highest rank'),
-      stat('Explored', `${explored} / 30 regions`),
+      stat('Explored', `${mapped} mapped · ${explored} visited`, 'Regions mapped from orbit · regions your crew has visited'),
     );
     for (const id of RESOURCE_IDS) {
       const r = this.rows.get(id)!;

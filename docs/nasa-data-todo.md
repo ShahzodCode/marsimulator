@@ -18,6 +18,8 @@ When an item is done, tick it and update the matching row in `sources.md`.
 - [ ] Electrolysis about 50 kWh per kg H₂ (`src/data/recipes.ts`, `ELECTROLYSIS`)
 - [ ] "Night lasts about 12 h" (`src/data/buildings.ts` battery fun fact, `src/data/power.ts` `sunFactor`)
 - [ ] Ice and iron finds in `src/data/missions.ts` (SHARAD radar, Opportunity's hematite "blueberries", polar caps): add NASA links
+- [ ] Open S10 (MRO orbit) and S11 (Opportunity dust storm) and confirm the values from the pages themselves
+- [ ] Crew rover hours of driving per sol (6 h) and battery charge (40 kWh) are estimates: look for a NASA pressurized-rover study (e.g. NTRS "Small Pressurized Rover")
 
 ## C. Places that could use NASA data (most impact first)
 

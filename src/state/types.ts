@@ -59,19 +59,67 @@ export interface BuildingInstance {
 
 export type MissionStatus = 'active' | 'complete';
 
-export interface Mission {
+/** What a mission is doing right now (shown to the player). */
+export type MissionActivity = 'scanning' | 'driving' | 'night' | 'storm' | 'sampling' | 'done';
+
+interface MissionBase {
   id: string;
-  type: 'survey';
   regionId: string;
   startSol: number;
+  /** Planned length in sols (storms can make an expedition longer). */
   durationSols: number;
+  /** 0..1 */
   progress: number;
   status: MissionStatus;
-  /** What was paid to launch it. */
-  cost: Partial<Record<ResourceId, number>>;
+  activity: MissionActivity;
+}
+
+/** An orbiter maps a region from space (reveals it). */
+export interface OrbitalScan extends MissionBase {
+  type: 'orbital';
+}
+
+/** A crew drives a pressurized rover to a region, collects samples and drives home. */
+export interface Expedition extends MissionBase {
+  type: 'expedition';
+  /** Great-circle distance from the base to the site (km). */
+  routeKm: number;
+  /** Metres climbed and descended along the route, one way. */
+  climbM: number;
+  /** One-way distance counted for driving time: route + climbing (km). */
+  legKm: number;
+  /** Driven so far, 0..2 × legKm (out and back). */
+  drivenKm: number;
+  /** The crew reached the site. */
+  arrived: boolean;
+  siteSolsLeft: number;
+  /** A dust storm planned for this trip (at a driven distance), or none. */
+  storm: { atKm: number; sols: number; hit: boolean } | null;
+  stormSolsLeft: number;
+  /** Supplies packed for the crew, and for how many sols. */
+  supplies: Partial<Record<ResourceId, number>>;
+  packedSols: number;
   energyKwh: number;
-  /** Reward collected on arrival (filled in when complete). */
-  reward?: { resources: Partial<Record<ResourceId, number>>; ice: number; xp: number; find: string };
+  /** Collected when the crew is home again. */
+  reward?: { resources: Partial<Record<ResourceId, number>>; xp: number; find: string };
+}
+
+export type Mission = OrbitalScan | Expedition;
+
+/** A small remote mine; a cargo rover shuttles its output to the base. */
+export interface Outpost {
+  id: string;
+  regionId: string;
+  resource: ResourceId;
+  perSol: number;
+  /** Left to mine (kg). */
+  reserveLeft: number;
+  /** Ready to work from this sol (the kit has to be driven there and set up first). */
+  readySol: number;
+  /** Cargo rover round trip (sols). */
+  tripSols: number;
+  /** When the cargo rover last left the base (it delivers when it gets back). */
+  lastTripSol: number;
 }
 
 export type AlertLevel = 'info' | 'success' | 'warning' | 'critical';
@@ -155,7 +203,11 @@ export interface GameState {
   roads: string[];
   /** Road-laying tool is active (transient UI state). */
   roadMode: boolean;
+  /** Mapped from orbit (no fog). */
   discoveredRegions: Record<string, boolean>;
+  /** Visited by a crew. */
+  exploredRegions: Record<string, boolean>;
+  outposts: Outpost[];
   selectedBuildingId: string | null;
   selectedRegionId: string | null;
   construction: ConstructionMode;

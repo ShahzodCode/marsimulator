@@ -13,7 +13,7 @@ export const ProgressionManager = {
   },
 
   /** How far a goal is: current value and target. */
-  goalProgress(state: Pick<GameState, 'stats' | 'buildings' | 'discoveredRegions'>, goal: GoalDefinition): { current: number; target: number } {
+  goalProgress(state: Pick<GameState, 'stats' | 'buildings' | 'discoveredRegions' | 'exploredRegions'>, goal: GoalDefinition): { current: number; target: number } {
     const c = goal.condition;
     switch (c.kind) {
       case 'produce':
@@ -24,11 +24,13 @@ export const ProgressionManager = {
         return { current: state.buildings.some((b) => b.type === c.type && b.isOperational) ? 1 : 0, target: 1 };
       case 'regions':
         return { current: Object.values(state.discoveredRegions).filter(Boolean).length, target: c.count };
+      case 'explored':
+        return { current: Object.values(state.exploredRegions).filter(Boolean).length, target: c.count };
     }
   },
 
   /** Goals reached now that were not rewarded before. */
-  newlyReached(state: Pick<GameState, 'stats' | 'buildings' | 'discoveredRegions' | 'progression'>): GoalDefinition[] {
+  newlyReached(state: Pick<GameState, 'stats' | 'buildings' | 'discoveredRegions' | 'exploredRegions' | 'progression'>): GoalDefinition[] {
     return GOALS.filter((g) => {
       if (state.progression.milestones.includes(g.id)) return false;
       const { current, target } = ProgressionManager.goalProgress(state, g);

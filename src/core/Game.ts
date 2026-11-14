@@ -7,6 +7,7 @@ import { Terrain } from '../planet/Terrain';
 import { Mars } from '../planet/Mars';
 import { CameraController } from '../planet/CameraController';
 import { FogOfWar } from '../planet/FogOfWar';
+import { RoverFleet } from '../planet/RoverFleet';
 import { SETTLEMENT } from '../data/settlement';
 import { SettlementManager } from '../settlement/SettlementManager';
 import { loadBuildingModels } from '../settlement/buildings/glbModels';
@@ -15,7 +16,7 @@ import { SaveManager } from '../persistence/SaveManager';
 import { LocalPrefs } from '../persistence/LocalPrefs';
 import { Auth, type AuthChange } from '../persistence/Auth';
 import { createInitialState } from '../state/factory';
-import { gameStore, regionManager, watch } from '../state/gameStore';
+import { gameStore, regionManager, setRouteHeight, watch } from '../state/gameStore';
 import type { PanelId } from '../state/types';
 import { HUD } from '../ui/HUD';
 import { SidePanel } from '../ui/SidePanel';
@@ -49,6 +50,7 @@ export class Game {
   private camera!: CameraController;
   private mars!: Mars;
   private fog!: FogOfWar;
+  private fleet!: RoverFleet;
   private settlement!: SettlementManager;
   private input!: InputController;
   private sim = new SimulationRunner(this.events);
@@ -117,6 +119,9 @@ export class Game {
     this.mars = new Mars(terrain);
     this.scene.add(this.mars.group);
     this.fog = new FogOfWar(this.mars.uniforms);
+    setRouteHeight((lat, lon) => terrain.heightKm(lat, lon));
+    this.fleet = new RoverFleet(terrain);
+    this.scene.add(this.fleet.group);
     this.settlement = new SettlementManager(terrain, this.events);
     this.scene.add(this.settlement.group);
 
@@ -189,9 +194,11 @@ export class Game {
     this.events.on('camera:flyTo', ({ lat, lon, altitude }) => this.camera.flyTo(lat, lon, altitude));
     this.events.on('camera:home', () => this.camera.flyTo(SETTLEMENT.lat, SETTLEMENT.lon, BASE_ALTITUDE));
     this.events.on('camera:globe', () => this.camera.flyTo(this.camera.lat, this.camera.lon, GLOBE_ALTITUDE));
-    this.events.on('region:discovered', ({ id }) => {
-      if (gameStore.getState().activePanel === 'exploration') gameStore.getState().selectRegion(id);
-    });
+    for (const ev of ['region:discovered', 'region:explored'] as const) {
+      this.events.on(ev, ({ id }) => {
+        if (gameStore.getState().activePanel === 'exploration') gameStore.getState().selectRegion(id);
+      });
+    }
   }
 
   /** Autosave to IndexedDB + Supabase, and remember small view prefs in localStorage. */
@@ -418,6 +425,7 @@ export class Game {
 
     this.updateHover();
     this.fog.update(dt);
+    this.fleet.update(dt, alt);
     this.mars.update(cam.position, alt);
     this.settlement.update(dt, time, alt, cam.position);
     this.updateLight(alt);

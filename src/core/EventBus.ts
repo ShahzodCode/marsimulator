@@ -7,6 +7,7 @@ import type { ResourceId } from '../data/resources';
 export interface GameEvents {
   'building:completed': { id: string };
   'region:discovered': { id: string };
+  'region:explored': { id: string };
   /** A production cycle finished and its goods were stored. */
   'production:delivered': { buildingId: string; delivered: Partial<Record<ResourceId, number>> };
   'camera:flyTo': { lat: number; lon: number; altitude?: number };

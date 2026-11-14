@@ -55,7 +55,7 @@ export class MapControls {
       setText(this.coords, `${Math.abs(p.lat).toFixed(2)}°${ns}  ${Math.abs(p.lon).toFixed(2)}°${ew}`);
       const r = REGION_BY_ID[p.regionId];
       const known = gameStore.getState().discoveredRegions[p.regionId];
-      setText(this.region, r ? `${r.id} ${r.name}${known ? '' : ' · unexplored'}` : '');
+      setText(this.region, r ? `${r.id} ${r.name}${known ? '' : ' · not mapped'}` : '');
     });
   }
 

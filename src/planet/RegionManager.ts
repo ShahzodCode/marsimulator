@@ -1,5 +1,5 @@
 import { REGIONS, REGION_BY_ID, regionIndexAt, type RegionDefinition } from '../data/regions';
-import { angularDistance, MARS_RADIUS_KM } from './geo';
+import { angularDistance, DEG, MARS_RADIUS_KM } from './geo';
 
 /**
  * Region queries: lookup by location, neighbours (for the exploration frontier),
@@ -33,10 +33,10 @@ export class RegionManager {
     return this.neighbours.get(id) ?? [];
   }
 
-  /** A region can be surveyed when it touches at least one discovered region. */
-  isFrontier(id: string, discovered: Record<string, boolean>): boolean {
-    if (discovered[id]) return false;
-    return this.neighboursOf(id).some((n) => discovered[n]);
+  /** A region touches at least one region in `known` (and isn't in it itself). */
+  isFrontier(id: string, known: Record<string, boolean>): boolean {
+    if (known[id]) return false;
+    return this.neighboursOf(id).some((n) => known[n]);
   }
 
   center(id: string): { lat: number; lon: number } {
@@ -46,6 +46,13 @@ export class RegionManager {
     let lon = (r.lonMin + r.lonMax) / 2;
     if (lon > 180) lon -= 360;
     return { lat: (r.latMin + r.latMax) / 2, lon };
+  }
+
+  /** Share of the planet's surface this region covers (0..1). */
+  areaFraction(id: string): number {
+    const r = REGION_BY_ID[id];
+    const span = r.lonMax - r.lonMin;
+    return ((Math.sin(r.latMax * DEG) - Math.sin(r.latMin * DEG)) / 2) * (span / 360);
   }
 
   distanceKm(fromLat: number, fromLon: number, id: string): number {

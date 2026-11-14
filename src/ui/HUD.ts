@@ -8,6 +8,9 @@ import { gameStore, type GameStore } from '../state/gameStore';
 import type { SimSpeed } from '../state/types';
 import { h, setText, toggleClass } from './dom';
 import { ICONS, RESOURCE_ICONS } from './icons';
+import { ProfileDialog } from './ProfileDialog';
+import { rankBadgeSvg } from './RankBadge';
+import { Auth } from '../persistence/Auth';
 
 interface ResourceChip {
   root: HTMLElement;
@@ -34,10 +37,11 @@ export class HUD {
   private clockEl!: HTMLElement;
   private levelEl!: HTMLElement;
   private xpFill!: HTMLElement;
+  private badge!: HTMLButtonElement;
   private speedButtons = new Map<SimSpeed | 0, HTMLButtonElement>();
 
   constructor(parent: HTMLElement, events: EventBus) {
-    this.el = h('header', { class: 'topbar', attrs: { role: 'banner' } }, [this.brand(), this.resources(), this.time()]);
+    this.el = h('header', { class: 'topbar', attrs: { role: 'banner' } }, [this.brand(parent), this.resources(), this.time()]);
     parent.append(this.el);
     // A soft glow on a resource chip whenever a production cycle delivers to it.
     events.on('production:delivered', ({ delivered }) => {
@@ -53,11 +57,21 @@ export class HUD {
     this.render(gameStore.getState());
   }
 
-  private brand(): HTMLElement {
+  private brand(parent: HTMLElement): HTMLElement {
     this.levelEl = h('span', { class: 'level-title' });
     this.xpFill = h('span', { class: 'xp-fill' });
+    // The player's profile button: a rank emblem that changes as they rank up.
+    this.badge = h('button', { class: 'brand-mark rank-badge', attrs: { type: 'button' }, on: { click: () => ProfileDialog.toggle(parent) } });
+    const label = () => {
+      const a = Auth.current;
+      this.badge.setAttribute('aria-label', `Open your profile${a?.username ? ` (${a.username})` : ''}`);
+      this.badge.title = a ? `${a.username ?? 'Commander'} — open profile` : 'Open your commander profile';
+    };
+    Auth.onChange(label);
+    Auth.ready.then(label);
+    label();
     return h('div', { class: 'brand' }, [
-      h('div', { class: 'brand-mark', html: '<span></span>' }),
+      this.badge,
       h('div', { class: 'brand-text' }, [
         h('strong', { text: SETTLEMENT.name }),
         h('div', { class: 'level' }, [this.levelEl, h('span', { class: 'xp-bar' }, [this.xpFill])]),
@@ -198,6 +212,17 @@ Spare for new buildings: ${Math.max(0, p.avgGenerationKw - p.plannedDemandKw).to
 
     const rank = rankForXp(s.progression.xp);
     const next = nextLevel(rank.level);
+    if (this.badge.dataset.rank !== String(rank.level)) {
+      const prev = this.badge.dataset.rank;
+      const promoted = prev !== undefined && rank.level > Number(prev);
+      this.badge.dataset.rank = String(rank.level);
+      this.badge.className = `brand-mark rank-badge rank-${rank.level}`;
+      this.badge.innerHTML = rankBadgeSvg(rank);
+      if (promoted) {
+        void this.badge.offsetWidth; // restart the animation
+        this.badge.classList.add('promoted');
+      }
+    }
     setText(this.levelEl, `${rank.icon} ${rank.title}`);
     const frac = next ? (s.progression.xp - rank.xp) / (next.xp - rank.xp) : 1;
     this.xpFill.style.transform = `scaleX(${Math.min(1, frac).toFixed(3)})`;

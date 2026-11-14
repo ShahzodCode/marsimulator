@@ -1,5 +1,6 @@
 import { BUILDINGS, DEPOT_SUPPLY } from '../data/buildings';
 import { XP_REWARDS } from '../data/progression';
+import { ORBITAL_SCAN, rewardFor } from '../data/missions';
 import { COLONIST_NEEDS_PER_SOL, RESOURCES, RESOURCE_IDS, WATER_RECOVERY, emptyResources, type ResourceId } from '../data/resources';
 import type { RegionManager } from '../planet/RegionManager';
 import type { BuildingInstance, GameState } from '../state/types';
@@ -18,6 +19,7 @@ export { SIM_STEP_SOLS } from './SimulationClock';
 export type SimEvent =
   | { type: 'building:completed'; id: string }
   | { type: 'region:discovered'; id: string }
+  | { type: 'region:explored'; id: string }
   | { type: 'production'; buildingId: string; delivered: Partial<Record<ResourceId, number>> };
 
 export interface StepResult {
@@ -47,6 +49,8 @@ export const SIM_KEYS = [
   'buildings',
   'missions',
   'discoveredRegions',
+  'exploredRegions',
+  'outposts',
   'progression',
 ] as const satisfies readonly (keyof GameState)[];
 
@@ -108,9 +112,11 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
   buildings = buildings.map((b) => updated.get(b.id) ?? b);
 
   // 4. Crew needs. Rationing can't take more than what is stored — never below zero.
+  // Crew out on an expedition live on the supplies they packed.
   const colonists = state.colony.colonists;
+  const atBase = Math.max(0, colonists - MissionManager.crewAway(state.missions));
   for (const id of RESOURCE_IDS) {
-    let perSol = COLONIST_NEEDS_PER_SOL[id] * colonists;
+    let perSol = COLONIST_NEEDS_PER_SOL[id] * atBase;
     if (id === 'water' && lifeSupportWorking) perSol *= 1 - WATER_RECOVERY;
     rates[id] -= perSol;
     if (dt > 0) inv.take(id, perSol * dt);
@@ -122,9 +128,10 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
     for (const [id, v] of Object.entries(DEPOT_SUPPLY.amounts) as [ResourceId, number][]) inv.put(id, v);
   }
 
-  // 6. Missions.
-  const mis = MissionManager.advance(state.missions, dt);
+  // 6. Missions and outposts.
+  const mis = MissionManager.advance(state.missions, dt, state.timeSols, regions);
   let discoveredRegions = state.discoveredRegions;
+  let exploredRegions = state.exploredRegions;
   let progression = state.progression;
   const deposits = ctx.deposits;
   const grant = (xp: number, milestone: string) => {
@@ -139,27 +146,65 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
       });
     }
   };
-  for (const m of mis.completed) {
-    discoveredRegions = { ...discoveredRegions, [m.regionId]: true };
-    const r = m.reward!;
+  const putAll = (items: Partial<Record<ResourceId, number>>): string[] => {
     const got: string[] = [];
-    for (const [id, v] of Object.entries(r.resources) as [ResourceId, number][]) {
+    for (const [id, v] of Object.entries(items) as [ResourceId, number][]) {
       const added = inv.put(id, v);
-      if (added > 0) got.push(`+${Math.round(added)} ${RESOURCES[id].unit} ${RESOURCES[id].name.toLowerCase()}`);
+      if (added > 0) got.push(`${Math.round(added)} ${RESOURCES[id].unit} ${RESOURCES[id].name.toLowerCase()}`);
     }
-    if (r.ice > 0) {
-      deposits.ice += r.ice;
-      got.push(`+${(r.ice / 1000).toFixed(0)} t of ice for the drills`);
+    return got;
+  };
+  for (const n of mis.news) {
+    const m = n.mission;
+    const name = regions.get(m.regionId)?.name ?? m.regionId;
+    switch (n.kind) {
+      case 'scanned': {
+        discoveredRegions = { ...discoveredRegions, [m.regionId]: true };
+        notices.push({ key: `scanned-${m.regionId}`, level: 'success', title: `📡 ${name} mapped from orbit`, message: `${rewardFor(m.regionId).hint} (+${ORBITAL_SCAN.xp} XP)` });
+        events.push({ type: 'region:discovered', id: m.regionId });
+        grant(ORBITAL_SCAN.xp, `scan-${m.regionId}`);
+        break;
+      }
+      case 'arrived': {
+        exploredRegions = { ...exploredRegions, [m.regionId]: true };
+        const outpost = rewardFor(m.regionId).outpost;
+        notices.push({
+          key: `arrived-${m.id}`,
+          level: 'success',
+          title: `🧑‍🚀 Crew reached ${name}!`,
+          message: `${n.mission.reward?.find ?? ''}${outpost ? ' You can build an outpost here.' : ''} Now collecting samples, then driving home.`,
+        });
+        events.push({ type: 'region:explored', id: m.regionId });
+        break;
+      }
+      case 'storm':
+        notices.push({
+          key: `storm-${m.id}`,
+          level: 'warning',
+          title: `🌪️ Dust storm near ${name}`,
+          message: 'Dust is blocking the sunlight, so the rover parks and waits. In 2018 a storm like this ended NASA’s solar-powered Opportunity rover.',
+        });
+        break;
+      case 'home': {
+        const r = n.mission.reward;
+        const samples = r ? putAll(r.resources) : [];
+        const back = putAll(n.returned);
+        notices.push({
+          key: `home-${m.id}`,
+          level: 'success',
+          title: `🏠 Expedition to ${name} is home`,
+          message: `${samples.length ? `Samples: ${samples.join(', ')}. ` : ''}${back.length ? `Unused supplies back in storage: ${back.join(', ')}.` : ''} (+${r?.xp ?? 0} XP)`,
+        });
+        if (r) grant(r.xp, `mission-${m.id}`);
+        break;
+      }
     }
-    const region = regions.get(m.regionId);
-    notices.push({
-      key: `found-${m.regionId}`,
-      level: 'success',
-      title: `New region discovered: ${region?.name ?? m.regionId}`,
-      message: `${r.find}${got.length ? ` Reward: ${got.join(', ')}.` : ''} (+${r.xp} XP)`,
-    });
-    events.push({ type: 'region:discovered', id: m.regionId });
-    grant(r.xp, `mission-${m.id}`);
+  }
+  const out = MissionManager.advanceOutposts(state.outposts, state.timeSols, dt);
+  for (const d of out.deliveries) {
+    const got = putAll({ [d.outpost.resource]: d.amount });
+    const name = regions.get(d.outpost.regionId)?.name ?? d.outpost.regionId;
+    notices.push({ key: `cargo-${d.outpost.id}`, level: 'info', title: `🚚 Cargo from ${name}`, message: got.length ? `The cargo rover delivered ${got.join(', ')}.` : 'Storage is full, so the cargo was left behind. Build more storage!' });
   }
 
   // 7. Construction rewards.
@@ -192,7 +237,9 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
     colony: { colonists, housing },
     buildings,
     missions: mis.missions,
+    outposts: out.outposts,
     discoveredRegions,
+    exploredRegions,
     progression,
   };
 

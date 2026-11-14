@@ -3,7 +3,7 @@ import { BUILDINGS, demolishRefund, maxPowerKw, type BuildingType } from '../dat
 import type { ResourceId } from '../data/resources';
 import { ResourceManager } from '../simulation/ResourceManager';
 import { ConstructionManager, type PlaceRequest } from '../simulation/ConstructionManager';
-import { MissionManager } from '../simulation/MissionManager';
+import { MissionManager, type HeightSampler } from '../simulation/MissionManager';
 import { PowerManager } from '../simulation/PowerManager';
 import { ProgressionManager } from '../simulation/ProgressionManager';
 import { ROAD_COST, ROAD_PROBLEM_TEXT, canRemoveRoad, checkRoad, roadKey } from '../settlement/RoadRules';
@@ -12,6 +12,15 @@ import { createInitialState, gridToLatLon, makeId } from './factory';
 import type { Alert, GameState, PanelId, SimSpeed } from './types';
 
 export const regionManager = new RegionManager();
+
+/** Terrain heights for planning rover routes (set once the planet is generated). */
+let routeHeight: HeightSampler | null = null;
+export function setRouteHeight(sampler: HeightSampler): void {
+  routeHeight = sampler;
+}
+export function getRouteHeight(): HeightSampler | undefined {
+  return routeHeight ?? undefined;
+}
 
 export { createInitialState, gridToLatLon, makeId };
 export type { PlaceRequest };
@@ -46,8 +55,12 @@ export interface GameActions {
   setBuildingEnabled(id: string, enabled: boolean): ActionResult;
   selectBuilding(id: string | null): void;
   selectRegion(id: string | null): void;
-  launchSurvey(regionId: string): ActionResult;
-  surveyCheck(regionId: string): ActionResult;
+  launchScan(regionId: string): ActionResult;
+  scanCheck(regionId: string): ActionResult;
+  launchExpedition(regionId: string): ActionResult;
+  expeditionCheck(regionId: string): ActionResult;
+  buildOutpost(regionId: string): ActionResult;
+  outpostCheck(regionId: string): ActionResult;
   pushAlert(alert: Omit<Alert, 'id' | 'sol' | 'persistent'>): void;
   dismissAlert(id: string): void;
   setPersistentAlerts(alerts: Omit<Alert, 'id' | 'sol' | 'persistent'>[]): void;
@@ -215,23 +228,57 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     set({ selectedRegionId: id });
   },
 
-  surveyCheck(regionId) {
-    const c = MissionManager.check(get(), regionManager, regionId);
-    return c.ok ? { ok: true } : { ok: false, reason: c.reason };
+  scanCheck(regionId) {
+    return MissionManager.checkScan(get(), regionManager, regionId);
   },
 
-  launchSurvey(regionId) {
+  launchScan(regionId) {
     const s = get();
-    const res = MissionManager.launch(s, regionManager, regionId);
+    const res = MissionManager.launchScan(s, regionManager, regionId);
+    if (!res.ok) return res;
+    set({ missions: [...s.missions, res.mission] });
+    get().pushAlert({
+      key: `launch-${res.mission.id}`,
+      level: 'info',
+      title: '📡 Orbiter is mapping',
+      message: `Photographing ${regionManager.get(regionId)?.name ?? regionId} from orbit. Done in ${res.mission.durationSols.toFixed(1)} sols.`,
+    });
+    return { ok: true };
+  },
+
+  expeditionCheck(regionId) {
+    return MissionManager.checkExpedition(get(), regionManager, regionId, getRouteHeight());
+  },
+
+  launchExpedition(regionId) {
+    const s = get();
+    const res = MissionManager.launchExpedition(s, regionManager, regionId, getRouteHeight());
     if (!res.ok) return res;
     const mission = res.mission;
     set({ resources: res.resources, power: { ...s.power, batteryKwh: res.batteryKwh }, missions: [...s.missions, mission] });
-    const region = regionManager.get(regionId);
     get().pushAlert({
       key: `launch-${mission.id}`,
       level: 'info',
-      title: 'Survey rover launched',
-      message: `Heading to ${region?.name ?? regionId}. Arrival in ${mission.durationSols.toFixed(1)} sols.`,
+      title: '🚙 Crew rover is on its way',
+      message: `Driving ${Math.round(mission.routeKm).toLocaleString()} km to ${regionManager.get(regionId)?.name ?? regionId}. Back in about ${mission.durationSols.toFixed(0)} sols.`,
+    });
+    return { ok: true };
+  },
+
+  outpostCheck(regionId) {
+    return MissionManager.checkOutpost(get(), regionId);
+  },
+
+  buildOutpost(regionId) {
+    const s = get();
+    const res = MissionManager.buildOutpost(s, regionManager, regionId, getRouteHeight());
+    if (!res.ok) return res;
+    set({ resources: res.resources, outposts: [...s.outposts, res.outpost] });
+    get().pushAlert({
+      key: `outpost-${res.outpost.id}`,
+      level: 'info',
+      title: '🏗️ Outpost kit on its way',
+      message: `A cargo rover is driving the kit to ${regionManager.get(regionId)?.name ?? regionId}. It starts working in ${(res.outpost.readySol - s.timeSols).toFixed(0)} sols.`,
     });
     return { ok: true };
   },

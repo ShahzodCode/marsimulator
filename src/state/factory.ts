@@ -82,6 +82,8 @@ export function createInitialState(): GameState {
     roads: starterRoads(buildings),
     roadMode: false,
     discoveredRegions: discovered,
+    exploredRegions: { ...discovered },
+    outposts: [],
     selectedBuildingId: null,
     selectedRegionId: null,
     construction: { active: false, buildingType: null, rotation: 0 },

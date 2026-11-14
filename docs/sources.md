@@ -21,6 +21,12 @@ Status key:
 | S3 | NASA: "NASA Achieves Water Recovery Milestone on International Space Station" (June 2023) | https://www.nasa.gov/missions/station/iss-research/nasa-achieves-water-recovery-milestone-on-international-space-station/ | 2026-11-14 (search result only) |
 | S4 | NASA/JPL: "NASA's Oxygen-Generating Experiment MOXIE Completes Mars Mission" (6 Sep 2023) | https://www.nasa.gov/missions/mars-2020-perseverance/perseverance-rover/nasas-oxygen-generating-experiment-moxie-completes-mars-mission/ | 2026-11-14 |
 | S5 | NASA STMD: "Mars Oxygen In-Situ Resource Utilization Experiment (MOXIE)" (updated 13 Feb 2024) | https://www.nasa.gov/space-technology-mission-directorate/tdm/mars-oxygen-in-situ-resource-utilization-experiment-moxie/ | 2026-11-14 |
+| S6 | NASA Science: Mars 2020 Perseverance "Rover Components" | https://science.nasa.gov/mission/mars-2020-perseverance/rover-components/ | 2026-11-14 |
+| S7 | NASA/JPL: PIA26645 "NASA's Perseverance Breaks Own Rover Driving Record" (17 Dec 2025) | https://www.jpl.nasa.gov/images/pia26645-nasas-perseverance-breaks-own-rover-driving-record | 2026-11-14 |
+| S8 | NASA Facts: "Space Exploration Vehicle Concept" (FS-2011-08-045-JSC) | https://www.nasa.gov/wp-content/uploads/2015/08/464826main_sev_factsheet_508.pdf | 2026-11-14 |
+| S9 | NASA/JPL: PIA21488 "Mars Global Coverage by Context Camera on MRO" (29 Mar 2017) | https://www.jpl.nasa.gov/images/pia21488-mars-global-coverage-by-context-camera-on-mro/ | 2026-11-14 |
+| S10 | NASA/JPL: "NASA Mars Reconnaissance Orbiter Reaches Planned Flight Path" | https://www.jpl.nasa.gov/news/nasa-mars-reconnaissance-orbiter-reaches-planned-flight-path/ | 2026-11-14 (search result only) |
+| S11 | NASA Science: "NASA's Opportunity Rover Mission on Mars Comes to End" (Feb 2019) | https://science.nasa.gov/missions/mer/nasas-opportunity-rover-mission-on-mars-comes-to-end/ | 2026-11-14 (search result only) |
 
 Older BVAD editions (do not cite for current values): original 2015, https://ntrs.nasa.gov/citations/20150002905 ·
 Rev1 2018, https://ntrs.nasa.gov/citations/20180001338
@@ -50,7 +56,23 @@ Rev1 2018, https://ntrs.nasa.gov/citations/20180001338
 | Mars soil about 18 % FeO (rover APXS) | `src/data/recipes.ts` comment | none | not applicable | Unverified |
 | Jezero Base at 18.38° N, 77.58° E | `src/data/settlement.ts` | none | not applicable | Unverified |
 | Mars place positions (craters, volcanoes, regions) | `src/data/marsFeatures.ts`, `src/data/regions.ts` | "USGS / NASA", no link | not applicable | Unverified |
-| Ice finds (SHARAD radar, mid-latitude ice, polar caps) | `src/data/missions.ts` `REGION_REWARDS` text | none | Ice amounts are game values | Facts unverified; amounts are game values |
+| Ice finds (SHARAD radar, mid-latitude ice, polar caps) | `src/data/missions.ts` `REGION_REWARDS` text | none | Outpost reserves and rates are game values | Facts unverified; amounts are game values |
+| Crew rover speed 10 km/h | `src/data/missions.ts` `NASA_ROVER_DATA.sevSpeedKmh` → `EXPEDITION.speedKmh` | S8 | "It can travel at about 10 kilometers per hour" | Verified |
+| Crew of 2 per rover | `NASA_ROVER_DATA.sevCrew` → `EXPEDITION.crew` | S8 | "The SEV must be able to hold a crew of two, but can support a crew of four in an emergency" | Verified |
+| Rover payload 998 kg (cargo per outpost trip) | `NASA_ROVER_DATA.sevPayloadKg` → `OUTPOST.cargoPayloadKg` | S8 | "Payload: 2,200 pounds" (= 998 kg) | Verified |
+| 72 h of spare supplies | `NASA_ROVER_DATA.sevSafeHavenHours` → `EXPEDITION.reserveSols` | S8 | The safe-haven cabin "can sustain and protect exploring crew members for up to 72 hours" | Verified |
+| Rovers in pairs (2 crew rovers) | `EXPEDITION.maxConcurrent` | S8 | "two or more service SEVs … would extend that potential range" | Verified (the number 2 is a game choice) |
+| Perseverance top speed 152 m/h | `NASA_ROVER_DATA.perseveranceTopSpeedMh` | S6 | "top speed on flat, hard ground is just under 0.1 mph (152 meters per hour)" | Verified |
+| Perseverance record 411.7 m in one sol, 4 h 24 min | `NASA_ROVER_DATA.perseveranceRecord*` (Exploration panel comparison) | S7 | "covered 1,350.7 feet (411.7 meters) on that sol, over the course of about 4 hours and 24 minutes" (Sol 1,540, 19 June 2025) | Verified |
+| CTX mapped 99.1 % of Mars in about 10.25 years | `NASA_ROVER_DATA.ctxCoverage*` → `realScanSols()` | S9 | "covering 99.1 percent of the surface of Mars at least once"; imaging began "late 2006", passed 99 % "in early 2017" | Verified (10.25 years is our reading of "late 2006 → early 2017") |
+| MRO orbit 112 minutes | `NASA_ROVER_DATA.mroOrbitMinutes` (panel text) | S10 | Science orbit period 1 h 52 min | Verified from search result; page not opened |
+| Opportunity's 2018 dust storm (tau 10.8 vs about 0.5) | `NASA_ROVER_DATA.stormTau`, dust-storm message | S11 | Peak tau 10.8; average about 0.5; the solar rover could not recharge and the mission ended | Verified from search result; page not opened |
+| Hours of driving per sol: 6 | `EXPEDITION.driveHoursPerSol` | S7 for comparison | Perseverance's record day was 4.4 h of driving; no crewed-rover figure found | Estimate |
+| Climbing: 1 km up/down = 10 km of flat driving | `EXPEDITION.climbKmEquivalent` | none | not applicable | Estimate |
+| Rover battery charge 40 kWh at launch | `EXPEDITION.energyKwh` | none | S8 says only that the SEV runs on batteries; no kWh given | Estimate |
+| Time-lapse ×8 (rover) and ×50 (orbiter) | `EXPEDITION.timeScale`, `ORBITAL_SCAN.timeScale` | none | not applicable | Game value (shown to the player) |
+| Dust-storm chance 30 %, 1–2.5 sols | `EXPEDITION.stormChance`, `EXPEDITION.stormSols` | none | not applicable | Game value |
+| Outpost cost, setup time, mining rates and reserves | `src/data/missions.ts` `OUTPOST`, `REGION_REWARDS[*].outpost` | none | not applicable | Game value |
 | Panel efficiency 25 %, air transmission 0.85 | `src/data/power.ts` | none | not applicable | Estimate |
 | Hen water and egg numbers | `src/data/recipes.ts` `HENS` | poultry averages, no link | not applicable | Estimate |
 | Solar farm area, MOXIE 1/10 scale, building costs, storage sizes, starting stock, ice reserve, depot supply | `src/data/*` | none | not applicable | Game value |
@@ -90,3 +112,7 @@ Every outside lookup, in order.
 | 2026-11-14 | MOXIE final results and full-scale plans | nasa.gov (S4, S5) | Read; no full-scale kW figure found |
 | 2026-11-14 | ISS 98 % water recovery | web search, nasa.gov result (S3) | Confirmed from the search summary; the page itself was not opened |
 | 2026-11-14 | MOXIE full-scale 2–3 kg/h | web search (space.com, CNN and others) | Figure appears in news reports quoting MIT; no NASA page found |
+| 2026-11-14 | Perseverance speed and record drive | science.nasa.gov (S6), jpl.nasa.gov (S7) | Read; values in § 2 |
+| 2026-11-14 | Crewed pressurized rover (SEV) | nasa.gov fact sheet PDF (S8) | Read all 4 pages; values in § 2 |
+| 2026-11-14 | MRO Context Camera global coverage | jpl.nasa.gov (S9) | Read; values in § 2 |
+| 2026-11-14 | MRO orbit period; Opportunity 2018 dust storm | web search, nasa.gov results (S10, S11) | Confirmed from search summaries; pages not opened |

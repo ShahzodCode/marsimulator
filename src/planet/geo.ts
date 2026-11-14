@@ -66,3 +66,25 @@ export function angularDistance(aLat: number, aLon: number, bLat: number, bLon: 
 export function kmToUnitsHeight(km: number): number {
   return km * KM_TO_UNITS * ELEVATION_EXAGGERATION;
 }
+
+/** Point a fraction `f` (0..1) of the way along the great circle from A to B. */
+export function greatCirclePoint(aLat: number, aLon: number, bLat: number, bLon: number, f: number, out: LatLon = { lat: 0, lon: 0 }): LatLon {
+  const d = angularDistance(aLat, aLon, bLat, bLon);
+  if (d < 1e-9) {
+    out.lat = aLat;
+    out.lon = aLon;
+    return out;
+  }
+  const p1 = aLat * DEG;
+  const l1 = aLon * DEG;
+  const p2 = bLat * DEG;
+  const l2 = bLon * DEG;
+  const a = Math.sin((1 - f) * d) / Math.sin(d);
+  const b = Math.sin(f * d) / Math.sin(d);
+  const x = a * Math.cos(p1) * Math.cos(l1) + b * Math.cos(p2) * Math.cos(l2);
+  const y = a * Math.cos(p1) * Math.sin(l1) + b * Math.cos(p2) * Math.sin(l2);
+  const z = a * Math.sin(p1) + b * Math.sin(p2);
+  out.lat = Math.atan2(z, Math.hypot(x, y)) * RAD;
+  out.lon = Math.atan2(y, x) * RAD;
+  return out;
+}

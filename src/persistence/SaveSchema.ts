@@ -13,8 +13,9 @@ import { PowerManager } from '../simulation/PowerManager';
  * (open panels, selection, placement mode, toasts) is reset on load.
  *
  * v1 → v2 (Stage 2): recipes, power and batteries, ice deposits, ranks, hydrogen.
+ * v2 → v3: NASA-style exploration (orbital maps, crew expeditions, outposts).
  */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 type SavedKeys =
   | 'timeSols'
@@ -24,6 +25,8 @@ type SavedKeys =
   | 'buildings'
   | 'roads'
   | 'discoveredRegions'
+  | 'exploredRegions'
+  | 'outposts'
   | 'progression'
   | 'missions'
   | 'deposits'
@@ -47,6 +50,8 @@ export function toSave(state: GameState): SaveData {
       buildings: state.buildings.map((b) => ({ ...b, stored: { ...b.stored }, recipes: { ...b.recipes } })),
       roads: [...state.roads],
       discoveredRegions: { ...state.discoveredRegions },
+      exploredRegions: { ...state.exploredRegions },
+      outposts: state.outposts.map((o) => ({ ...o })),
       progression: { ...state.progression, milestones: [...state.progression.milestones] },
       missions: state.missions.map((m) => ({ ...m })),
       deposits: { ...state.deposits },
@@ -60,7 +65,7 @@ export function isSaveData(value: unknown): value is SaveData {
   if (!value || typeof value !== 'object') return false;
   const v = value as Partial<SaveData>;
   return (
-    (v.version === 1 || v.version === SAVE_VERSION) &&
+    typeof v.version === 'number' && v.version >= 1 && v.version <= SAVE_VERSION &&
     !!v.state &&
     Array.isArray(v.state.buildings) &&
     typeof v.state.timeSols === 'number' &&
@@ -101,7 +106,14 @@ export function fromSave(save: SaveData): GameState {
       roads = starterRoads(buildings, roads);
     }
   }
-  const missions: Mission[] = (st.missions ?? []).map((m) => ({ ...m, cost: m.cost ?? {}, energyKwh: m.energyKwh ?? 0 }));
+  // Before v3, a "survey rover" both mapped and visited a region. Those regions count as
+  // explored; old missions still on the way are finished (their reward was paid at launch).
+  const discoveredRegions = { ...base.discoveredRegions, ...st.discoveredRegions };
+  const legacy = save.version < 3;
+  const oldMissions = (st.missions ?? []) as (Mission | { type: 'survey'; regionId: string; status: string })[];
+  if (legacy) for (const m of oldMissions) if (m.type === 'survey') discoveredRegions[m.regionId] = true;
+  const missions: Mission[] = legacy ? [] : (oldMissions as Mission[]).map((m) => ({ ...m }));
+  const exploredRegions = legacy ? { ...discoveredRegions } : { ...base.exploredRegions, ...(st.exploredRegions ?? {}) };
   const xp = st.progression?.xp ?? 0;
   const batteryCapacityKwh = PowerManager.batteryCapacity(buildings);
   return {
@@ -114,7 +126,9 @@ export function fromSave(save: SaveData): GameState {
     missions,
     resources: { ...emptyResources(), ...st.resources },
     storage: storageCapacity(buildings),
-    discoveredRegions: { ...base.discoveredRegions, ...st.discoveredRegions },
+    discoveredRegions,
+    exploredRegions,
+    outposts: (st.outposts ?? []).map((o) => ({ ...o })),
     // Ranks replaced the old six levels: work the rank out from XP.
     progression: { xp, level: rankForXp(xp).level, milestones: [...(st.progression?.milestones ?? [])] },
     deposits: st.deposits ? { ...st.deposits } : base.deposits,

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RESOURCES, type ResourceId } from '../data/resources';
-import { SETTLEMENT } from '../data/settlement';
+import type { MissionActivity } from '../state/types';
 import type { EventBus } from '../core/EventBus';
 import type { Terrain } from '../planet/Terrain';
 import type { SettlementGrid } from '../settlement/SettlementGrid';
@@ -8,7 +8,6 @@ import { footprintRect, rectCenter } from '../settlement/PlacementRules';
 import { MissionManager } from '../simulation/MissionManager';
 import { gameStore, regionManager } from '../state/gameStore';
 import { h, setText, toggleClass } from './dom';
-import { ICONS } from './icons';
 
 interface Popup {
   el: HTMLElement;
@@ -27,12 +26,15 @@ interface Rover {
 const POPUP_LIFE = 1.6;
 /** Show production labels only when zoomed in on the base. */
 const POPUP_MAX_ALT = 2.2;
-/** Show rover markers when looking at the globe. */
+/** Show rover labels when looking at the globe. */
 const ROVER_MIN_ALT = 6;
+/** Label height above the rover model (scene units at globe zoom). */
+const ROVER_LABEL_LIFT = 2.2;
+const ACTIVITY_ICON: Record<MissionActivity, string> = { scanning: '📡', driving: '🚙', night: '🌙', storm: '🌪️', sampling: '🔬', done: '✔' };
 
 /**
  * Things pinned to the 3D world as HTML: little "+2 kg oxygen" labels that float up from a
- * building when a production cycle finishes, and survey rovers crawling across the globe.
+ * building when a production cycle finishes, and the labels of crew rovers on the globe.
  * Purely visual — they read the store and events, never change them.
  */
 export class WorldPopups {
@@ -41,9 +43,7 @@ export class WorldPopups {
   private rovers = new Map<string, Rover>();
   private readonly v = new THREE.Vector3();
   private readonly toCam = new THREE.Vector3();
-  private readonly qa = new THREE.Quaternion();
-  private readonly qb = new THREE.Quaternion();
-  private readonly base: THREE.Vector3;
+  private readonly ll = { lat: 0, lon: 0 };
 
   constructor(
     parent: HTMLElement,
@@ -53,7 +53,6 @@ export class WorldPopups {
   ) {
     this.layer = h('div', { class: 'popup-layer', attrs: { 'aria-hidden': 'true' } });
     parent.append(this.layer);
-    this.base = terrain.surfacePoint(SETTLEMENT.lat, SETTLEMENT.lon, 0.3);
     events.on('production:delivered', ({ buildingId, delivered }) => this.spawn(buildingId, delivered));
   }
 
@@ -108,30 +107,26 @@ export class WorldPopups {
       p.el.style.opacity = alpha.toFixed(2);
     }
 
-    // Survey rovers.
+    // Crew rovers (the 3D model is drawn by RoverFleet; this is its label).
     const s = gameStore.getState();
     const active = new Set<string>();
     for (const m of s.missions) {
-      if (m.status !== 'active') continue;
+      if (m.status !== 'active' || m.type !== 'expedition') continue;
       active.add(m.id);
       let r = this.rovers.get(m.id);
       if (!r) {
         const eta = h('span', { class: 'rover-eta' });
         const region = regionManager.get(m.regionId);
-        const el = h('div', { class: 'rover-marker', title: `Survey rover heading to ${region?.name ?? m.regionId}` }, [h('span', { class: 'rover-dot', html: ICONS.rover }), eta]);
+        const el = h('div', { class: 'rover-marker', title: `Crew rover: expedition to ${region?.name ?? m.regionId}` }, [eta]);
         this.layer.append(el);
         r = { el, eta, world: new THREE.Vector3(), normal: new THREE.Vector3() };
         this.rovers.set(m.id, r);
       }
-      // Slide along the great circle from the base to the region's centre.
-      const c = regionManager.center(m.regionId);
-      const target = this.terrain.surfacePoint(c.lat, c.lon, 0.3, this.v);
-      const radius = this.base.length();
-      this.qa.setFromUnitVectors(this.toCam.copy(this.base).normalize(), target.normalize());
-      this.qb.identity().slerp(this.qa, m.progress);
-      r.normal.copy(this.base).normalize().applyQuaternion(this.qb);
-      r.world.copy(r.normal).multiplyScalar(radius + 0.4);
-      setText(r.eta, `${MissionManager.remainingSols(m).toFixed(1)} sols`);
+      const p = MissionManager.pointOnRoute(regionManager, m.regionId, MissionManager.routeFraction(m), this.ll);
+      this.terrain.surfacePoint(p.lat, p.lon, 0, r.normal);
+      r.normal.normalize();
+      this.terrain.surfacePoint(p.lat, p.lon, ROVER_LABEL_LIFT * Math.max(1, altitude / 60), r.world);
+      setText(r.eta, `${ACTIVITY_ICON[m.activity]} ${MissionManager.remainingSols(m).toFixed(1)} sols`);
     }
     for (const [id, r] of this.rovers) {
       if (active.has(id)) continue;

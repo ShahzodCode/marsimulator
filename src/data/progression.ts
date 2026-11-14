@@ -20,9 +20,9 @@ export interface RankDefinition {
 }
 
 export const RANKS: RankDefinition[] = [
-  { level: 1, id: 'junior_pioneer', title: 'Junior Pioneer', xp: 0, icon: '🧑‍🚀', perks: ['Habitats, solar farms, greenhouses, drills, diggers, refineries and silos', 'Survey missions to nearby regions'] },
+  { level: 1, id: 'junior_pioneer', title: 'Junior Pioneer', xp: 0, icon: '🧑‍🚀', perks: ['Habitats, solar farms, greenhouses, drills, diggers, refineries and silos', 'Orbital maps and crew expeditions to nearby regions'] },
   { level: 2, id: 'mars_engineer', title: 'Mars Engineer', xp: 120, icon: '🛠️', perks: ['Battery Bank — power through the night', 'MOXIE Oxygen Maker — oxygen from the air'] },
-  { level: 3, id: 'settlement_commander', title: 'Settlement Commander', xp: 400, icon: '🎖️', perks: ['Long-range missions to the polar ice caps', 'Research Lab plans'] },
+  { level: 3, id: 'settlement_commander', title: 'Settlement Commander', xp: 400, icon: '🎖️', perks: ['Long-range expeditions to the polar ice caps', 'Research Lab plans'] },
 ];
 
 /** Kept for older UI code: the ranks double as levels. */
@@ -63,7 +63,8 @@ export type GoalCondition =
   | { kind: 'produce'; resource: ResourceId; amount: number }
   | { kind: 'buildings'; count: number }
   | { kind: 'has_building'; type: BuildingType }
-  | { kind: 'regions'; count: number };
+  | { kind: 'regions'; count: number }
+  | { kind: 'explored'; count: number };
 
 export interface GoalDefinition {
   id: string;
@@ -77,14 +78,14 @@ export interface GoalDefinition {
 export const GOALS: GoalDefinition[] = [
   { id: 'goal-first-build', title: 'Build something new', hint: 'Open Build and place any building.', icon: '🏗️', xp: 30, condition: { kind: 'buildings', count: 1 } },
   { id: 'goal-dig', title: 'Dig 150 t of regolith', hint: 'A Regolith Excavator digs up Martian soil.', icon: '⛏️', xp: 30, condition: { kind: 'produce', resource: 'regolith', amount: 150 } },
-  { id: 'goal-explore-2', title: 'Explore 2 new regions', hint: 'Send survey rovers from the Exploration panel.', icon: '🛰️', xp: 40, condition: { kind: 'regions', count: 3 } },
+  { id: 'goal-explore-2', title: 'Map 2 new regions from orbit', hint: 'Open Exploration, pick a region and press “Map from orbit”.', icon: '🛰️', xp: 40, condition: { kind: 'regions', count: 3 } },
   { id: 'goal-food', title: 'Grow 300 kg of food', hint: 'The greenhouse needs water and electricity.', icon: '🥕', xp: 40, condition: { kind: 'produce', resource: 'food', amount: 300 } },
   { id: 'goal-oxygen', title: 'Make 250 kg of oxygen', hint: 'The Life-Support Plant splits water into oxygen.', icon: '💨', xp: 40, condition: { kind: 'produce', resource: 'oxygen', amount: 250 } },
   { id: 'goal-iron', title: 'Smelt 40 t of iron', hint: 'An Iron Refinery turns regolith into iron.', icon: '🔩', xp: 40, condition: { kind: 'produce', resource: 'iron', amount: 40 } },
   { id: 'goal-water', title: 'Mine 500 kg of water', hint: 'The Ice Drill melts buried ice.', icon: '🧊', xp: 40, condition: { kind: 'produce', resource: 'water', amount: 500 } },
   { id: 'goal-battery', title: 'Build a Battery Bank', hint: 'Unlocked at Mars Engineer rank.', icon: '🔋', xp: 50, condition: { kind: 'has_building', type: 'battery_bank' } },
   { id: 'goal-builder', title: 'Build 6 new buildings', hint: 'Grow the settlement!', icon: '🏘️', xp: 60, condition: { kind: 'buildings', count: 6 } },
-  { id: 'goal-explore-7', title: 'Explore 6 new regions', hint: 'Each new region shows the next ones you can reach.', icon: '🗺️', xp: 60, condition: { kind: 'regions', count: 7 } },
+  { id: 'goal-explore-7', title: 'Send a crew to 2 new regions', hint: 'Map a region next to home, then send the crew rover there.', icon: '🗺️', xp: 60, condition: { kind: 'explored', count: 3 } },
 ];
 
 /** Upcoming technologies (research system arrives in a later stage). */
@@ -93,5 +94,5 @@ export const TECHNOLOGIES = [
   { id: 'bricks', name: 'Regolith Bricks', icon: '🧱', description: 'Sinter Martian soil into strong bricks to build cheaper habitats.' },
   { id: 'hydroponics', name: 'Advanced Hydroponics', icon: '🥬', description: 'Grow more food with less water by feeding roots directly.' },
   { id: 'sabatier', name: 'Rocket Fuel Plant', icon: '🚀', description: 'Combine stored hydrogen with carbon dioxide to make methane rocket fuel.' },
-  { id: 'rovers', name: 'Long-Range Rovers', icon: '🚙', description: 'Faster survey missions that can travel farther.' },
+  { id: 'rovers', name: 'Long-Range Rovers', icon: '🚙', description: 'Crew rovers that can drive farther on one trip.' },
 ];

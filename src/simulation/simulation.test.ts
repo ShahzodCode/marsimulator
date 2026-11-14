@@ -3,10 +3,11 @@ import { BUILDINGS, maxPowerKw, type BuildingType } from '../data/buildings';
 import { SOLAR_FARM_PEAK_KW } from '../data/power';
 import { RECIPES, SOL_HOURS } from '../data/recipes';
 import { emptyResources, RESOURCE_IDS } from '../data/resources';
-import { SURVEY } from '../data/missions';
+import { EXPEDITION, GAME_KM_PER_SOL, NASA_ROVER_DATA, rewardFor } from '../data/missions';
+import { REGIONS } from '../data/regions';
 import { RegionManager } from '../planet/RegionManager';
 import { createInitialState, makeBuilding } from '../state/factory';
-import type { BuildingInstance, GameState } from '../state/types';
+import type { BuildingInstance, Expedition, GameState } from '../state/types';
 import { ConstructionManager } from './ConstructionManager';
 import { MissionManager } from './MissionManager';
 import { PowerManager, PowerPool } from './PowerManager';
@@ -238,51 +239,106 @@ describe('Power', () => {
   });
 });
 
-describe('Exploration missions', () => {
-  const target = regions.neighboursOf('MC-13').find((id) => MissionManager.check(createInitialState(), regions, id).ok)!;
+describe('Exploration: orbit, crew rover, outposts', () => {
+  const target = regions.neighboursOf('MC-13').find((id) => !rewardFor(id).rank)!;
+  const mapped = (s: GameState): GameState => ({ ...s, discoveredRegions: { ...s.discoveredRegions, [target]: true } });
+  const steps = (sols: number) => Math.ceil(sols / SIM_STEP_SOLS);
 
-  function launched(): GameState {
-    const s0 = createInitialState();
-    const r = MissionManager.launch(s0, regions, target);
+  function sent(s0 = mapped(createInitialState())): GameState {
+    const r = MissionManager.launchExpedition(s0, regions, target);
     if (!r.ok) throw new Error(r.reason);
     return { ...s0, resources: r.resources, power: { ...s0.power, batteryKwh: r.batteryKwh }, missions: [r.mission] };
   }
 
-  it('launching pays materials and battery energy once', () => {
+  it('uses the real NASA crew-rover speed, time-lapsed by a named multiplier', () => {
+    expect(NASA_ROVER_DATA.sevSpeedKmh).toBe(10);
+    expect(GAME_KM_PER_SOL).toBe(NASA_ROVER_DATA.sevSpeedKmh * EXPEDITION.driveHoursPerSol * EXPEDITION.timeScale);
+  });
+
+  it('an orbital scan maps exactly one region, once', () => {
     const s0 = createInitialState();
-    const s = launched();
-    expect(s.resources.iron).toBe(s0.resources.iron - SURVEY.cost.iron!);
-    expect(s.power.batteryKwh).toBe(s0.power.batteryKwh - SURVEY.energyKwh);
-    expect(MissionManager.check(s, regions, target).ok).toBe(false);
-  });
-
-  it('13. progresses with simulation time', () => {
-    const s = run(launched(), 10, {});
-    const m = s.missions[0];
-    expect(m.progress).toBeCloseTo((10 * SIM_STEP_SOLS) / m.durationSols, 6);
-  });
-
-  it('14. stops while paused', () => {
-    const s = launched();
-    const after = stepSimulation(s, 0, regions).state;
-    expect(after.missions[0].progress).toBe(0);
-    expect(MissionManager.advance(s.missions, 0).missions[0].progress).toBe(0);
-  });
-
-  it('15. reveals exactly the target region and rewards it once', () => {
-    const s0 = launched();
-    const steps = Math.ceil(s0.missions[0].durationSols / SIM_STEP_SOLS) + 2;
-    const s1 = run(s0, steps, {});
-    expect(s1.missions[0].status).toBe('complete');
+    const r = MissionManager.launchScan(s0, regions, target);
+    if (!r.ok) throw new Error(r.reason);
+    const s1 = run({ ...s0, missions: [r.mission] }, steps(r.mission.durationSols) + 2, {});
     expect(s1.discoveredRegions[target]).toBe(true);
+    expect(s1.exploredRegions[target]).toBeFalsy();
     const newly = Object.keys(s1.discoveredRegions).filter((id) => s1.discoveredRegions[id] && !s0.discoveredRegions[id]);
     expect(newly).toEqual([target]);
-    expect(s1.progression.milestones).toContain(`mission-${s0.missions[0].id}`);
-    const xp = s1.progression.xp;
-    const s2 = run(s1, 20, {});
-    expect(s2.progression.xp).toBeGreaterThanOrEqual(xp); // goals may add XP, the mission never pays twice
-    expect(s2.progression.milestones.filter((m) => m === `mission-${s0.missions[0].id}`)).toHaveLength(1);
-    expect(MissionManager.check(s2, regions, target).ok).toBe(false);
+    expect(s1.progression.milestones.filter((m) => m === `scan-${target}`)).toHaveLength(1);
+  });
+
+  it('a crew can only go to a mapped region', () => {
+    expect(MissionManager.checkExpedition(createInitialState(), regions, target).ok).toBe(false);
+    expect(MissionManager.checkExpedition(mapped(createInitialState()), regions, target).ok).toBe(true);
+  });
+
+  it('launching packs crew supplies and battery energy once', () => {
+    const s0 = mapped(createInitialState());
+    const s = sent(s0);
+    const m = s.missions[0] as Expedition;
+    expect(s.resources.food).toBe(s0.resources.food - m.supplies.food!);
+    expect(m.supplies.oxygen).toBeGreaterThan(0);
+    expect(s.power.batteryKwh).toBe(s0.power.batteryKwh - EXPEDITION.energyKwh);
+    expect(MissionManager.checkExpedition(s, regions, target).ok).toBe(false);
+  });
+
+  it('the solar rover drives by day and parks at night', () => {
+    const base = sent();
+    const m = { ...(base.missions[0] as Expedition), storm: null };
+    // The rover is still at the base, so its local time is the base's (sunrise at .0, sunset at .5).
+    const day = Math.ceil(base.timeSols) + 0.1;
+    const night = Math.ceil(base.timeSols) + 0.75;
+    const atDay = MissionManager.advance([m], 0.05, day, regions).missions[0] as Expedition;
+    const atNight = MissionManager.advance([m], 0.05, night, regions).missions[0] as Expedition;
+    expect(atDay.drivenKm).toBeGreaterThan(0);
+    expect(atNight.drivenKm).toBe(0);
+    expect(atNight.activity).toBe('night');
+  });
+
+  it('a dust storm parks the rover for its length', () => {
+    const base = sent();
+    const m: Expedition = { ...(base.missions[0] as Expedition), storm: { atKm: 0, sols: 1, hit: false } };
+    const hit = MissionManager.advance([m], 0.01, 0.1, regions).missions[0] as Expedition;
+    expect(hit.activity).toBe('storm');
+    const still = MissionManager.advance([hit], 0.5, 0.2, regions).missions[0] as Expedition;
+    expect(still.drivenKm).toBe(hit.drivenKm);
+  });
+
+  it('stops while paused', () => {
+    const s = sent();
+    expect(stepSimulation(s, 0, regions).state.missions[0].progress).toBe(0);
+  });
+
+  it('crew away eat from their packed supplies, not the base', () => {
+    const s0 = mapped(createInitialState());
+    const home = stepSimulation(s0, 0, regions).state;
+    const away = stepSimulation(sent(s0), 0, regions).state;
+    expect(away.rates.food).toBeGreaterThan(home.rates.food);
+  });
+
+  it('the crew explores the region, comes home and is rewarded once', () => {
+    const s0 = sent();
+    const m0 = s0.missions[0] as Expedition;
+    const s1 = run({ ...s0, missions: [{ ...m0, storm: null }] }, steps(m0.durationSols * 2.2) + 50, {});
+    const m1 = s1.missions[0] as Expedition;
+    expect(m1.status).toBe('complete');
+    expect(s1.exploredRegions[target]).toBe(true);
+    expect(s1.progression.milestones.filter((x) => x === `mission-${m0.id}`)).toHaveLength(1);
+    expect(MissionManager.checkExpedition(s1, regions, target).ok).toBe(false);
+  });
+
+  it('an outpost sends cargo home until its site runs out', () => {
+    const site = REGIONS.find((r) => rewardFor(r.id).outpost)!.id;
+    const s0: GameState = { ...createInitialState(), exploredRegions: { ...createInitialState().exploredRegions, [site]: true } };
+    const r = MissionManager.buildOutpost(s0, regions, site);
+    if (!r.ok) throw new Error(r.reason);
+    const o = r.outpost;
+    const before = MissionManager.advanceOutposts([o], o.readySol, 0.01);
+    expect(before.deliveries).toHaveLength(0);
+    const first = MissionManager.advanceOutposts([o], o.lastTripSol + o.tripSols, 0.01);
+    expect(first.deliveries).toHaveLength(1);
+    expect(first.deliveries[0].amount).toBeLessThanOrEqual(NASA_ROVER_DATA.sevPayloadKg);
+    expect(first.outposts[0].reserveLeft).toBe(o.reserveLeft - first.deliveries[0].amount);
   });
 });
 
