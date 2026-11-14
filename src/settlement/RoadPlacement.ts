@@ -172,7 +172,8 @@ export class RoadPlacement {
    */
   private plan(line: Tile[]): { order: Tile[]; blocked: Tile[]; firstProblem: string | null } {
     const s = gameStore.getState();
-    const roads = roadSet(s.roads);
+    // A copy: planned pieces are added to it, and the cached set must stay the real network.
+    const roads = new Set(roadSet(s.roads));
     let budget = Infinity;
     for (const [id, c] of Object.entries(ROAD_COST)) budget = Math.min(budget, Math.floor(s.resources[id as keyof typeof s.resources] / c));
     let pending = line.filter(([x, y]) => !roads.has(roadKey(x, y)));

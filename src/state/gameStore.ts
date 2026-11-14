@@ -18,7 +18,7 @@ export type { PlaceRequest };
 
 /** Cached Set view of the roads array (the array is replaced, never mutated). */
 let roadSetCache: { arr: string[]; set: Set<string> } | null = null;
-export function roadSet(roads: string[]): Set<string> {
+export function roadSet(roads: string[]): ReadonlySet<string> {
   if (roadSetCache?.arr !== roads) roadSetCache = { arr: roads, set: new Set(roads) };
   return roadSetCache.set;
 }
