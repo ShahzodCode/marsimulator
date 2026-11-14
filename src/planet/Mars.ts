@@ -84,7 +84,7 @@ export class Mars {
     this.atmosphere.renderOrder = 2;
     this.group.add(this.atmosphere);
 
-    this.stars = buildStars(3200);
+    this.stars = buildStars(5000);
     this.group.add(this.stars);
   }
 
@@ -230,21 +230,87 @@ function buildGlobeGeometry(terrain: Terrain, lonSegs: number, latSegs: number):
   return g;
 }
 
+// Real-sky star counts: the Yale Bright Star Catalogue holds ~9,110 stars down to magnitude 6.5 (the
+// naked-eye limit), and the count grows ~3x per magnitude (log10 slope 0.475 ≈ 22 stars brighter than mag 1
+// up to 9,110 at 6.5). See docs/sources.md.
+const BSC_COUNT = 9110;
+const BSC_LIMIT_MAG = 6.5;
+const COUNT_SLOPE = 0.475;
+const BRIGHTEST_MAG = -1.46; // Sirius
+
+// Rough share of naked-eye stars per spectral class, with a muted eye-perceived tint (game estimate).
+const STAR_TINTS: [share: number, r: number, g: number, b: number][] = [
+  [0.2, 0.68, 0.78, 1.0], // B — blue-white
+  [0.22, 0.85, 0.9, 1.0], // A — white
+  [0.13, 1.0, 0.98, 0.95], // F — yellow-white
+  [0.15, 1.0, 0.93, 0.82], // G — pale yellow
+  [0.25, 1.0, 0.82, 0.62], // K — orange
+  [0.05, 1.0, 0.68, 0.48], // M — red-orange
+];
+
+function pickTint(): [number, number, number] {
+  let u = Math.random();
+  for (const [share, r, g, b] of STAR_TINTS) {
+    if ((u -= share) <= 0) return [r, g, b];
+  }
+  const last = STAR_TINTS[STAR_TINTS.length - 1];
+  return [last[1], last[2], last[3]];
+}
+
+/**
+ * Star field with a realistic brightness spread: magnitudes are drawn from the real cumulative star-count
+ * curve, so most stars are faint pinpricks and only a handful are bright. One draw call, no textures.
+ */
 function buildStars(count: number): THREE.Points {
+  // Faintest magnitude such that `count` stars fill the sky at real density.
+  const limitMag = BSC_LIMIT_MAG + Math.log10(count / BSC_COUNT) / COUNT_SLOPE;
   const pos = new Float32Array(count * 3);
   const col = new Float32Array(count * 3);
+  const size = new Float32Array(count);
   const v = new THREE.Vector3();
   for (let i = 0; i < count; i++) {
     v.randomDirection().multiplyScalar(1400);
     pos.set([v.x, v.y, v.z], i * 3);
-    const b = 0.45 + Math.random() * 0.55;
-    const warm = Math.random();
-    col.set([b * (0.85 + 0.15 * warm), b * 0.9, b * (1.0 - 0.15 * warm)], i * 3);
+    // Inverse of N(<m) ∝ 10^(slope·m).
+    const mag = Math.max(BRIGHTEST_MAG, limitMag + Math.log10(1 - Math.random()) / COUNT_SLOPE);
+    // Pogson scale: 5 magnitudes = 100x flux. Faintest star sits at 0.28 intensity; flux past full
+    // intensity is shown as a larger (still soft) disc instead.
+    const flux = 0.28 * Math.pow(10, -0.4 * (mag - limitMag));
+    const b = Math.min(flux, 1);
+    size[i] = Math.min(1.6 * Math.pow(Math.max(flux, 1), 0.33), 6.5);
+    const [r, g, bl] = pickTint();
+    col.set([r * b, g * b, bl * b], i * 3);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const m = new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true, depthWrite: false });
+  g.setAttribute('size', new THREE.BufferAttribute(size, 1));
+  const m = new THREE.ShaderMaterial({
+    uniforms: { uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) } },
+    vertexShader: /* glsl */ `
+      attribute float size;
+      attribute vec3 color;
+      uniform float uPixelRatio;
+      varying vec3 vColor;
+      void main() {
+        vColor = color;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * uPixelRatio;
+      }`,
+    fragmentShader: /* glsl */ `
+      varying vec3 vColor;
+      void main() {
+        // Soft round disc: bright core, gentle falloff.
+        float d = length(gl_PointCoord - 0.5) * 2.0;
+        float a = 1.0 - smoothstep(0.35, 1.0, d);
+        gl_FragColor = vec4(vColor * a, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+  });
   const pts = new THREE.Points(g, m);
   pts.renderOrder = -10;
   pts.frustumCulled = false;

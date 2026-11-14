@@ -17,10 +17,10 @@ const SPEEDS: SimSpeed[] = [1, 2, 4];
 
 interface ResourceChip {
   root: HTMLElement;
-  /** Storage capacity — shown first, in the bright ink. */
-  max: HTMLElement;
-  /** Amount in stock — shown second, in the accent ink. */
+  /** Amount in stock — shown first, in the bright ink. */
   current: HTMLElement;
+  /** Storage capacity — shown second, in the accent ink. */
+  max: HTMLElement;
 }
 
 /**
@@ -90,14 +90,14 @@ export class HUD {
     ]);
   }
 
-  /** One resource readout: icon, max, then current — like `🜨 500  320`. */
+  /** One resource readout: icon, current, then max — like `🜨 320  500`. */
   private chip(icon: string, color: string, title: string, extraClass = ''): { root: HTMLElement; max: HTMLElement; current: HTMLElement } {
     const max = h('span', { class: 'chip-max' });
     const current = h('span', { class: 'chip-cur' });
     const root = h(
       'div',
       { class: `chip ${extraClass}`.trim(), title, attrs: { role: 'listitem' }, style: { ['--chip-color' as never]: color } },
-      [h('span', { class: 'chip-icon', html: icon }), max, current],
+      [h('span', { class: 'chip-icon', html: icon }), current, max],
     );
     return { root, max, current };
   }
@@ -168,8 +168,8 @@ export class HUD {
       toggleClass(c.root, 'low', def.vital && amt > 0.01 && left < def.warnSols);
       toggleClass(c.root, 'full', cap > 0 && amt >= cap - 0.5);
       const title = `${def.name}: ${def.description}
-Max storage: ${formatAmount(cap)} ${def.unit}
-In stock: ${formatAmount(amt)} ${def.unit} (${formatRate(rate)})`;
+In stock: ${formatAmount(amt)} ${def.unit} (${formatRate(rate)})
+Max storage: ${formatAmount(cap)} ${def.unit}`;
       if (c.root.title !== title) c.root.title = title;
     }
     const p = s.power;
@@ -181,8 +181,8 @@ In stock: ${formatAmount(amt)} ${def.unit} (${formatRate(rate)})`;
     toggleClass(this.energyChip, 'low', p.unpowered === 0 && (charge < 0.2 || p.plannedDemandKw > p.avgGenerationKw));
     toggleClass(this.energyChip, 'charging', p.generationKw > p.suppliedKw + 0.05 && charge < 0.999);
     const tip = `Electricity (${day ? 'day' : 'night'})
-Max — solar panels now: ${p.generationKw.toFixed(1)} kW
 Current — buildings asking for: ${p.demandKw.toFixed(1)} kW
+Max — solar panels now: ${p.generationKw.toFixed(1)} kW
 Solar averaged over day and night: about ${p.avgGenerationKw.toFixed(0)} kW
 Buildings using: ${p.suppliedKw.toFixed(1)} kW${p.unpowered ? ` — ${p.unpowered} waiting for power` : ''}
 Batteries (bar): ${p.batteryKwh.toFixed(0)} / ${p.batteryCapacityKwh.toFixed(0)} kWh
@@ -192,8 +192,8 @@ Spare for new buildings: ${Math.max(0, p.avgGenerationKw - p.plannedDemandKw).to
     setText(this.popMax, String(s.colony.housing));
     setText(this.popCur, String(s.colony.colonists));
     const popTip = `Crew
-Max — beds in habitats: ${s.colony.housing}
-Current — colonists living in the base: ${s.colony.colonists}`;
+Current — colonists living in the base: ${s.colony.colonists}
+Max — beds in habitats: ${s.colony.housing}`;
     if (this.popChip.title !== popTip) this.popChip.title = popTip;
     toggleClass(this.popChip, 'low', s.colony.housing < s.colony.colonists);
 

@@ -6,32 +6,26 @@ import { h, setText } from './dom';
 import { ICONS } from './icons';
 
 export interface CameraView {
-  readonly heading: number;
   readonly alt: number;
   zoomAt(factor: number): void;
-  resetHeading(): void;
   readonly viewHeightUnits: number;
 }
 
-/** Zoom buttons, compass, scale bar and the coordinates readout. */
+/** Zoom buttons, scale bar and the coordinates readout. */
 export class MapControls {
-  private needle: HTMLElement;
   private coords: HTMLElement;
   private region: HTMLElement;
   private scaleLabel: HTMLElement;
   private scaleBar: HTMLElement;
-  private lastHeading = NaN;
 
   constructor(
     parent: HTMLElement,
     events: EventBus,
     private cam: CameraView,
   ) {
-    this.needle = h('span', { class: 'needle', html: '<span class="n">N</span>' });
     const btn = (icon: string, title: string, fn: () => void) =>
       h('button', { class: 'map-btn', html: icon, title, attrs: { type: 'button', 'aria-label': title }, on: { click: fn } });
     const controls = h('div', { class: 'map-controls' }, [
-      h('button', { class: 'compass', title: 'Point north up', attrs: { type: 'button', 'aria-label': 'Reset rotation to north' }, on: { click: () => cam.resetHeading() } }, [this.needle]),
       btn(ICONS.plus, 'Zoom in (+)', () => cam.zoomAt(0.6)),
       btn(ICONS.minus, 'Zoom out (−)', () => cam.zoomAt(1.6)),
       btn(ICONS.home, 'Fly to the base (H)', () => events.emit('camera:home')),
@@ -61,11 +55,6 @@ export class MapControls {
 
   /** Called every frame (cheap: only touches the DOM when values change). */
   update(): void {
-    const hd = this.cam.heading;
-    if (Math.abs(hd - this.lastHeading) > 0.002) {
-      this.lastHeading = hd;
-      this.needle.style.transform = `rotate(${(-hd * 180) / Math.PI}deg)`;
-    }
     // Scale bar (map distances): hidden at settlement zoom, where buildings are drawn larger than life.
     const showScale = this.cam.alt > 4;
     const scaleEl = this.scaleBar.parentElement!;

@@ -25,18 +25,53 @@ export async function loadBuildingModels(renderer: THREE.WebGLRenderer, onProgre
   pmrem.dispose();
   let done = 0;
   const types = BUILDING_TYPES;
-  await Promise.all(
-    types.map(async (type) => {
+  const total = types.length + VEHICLE_MODELS.length;
+  await Promise.all([
+    ...types.map(async (type) => {
       try {
         const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/${type}.glb`);
         cache.set(type, prepare(gltf.scene, env));
       } catch (err) {
         console.warn(`Building model ${type}.glb could not be loaded — using the simple model.`, err);
       } finally {
-        onProgress?.(++done / types.length);
+        onProgress?.(++done / total);
       }
     }),
-  );
+    ...VEHICLE_MODELS.map(async (name) => {
+      try {
+        const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/${name}.glb`);
+        vehicles.set(name, normalizeLength(prepare(gltf.scene, env)));
+      } catch (err) {
+        console.warn(`Vehicle model ${name}.glb could not be loaded — using the simple model.`, err);
+      } finally {
+        onProgress?.(++done / total);
+      }
+    }),
+  ]);
+}
+
+/** Vehicles made in Blender (blender/crew_rover.py), +X forward. */
+export const VEHICLE_MODELS = ['crew_rover', 'cargo_rover'] as const;
+export type VehicleModel = (typeof VEHICLE_MODELS)[number];
+
+const vehicles = new Map<VehicleModel, THREE.Group>();
+
+/** Wraps a model so it is one unit long along X, centred on X/Z, with its wheels on y = 0. */
+function normalizeLength(root: THREE.Group): THREE.Group {
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  const s = 1 / Math.max(size.x, 1e-6);
+  const centre = box.getCenter(new THREE.Vector3());
+  root.scale.setScalar(s);
+  root.position.set(-centre.x * s, -box.min.y * s, -centre.z * s);
+  const wrap = new THREE.Group();
+  wrap.add(root);
+  return wrap;
+}
+
+/** A new instance of a vehicle model (geometry and materials shared), or null if it didn't load. */
+export function instantiateVehicleModel(name: VehicleModel): THREE.Group | null {
+  return vehicles.get(name)?.clone(true) ?? null;
 }
 
 const seenMaterials = new Set<THREE.Material>();

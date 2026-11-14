@@ -78,7 +78,15 @@ class AuthService {
           })
           .catch(() => {})
       : Promise.resolve();
+    // supabase-js keeps the session in localStorage and refreshes the access token on
+    // its own, so a sign-in survives page reloads until the player logs out. If the
+    // session ends some other way (refresh token revoked or expired), log out here too.
+    supabase?.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && this.account && !this.loggingOut) this.set(null, 'logout');
+    });
   }
+
+  private loggingOut = false;
 
   /** Accounts need the Supabase env vars; without them the game is local-only. */
   get available(): boolean {
@@ -141,7 +149,12 @@ class AuthService {
 
   async logOut(): Promise<void> {
     if (!supabase) return;
-    await supabase.auth.signOut().catch(() => {});
+    this.loggingOut = true;
+    try {
+      await supabase.auth.signOut().catch(() => {});
+    } finally {
+      this.loggingOut = false;
+    }
     this.set(null, 'logout');
   }
 }

@@ -6,6 +6,7 @@ import { gameStore, regionManager } from '../state/gameStore';
 import type { Expedition, OrbitalScan, Outpost } from '../state/types';
 import type { Terrain } from './Terrain';
 import { greatCirclePoint, latLonToDir, R, type LatLon } from './geo';
+import { instantiateVehicleModel } from '../settlement/buildings/glbModels';
 
 /** Size of a rover on screen: a fraction of the camera's height, so it stays readable at any zoom. */
 const SIZE_PER_ALT = 0.022;
@@ -31,6 +32,11 @@ const MATERIALS = {
   dome: mat('#f4f1ea'),
   beacon: new THREE.MeshBasicMaterial({ color: '#ffb03d' }),
 };
+
+/** The Blender rover (blender/crew_rover.py) if it loaded, else the simple one. One unit long, +X forward, +Y up. */
+function rover(cargo: boolean): THREE.Group {
+  return instantiateVehicleModel(cargo ? 'cargo_rover' : 'crew_rover') ?? buildRover(cargo);
+}
 
 /**
  * A pressurized crew rover built from simple shapes (after NASA's Space Exploration
@@ -152,7 +158,7 @@ export class RoverFleet {
         v = {
           route: this.routeLine(m.regionId, '#5fe3ff', true),
           trail: this.routeLine(m.regionId, '#ffb03d', false),
-          rover: buildRover(false),
+          rover: rover(false),
         };
         this.group.add(v.route, v.trail, v.rover);
         this.expeditions.set(m.id, v);
@@ -254,7 +260,7 @@ export class RoverFleet {
       seen.add(o.id);
       let v = this.outposts.get(o.id);
       if (!v) {
-        v = { site: buildOutpost(), cargo: buildRover(true), route: this.routeLine(o.regionId, '#f0a443', true) };
+        v = { site: buildOutpost(), cargo: rover(true), route: this.routeLine(o.regionId, '#f0a443', true) };
         (v.route.material as THREE.LineDashedMaterial).opacity = 0.4;
         this.group.add(v.site, v.cargo, v.route);
         this.outposts.set(o.id, v);
@@ -288,8 +294,9 @@ export class RoverFleet {
     for (const o of objs) {
       this.group.remove(o);
       // Rover and outpost meshes share their materials; route lines own theirs.
+      // Blender models share their geometry with the cached original, so it stays.
       o.traverse((c) => {
-        if (c instanceof THREE.Mesh || c instanceof THREE.Line) c.geometry.dispose();
+        if ((c instanceof THREE.Mesh || c instanceof THREE.Line) && !c.userData.sharedGeometry) c.geometry.dispose();
       });
       if (o instanceof THREE.Line) (o.material as THREE.Material).dispose();
     }

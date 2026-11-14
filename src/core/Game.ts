@@ -148,10 +148,20 @@ export class Game {
     loading.progress(1, 'Ready');
     loading.hide();
 
-    // Signed-in players pick up their account's colony; guests always start a new one.
-    new WelcomeScreen(this.ui, () => {
+    // The remembered sign-in (kept in localStorage by supabase-js) must be restored
+    // before anything starts, or a fresh colony would autosave over the account's save.
+    await Auth.ready;
+    this.owner = Auth.current?.id ?? null;
+    // Signed-in players resume their account's colony right away (e.g. after a page
+    // refresh); guests see the briefing and always start a new one.
+    if (Auth.current) {
+      await this.loadSaved();
+      return;
+    }
+    new WelcomeScreen(this.ui, async () => {
+      await Auth.ready;
       if (Auth.current) {
-        this.loadSaved();
+        await this.loadSaved();
         return;
       }
       gameStore.getState().start();
@@ -209,7 +219,6 @@ export class Game {
         if (gameStore.getState().started) LocalPrefs.set('lastPanel', panel);
       },
     );
-    Auth.ready.then(() => (this.owner = Auth.current?.id ?? null));
     Auth.onChange((account, change) => {
       this.onAccountChange(account?.id ?? null, change).catch((e) => console.warn('Account switch failed', e));
     });

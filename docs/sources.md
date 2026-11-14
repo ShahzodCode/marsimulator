@@ -27,6 +27,15 @@ Status key:
 | S9 | NASA/JPL: PIA21488 "Mars Global Coverage by Context Camera on MRO" (29 Mar 2017) | https://www.jpl.nasa.gov/images/pia21488-mars-global-coverage-by-context-camera-on-mro/ | 2026-11-14 |
 | S10 | NASA/JPL: "NASA Mars Reconnaissance Orbiter Reaches Planned Flight Path" | https://www.jpl.nasa.gov/news/nasa-mars-reconnaissance-orbiter-reaches-planned-flight-path/ | 2026-11-14 (search result only) |
 | S11 | NASA Science: "NASA's Opportunity Rover Mission on Mars Comes to End" (Feb 2019) | https://science.nasa.gov/missions/mer/nasas-opportunity-rover-mission-on-mars-comes-to-end/ | 2026-11-14 (search result only) |
+| S12 | Supabase docs: "User sessions" (sessions last until sign-out by default; refresh tokens never expire but are single-use; access tokens default to 1 hour; time-box and inactivity timeouts are opt-in, Pro plan) — used for the remembered sign-in, not game mechanics | https://supabase.com/docs/guides/auth/sessions | 2026-11-14 |
+| S13 | Supabase JS reference: "Initializing" (`persistSession` saves the session to local storage; `autoRefreshToken` refreshes it before expiry) | https://supabase.com/docs/reference/javascript/initializing | 2026-11-14 |
+| S14 | Bright Star Catalogue (Yale): every star to magnitude 6.5, 9,110 objects (9,096 stars) | https://en.wikipedia.org/wiki/Bright_Star_Catalogue | 2026-11-14 (search result only) |
+| S15 | Sky & Telescope: "How many stars in the night sky?" | https://skyandtelescope.org/astronomy-resources/how-many-stars-night-sky-09172014/ | 2026-11-14 (search result only) |
+| S16 | Apparent magnitude: 1 magnitude = 2.512x brightness, 5 magnitudes = exactly 100x (Pogson ratio) | https://en.wikipedia.org/wiki/Apparent_magnitude | 2026-11-14 (search result only) |
+| S17 | NASA (2015): First Landing Site/Exploration Zone Workshop for Human Missions to the Surface of Mars: 47 proposed Exploration Zones, all within ±50° latitude, about 200 km across | Record: https://ntrs.nasa.gov/citations/20160001040 · Announcement: https://www.nasa.gov/sites/default/files/atoms/files/first-landing-site-announcement.pdf · Summary: https://www.planetary.org/articles/20151029-mars-science-hsf-common-ground | 2026-11-14 (search result only) |
+| S18 | NASA NTRS 20160002370 (human landing site criteria): latitude limit ±50°, elevation no higher than +2 km (MOLA); Exploration Zone shown as a 100 km radius circle | https://ntrs.nasa.gov/api/citations/20160002370/downloads/20160002370.pdf | 2026-11-14 (search result only) |
+| S19 | NASA Lewis Research Center (1993): power beaming to Moon/Mars surface bases from orbiting satellites using laser or microwave transmitters | https://ntrs.nasa.gov/api/citations/19930013365/downloads/19930013365.pdf | 2026-11-14 (search result only) |
+| S20 | NASA Tech Briefs: blue laser power beaming for planetary exploration (Moon and Mars surface power distribution) | https://www.techbriefs.com/component/content/article/49792-blue-laser-power-beaming-for-planetary-exploration | 2026-11-14 (search result only) |
 
 Older BVAD editions (do not cite for current values): original 2015, https://ntrs.nasa.gov/citations/20150002905 ·
 Rev1 2018, https://ntrs.nasa.gov/citations/20180001338
@@ -76,6 +85,10 @@ Rev1 2018, https://ntrs.nasa.gov/citations/20180001338
 | Panel efficiency 25 %, air transmission 0.85 | `src/data/power.ts` | none | not applicable | Estimate |
 | Hen water and egg numbers | `src/data/recipes.ts` `HENS` | poultry averages, no link | not applicable | Estimate |
 | Solar farm area, MOXIE 1/10 scale, building costs, storage sizes, starting stock, ice reserve, depot supply | `src/data/*` | none | not applicable | Game value |
+| Star field: 9,110 stars to mag 6.5 sets real sky density | `src/planet/Mars.ts` `BSC_COUNT`, `BSC_LIMIT_MAG` | S14, S15 | 9,110 objects to mag 6.5 | Unverified (search result only) |
+| Star brightness: 5 magnitudes = 100x flux | `src/planet/Mars.ts` `buildStars` | S16 | Pogson ratio 2.512 per magnitude | Unverified (search result only) |
+| Star count growth ~3x per magnitude (log slope 0.475) | `src/planet/Mars.ts` `COUNT_SLOPE` | S14 | Fit from ~22 stars brighter than mag 1 to 9,110 at mag 6.5 | Game value / estimate |
+| Spectral-class shares and star tints | `src/planet/Mars.ts` `STAR_TINTS` | none | Rough naked-eye mix, muted colours | Game value / estimate |
 
 ---
 
@@ -116,3 +129,6 @@ Every outside lookup, in order.
 | 2026-11-14 | Crewed pressurized rover (SEV) | nasa.gov fact sheet PDF (S8) | Read all 4 pages; values in § 2 |
 | 2026-11-14 | MRO Context Camera global coverage | jpl.nasa.gov (S9) | Read; values in § 2 |
 | 2026-11-14 | MRO orbit period; Opportunity 2018 dust storm | web search, nasa.gov results (S10, S11) | Confirmed from search summaries; pages not opened |
+| 2026-11-14 | Supabase session lifetime and supabase-js persistence options | supabase.com docs (S12, S13) | Read; sign-in is kept until logout, so the game restores it on reload |
+| 2026-11-14 | NASA human landing sites: Exploration Zone workshop, latitude/elevation limits | web search, ntrs.nasa.gov / nasa.gov / planetary.org results (S17, S18) | Confirmed from search summaries; the list of 47 site names and coordinates still has to be read from the workshop PDF |
+| 2026-11-14 | Laser power beaming for Mars bases | web search, ntrs.nasa.gov / techbriefs.com results (S19, S20) | Confirmed from search summaries; no efficiency figure taken yet |
