@@ -7,7 +7,7 @@ import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore } from '../state/gameStore';
 import { buildingIcon, h, setText, toggleClass } from './dom';
 import { buildingThumbnail } from '../settlement/buildings/thumbnails';
-import { RESOURCE_ICONS } from './icons';
+import { BUILDING_ICONS, RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
 import { ROAD_COST } from '../settlement/RoadRules';
 
@@ -76,7 +76,7 @@ export class ConstructionMenu implements Panel {
           on: { click: () => this.choose(type) },
         },
         [
-          buildingIcon('card-icon', buildingThumbnail(type), def.icon),
+          buildingIcon('card-icon', buildingThumbnail(type), BUILDING_ICONS[type]),
           h('div', { class: 'card-main' }, [
             h('div', { class: 'card-title' }, [def.name, badge]),
             h('div', { class: 'card-desc', text: def.description }),
@@ -122,7 +122,7 @@ export class ConstructionMenu implements Panel {
             class: 'card-desc',
             text: 'Rovers carry goods along roads. Lay pieces one by one from the Storage Depot to each building — without a road, its goods pile up and can’t reach the base.',
           }),
-          h('div', { class: 'card-effects', text: 'Drag a straight line to lay road · click a piece to remove it' }),
+          h('div', { class: 'card-effects', text: 'Drag to lay road · click a piece to remove it' }),
           h('div', { class: 'card-foot' }, [costRow, h('span', { class: 'build-time', text: '⏱ instant' })]),
           this.roadNote,
         ]),

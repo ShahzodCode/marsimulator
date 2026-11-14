@@ -30,7 +30,6 @@ export interface BuildingDefinition {
   shortName: string;
   description: string;
   funFact: string;
-  icon: string;
   /** Key of the procedural model factory used by the renderer. */
   model: BuildingType;
   category: BuildingCategory;
@@ -64,7 +63,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Habitat',
     description: 'A pressurised home where colonists sleep, eat, study and relax. Thick walls protect them from radiation and the cold.',
     funFact: 'Mars has no global magnetic field, so habitats need extra shielding — regolith piled on top works well!',
-    icon: '🏠',
     model: 'habitat',
     category: 'living',
     constructionCost: { regolith: 150, iron: 90 },
@@ -85,7 +83,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Solar',
     description: 'Rows of solar panels that turn sunlight into electricity, with batteries that keep the lights on at night.',
     funFact: 'Mars is farther from the Sun than Earth, so sunlight there is a bit less than half as strong.',
-    icon: '☀️',
     model: 'solar_farm',
     category: 'energy',
     constructionCost: { iron: 60, regolith: 30 },
@@ -106,7 +103,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Life Support',
     description: 'Recycles almost all the water the crew uses and makes breathable oxygen by splitting water with electricity.',
     funFact: 'Splitting 9 kg of water gives about 8 kg of oxygen and 1 kg of hydrogen.',
-    icon: '💨',
     model: 'life_support',
     category: 'life_support',
     constructionCost: { iron: 80, regolith: 40 },
@@ -127,7 +123,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Greenhouse',
     description: 'A sealed, heated greenhouse with crops under grow-lights and a protected coop where chickens lay eggs.',
     funFact: 'Plants and animals can’t survive outside on Mars — the air is too thin and cold — so everything lives inside.',
-    icon: '🌱',
     model: 'greenhouse',
     category: 'food',
     constructionCost: { regolith: 80, iron: 50, water: 60 },
@@ -148,7 +143,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Excavator',
     description: 'Robotic diggers that scoop up Martian soil and sort it for building materials.',
     funFact: 'Martian regolith is very fine and sticky — dust storms can cover whole regions for weeks.',
-    icon: '⛏️',
     model: 'regolith_excavator',
     category: 'industry',
     constructionCost: { iron: 40 },
@@ -169,7 +163,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Refinery',
     description: 'A hot furnace that pulls iron out of rusty regolith so we can build more structures.',
     funFact: 'Iron oxide in the dust is what gives Mars its famous red colour.',
-    icon: '🔩',
     model: 'iron_refinery',
     category: 'industry',
     constructionCost: { regolith: 60, iron: 30 },
@@ -190,7 +183,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Ice Drill',
     description: 'Drills down to buried ice, melts it and pumps clean water to the colony. Exploring icy regions finds more ice to mine.',
     funFact: 'Orbiting spacecraft have found ice buried just below the surface in many places on Mars.',
-    icon: '🧊',
     model: 'ice_drill',
     category: 'life_support',
     constructionCost: { iron: 50, regolith: 20 },
@@ -211,7 +203,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Storage',
     description: 'The heart of the base. Every road starts here, and everything the colony makes is stored here — but only up to its limit, so watch the bars! Its maintenance robots also sweep up a little regolith and iron every few sols, so you can always build again.',
     funFact: 'Water and oxygen are kept in pressurised tanks, because in Mars’s thin, cold air water would boil away or freeze.',
-    icon: '📦',
     model: 'storage_depot',
     category: 'storage',
     constructionCost: {},
@@ -233,7 +224,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Battery',
     description: 'Big rechargeable batteries. They fill up with spare solar power during the day and keep everything running through the night.',
     funFact: 'A Martian night lasts about 12 hours, and it gets colder than −70 °C — so night-time power really matters!',
-    icon: '🔋',
     model: 'battery_bank',
     category: 'energy',
     constructionCost: { iron: 70, regolith: 20 },
@@ -255,7 +245,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'MOXIE',
     description: 'Breathes in the thin Martian air (mostly carbon dioxide) and splits it to make oxygen — no water needed!',
     funFact: 'NASA’s MOXIE, a toaster-sized experiment on the Perseverance rover, made the first oxygen ever produced on another planet in April 2021.',
-    icon: '🫧',
     model: 'moxie_unit',
     category: 'life_support',
     constructionCost: { iron: 90, regolith: 30 },
@@ -277,7 +266,6 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     shortName: 'Silo',
     description: 'Extra bins for regolith, iron and food, plus pressurised tanks for water, oxygen and hydrogen. Build one when the depot gets full.',
     funFact: 'Tanks on Mars are kept warm — otherwise the water inside would freeze solid.',
-    icon: '🛢️',
     model: 'storage_silo',
     category: 'storage',
     constructionCost: { regolith: 120, iron: 40 },

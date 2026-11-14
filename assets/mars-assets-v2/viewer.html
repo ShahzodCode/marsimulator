@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mars-assets-v2 viewer</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1a1210; color: #f3e9e2; font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #bar { position: fixed; left: 12px; top: 12px; right: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; z-index: 2; }
+  select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #6b4a3c; background: #2b1d18; color: inherit; }
+  #info { position: fixed; left: 12px; bottom: 12px; max-width: 560px; background: #2b1d18cc; padding: 8px 12px; border-radius: 8px; white-space: pre-wrap; }
+  #err { color: #ffb4a0; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="bar">
+  <select id="pick" aria-label="Model"></select>
+  <button id="prev">&larr; Prev</button><button id="next">Next &rarr;</button>
+  <label><input type="checkbox" id="spin" checked> spin</label>
+  <label><input type="checkbox" id="fp" checked> footprint</label>
+  <span id="err"></span>
+</div>
+<div id="info"></div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const $ = id => document.getElementById(id);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xd9a27e);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+const camera = new THREE.PerspectiveCamera(35, 1, 0.05, 500);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.maxPolarAngle = Math.PI * 0.49;
+
+const sun = new THREE.DirectionalLight(0xfff0e0, 2.6);
+sun.position.set(6, 12, 8);            // from the south-east, like the game
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 40 });
+scene.add(sun, new THREE.HemisphereLight(0xffe2cf, 0x7a3c1f, 0.5));
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: 0xa4532b, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.002;
+ground.receiveShadow = true;
+const grid = new THREE.GridHelper(20, 20, 0x5b2a14, 0x8a4423);   // 1 cell = 1 unit
+grid.position.y = 0.002;
+scene.add(ground, grid);
+let footprint = null, model = null, spinners = [], models = [];
+
+async function show(i) {
+  const a = models[i];
+  $('pick').value = i;
+  if (model) scene.remove(model);
+  if (footprint) scene.remove(footprint);
+  spinners = [];
+  const gltf = await new GLTFLoader().loadAsync(a.file);
+  model = gltf.scene;
+  let tris = 0;
+  model.traverse(o => {
+    if (o.isMesh) { o.castShadow = o.receiveShadow = true; tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; }
+    if (typeof o.userData.spin === 'number') spinners.push(o);
+  });
+  scene.add(model);
+  const [w, d] = a.footprint || a.size || [1, 1];
+  footprint = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, 0.01, d)), new THREE.LineBasicMaterial({ color: 0xffe14d }));
+  footprint.position.y = 0.01;
+  footprint.visible = $('fp').checked;
+  scene.add(footprint);
+  const r = Math.max(w, d, a.height) * 0.75 + 0.3;
+  controls.target.set(0, a.height * 0.35, 0);
+  camera.position.set(r * 1.3, r * 2.1, r * 2.3);
+  controls.update();
+  $('info').textContent = `${a.id}  (${a.kind})   ${a.footprint ? 'footprint ' + a.footprint.join(' x ') : a.size ? 'size ' + a.size.join(' x ') : ''}\n` +
+    `height ${a.height}   triangles ${tris} (manifest ${a.triangles})   ${(a.bytes / 1024).toFixed(0)} KB   front ${a.front}\n` +
+    `spin nodes: ${spinners.map(s => s.name + ' = ' + s.userData.spin).join(', ') || 'none'}\n${a.notes || ''}`;
+}
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if ($('spin').checked) for (const s of spinners) s.rotateY(s.userData.spin * dt);   // local +Y, rad/s
+  const w = innerWidth, h = innerHeight;
+  if (renderer.domElement.width !== Math.floor(w * renderer.getPixelRatio()) || renderer.domElement.height !== Math.floor(h * renderer.getPixelRatio())) {
+    renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  renderer.render(scene, camera);
+});
+
+try {
+  const manifest = await (await fetch('manifest.json')).json();
+  models = manifest.assets.filter(a => a.file.endsWith('.glb'));
+  models.forEach((a, i) => $('pick').add(new Option(`${a.id}  [${a.kind}]`, i)));
+  $('pick').onchange = e => show(+e.target.value);
+  $('prev').onclick = () => show((+$('pick').value + models.length - 1) % models.length);
+  $('next').onclick = () => show((+$('pick').value + 1) % models.length);
+  $('fp').onchange = () => { if (footprint) footprint.visible = $('fp').checked; };
+  const want = models.findIndex(a => a.id === location.hash.slice(1));
+  show(Math.max(0, want));
+} catch (e) {
+  $('err').textContent = 'Could not load manifest.json - serve this folder over http (e.g. "npx serve" or "python -m http.server"). ' + e;
+}
+</script>
+</body>
+</html>

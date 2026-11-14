@@ -1,0 +1,1345 @@
+{
+  "pack": "mars-assets-v2",
+  "units": "1 unit = 1 settlement grid cell, +Y up, origin = footprint centre at ground",
+  "license": "CC0-1.0 (all original work)",
+  "spin": "Nodes whose extras contain \"spin\" rotate at that many rad/s around their local +Y.",
+  "extra_materials": {
+    "solar_blue": "#1b3466 metallic 0.5 roughness 0.22 (solar cells)",
+    "band_blue": "#2f6fd0 metallic 0 roughness 0.45 (water colour band)",
+    "scorch_black": "#2b2420 metallic 0 roughness 1.0 (engine scorch marks)"
+  },
+  "assets": [
+    {
+      "file": "models/storage_depot.glb",
+      "id": "storage_depot",
+      "kind": "building",
+      "footprint": [
+        6,
+        6
+      ],
+      "height": 2.73,
+      "triangles": 8212,
+      "bytes": 364260,
+      "spin_nodes": [
+        {
+          "node": "spin_arm",
+          "speed": 0.4
+        }
+      ],
+      "materials": [
+        "sintered_regolith",
+        "pad_regolith",
+        "hull_white",
+        "trim_orange",
+        "trim_teal",
+        "panel_grey",
+        "dark_metal",
+        "aluminium",
+        "hull_offwhite",
+        "window_warm",
+        "steel",
+        "glow_orange",
+        "window_dark",
+        "safety_yellow",
+        "glow_green",
+        "regolith_bag",
+        "copper",
+        "loose_regolith",
+        "rubber_black",
+        "glow_cyan",
+        "solar_blue"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -2.95,
+          -0.65,
+          -2.95
+        ],
+        "max": [
+          2.95,
+          2.732,
+          2.95
+        ]
+      },
+      "preview": "previews/storage_depot.png",
+      "notes": "Vaulted warehouse with the loading door on the south wall, crew annex on the east, crates/bins on the south apron, robot arm (spin_arm) in the south-east, beacon on the roof ridge.",
+      "license": "CC0-1.0",
+      "source": "original",
+      "icon": "icons/storage_depot.svg"
+    },
+    {
+      "file": "models/battery_bank.glb",
+      "id": "battery_bank",
+      "kind": "building",
+      "footprint": [
+        4,
+        4
+      ],
+      "height": 1.51,
+      "triangles": 7840,
+      "bytes": 383276,
+      "spin_nodes": [
+        {
+          "node": "spin_fan",
+          "speed": 3.0
+        }
+      ],
+      "materials": [
+        "sintered_regolith",
+        "pad_regolith",
+        "dark_metal",
+        "hull_white",
+        "trim_orange",
+        "hull_offwhite",
+        "glow_green",
+        "aluminium",
+        "rubber_black",
+        "copper",
+        "safety_yellow",
+        "glow_orange",
+        "panel_grey",
+        "trim_teal",
+        "steel"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -1.95,
+          -0.65,
+          -1.95
+        ],
+        "max": [
+          1.97,
+          1.51,
+          1.95
+        ]
+      },
+      "preview": "previews/battery_bank.png",
+      "notes": "Six battery cabinets in two rows facing south; cable junction box on the west side, radiator with spin_fan in the south-west corner, transformer in the south-east.",
+      "license": "CC0-1.0",
+      "source": "original",
+      "icon": "icons/battery_bank.svg"
+    },
+    {
+      "file": "models/moxie_unit.glb",
+      "id": "moxie_unit",
+      "kind": "building",
+      "footprint": [
+        4,
+        4
+      ],
+      "height": 1.86,
+      "triangles": 5632,
+      "bytes": 262136,
+      "spin_nodes": [
+        {
+          "node": "spin_fan",
+          "speed": 4.0
+        }
+      ],
+      "materials": [
+        "sintered_regolith",
+        "pad_regolith",
+        "dark_metal",
+        "mli_gold",
+        "steel",
+        "hull_white",
+        "glow_cyan",
+        "glow_orange",
+        "copper",
+        "hull_offwhite",
+        "glow_green",
+        "trim_teal",
+        "panel_grey",
+        "trim_orange",
+        "signal_red",
+        "window_dark",
+        "safety_yellow",
+        "aluminium"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -1.95,
+          -0.65,
+          -1.95
+        ],
+        "max": [
+          1.95,
+          1.857,
+          1.95
+        ]
+      },
+      "preview": "previews/moxie_unit.png",
+      "notes": "Tilted air intake with dust filter + spin_fan in the south-west, gold-foil electrolysis core in the middle, compressor south-east, three oxygen tanks along the north edge.",
+      "license": "CC0-1.0",
+      "source": "original",
+      "icon": "icons/moxie_unit.svg"
+    },
+    {
+      "file": "models/storage_silo.glb",
+      "id": "storage_silo",
+      "kind": "building",
+      "footprint": [
+        5,
+        5
+      ],
+      "height": 3.08,
+      "triangles": 8116,
+      "bytes": 334424,
+      "spin_nodes": [],
+      "materials": [
+        "sintered_regolith",
+        "pad_regolith",
+        "steel",
+        "hull_offwhite",
+        "panel_grey",
+        "trim_orange",
+        "dark_metal",
+        "safety_yellow",
+        "regolith_dark",
+        "loose_regolith",
+        "hull_white",
+        "band_blue",
+        "trim_teal",
+        "glow_cyan",
+        "signal_red",
+        "copper",
+        "glow_green"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -2.45,
+          -0.65,
+          -2.45
+        ],
+        "max": [
+          2.45,
+          3.08,
+          2.45
+        ]
+      },
+      "preview": "previews/storage_silo.png",
+      "notes": "Two solids bins on the west (catwalk + ladder + bucket elevator), pressurised tanks on the east: blue-banded water spheres (north), teal oxygen capsules (middle), red-banded hydrogen (south).",
+      "license": "CC0-1.0",
+      "source": "original",
+      "icon": "icons/storage_silo.svg"
+    },
+    {
+      "file": "models/survey_rover.glb",
+      "id": "survey_rover",
+      "kind": "vehicle",
+      "size": [
+        1.6,
+        1.1
+      ],
+      "height": 1.1,
+      "triangles": 5844,
+      "bytes": 234740,
+      "spin_nodes": [
+        {
+          "node": "spin_wheel_fl",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_ml",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_rl",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_fr",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_mr",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_rr",
+          "speed": 3.0
+        }
+      ],
+      "materials": [
+        "dark_metal",
+        "hull_white",
+        "trim_orange",
+        "aluminium",
+        "solar_blue",
+        "steel",
+        "window_dark",
+        "glow_cyan",
+        "glow_orange",
+        "mli_gold",
+        "glow_white"
+      ],
+      "front": "+X",
+      "bounds": {
+        "min": [
+          -0.778,
+          -0.008,
+          -0.53
+        ],
+        "max": [
+          0.778,
+          1.1,
+          0.53
+        ]
+      },
+      "preview": "previews/survey_rover.png",
+      "notes": "Six spin_wheel_* nodes (fl/ml/rl = left side, fr/mr/rr = right side); axle is local +Y, positive spin rolls the rover forward (+X). Ground contact at y = 0.",
+      "license": "CC0-1.0",
+      "source": "original",
+      "icon": "icons/survey_rover.svg"
+    },
+    {
+      "file": "models/cargo_rover.glb",
+      "id": "cargo_rover",
+      "kind": "vehicle",
+      "size": [
+        2.4,
+        1.4
+      ],
+      "height": 1.42,
+      "triangles": 5648,
+      "bytes": 217964,
+      "spin_nodes": [
+        {
+          "node": "spin_wheel_fl",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_fr",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_ml",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_mr",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_rl",
+          "speed": 3.0
+        },
+        {
+          "node": "spin_wheel_rr",
+          "speed": 3.0
+        }
+      ],
+      "materials": [
+        "dark_metal",
+        "hull_white",
+        "trim_orange",
+        "window_warm",
+        "hull_offwhite",
+        "glow_white",
+        "steel",
+        "glow_orange",
+        "glow_red",
+        "safety_yellow",
+        "panel_grey",
+        "trim_teal",
+        "rubber_black",
+        "mli_gold",
+        "aluminium"
+      ],
+      "front": "+X",
+      "bounds": {
+        "min": [
+          -1.152,
+          -0.011,
+          -0.68
+        ],
+        "max": [
+          1.215,
+          1.418,
+          0.68
+        ]
+      },
+      "preview": "previews/cargo_rover.png",
+      "notes": "Six spin_wheel_* nodes (fl/ml/rl, fr/mr/rr); axle is local +Y, positive spin rolls forward (+X). Two crates are part of the static mesh.",
+      "license": "CC0-1.0",
+      "source": "original",
+      "icon": "icons/cargo_rover.svg"
+    },
+    {
+      "file": "models/supply_lander.glb",
+      "id": "supply_lander",
+      "kind": "building",
+      "footprint": [
+        6,
+        6
+      ],
+      "height": 2.91,
+      "triangles": 5760,
+      "bytes": 265812,
+      "spin_nodes": [],
+      "materials": [
+        "pad_regolith",
+        "sintered_regolith",
+        "hull_white",
+        "scorch_black",
+        "steel",
+        "dark_metal",
+        "aluminium",
+        "mli_gold",
+        "glow_orange",
+        "trim_orange",
+        "trim_teal",
+        "hull_offwhite",
+        "glow_red",
+        "glow_cyan",
+        "window_warm",
+        "solar_blue",
+        "window_dark",
+        "panel_grey",
+        "safety_yellow"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -2.9,
+          -0.65,
+          -2.9
+        ],
+        "max": [
+          2.9,
+          2.905,
+          2.9
+        ]
+      },
+      "preview": "previews/supply_lander.png",
+      "notes": "Four-legged cargo lander on a round pad; open cargo ramp faces south, crates on the ground, scorch marks under the engines. No moving parts.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/landing_pad.glb",
+      "id": "landing_pad",
+      "kind": "building",
+      "footprint": [
+        6,
+        6
+      ],
+      "height": 0.25,
+      "triangles": 3072,
+      "bytes": 130708,
+      "spin_nodes": [],
+      "materials": [
+        "sintered_regolith",
+        "pad_regolith",
+        "hull_white",
+        "safety_yellow",
+        "trim_orange",
+        "dark_metal",
+        "glow_orange"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -2.92,
+          -0.65,
+          -2.92
+        ],
+        "max": [
+          2.92,
+          0.245,
+          2.92
+        ]
+      },
+      "preview": "previews/landing_pad.png",
+      "notes": "Flat circular pad, 12 glow_orange edge lights, painted rings + chevrons (geometry). Max height 0.25.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/comms_tower.glb",
+      "id": "comms_tower",
+      "kind": "building",
+      "footprint": [
+        3,
+        3
+      ],
+      "height": 4.3,
+      "triangles": 3108,
+      "bytes": 142248,
+      "spin_nodes": [
+        {
+          "node": "spin_dish",
+          "speed": 0.2
+        }
+      ],
+      "materials": [
+        "sintered_regolith",
+        "pad_regolith",
+        "steel",
+        "dark_metal",
+        "trim_orange",
+        "hull_offwhite",
+        "hull_white",
+        "rubber_black",
+        "panel_grey",
+        "glow_green",
+        "window_warm",
+        "aluminium",
+        "solar_blue",
+        "glow_red"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -1.45,
+          -0.65,
+          -1.45
+        ],
+        "max": [
+          1.45,
+          4.295,
+          1.45
+        ]
+      },
+      "preview": "previews/comms_tower.png",
+      "notes": "Lattice mast (north-east of centre) with a slowly turning dish (spin_dish, vertical axis) carrying the red beacon (material glow_red - blink it in-game); equipment hut in the south-west, door facing south.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/construction_scaffold.glb",
+      "id": "construction_scaffold",
+      "kind": "prop",
+      "footprint": [
+        1,
+        1
+      ],
+      "height": 1.27,
+      "triangles": 394,
+      "bytes": 25540,
+      "spin_nodes": [],
+      "materials": [
+        "steel",
+        "dark_metal",
+        "safety_yellow",
+        "panel_grey",
+        "trim_teal",
+        "glow_orange"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.515,
+          -0.65,
+          -0.515
+        ],
+        "max": [
+          0.515,
+          1.27,
+          0.515
+        ]
+      },
+      "preview": "previews/construction_scaffold.png",
+      "notes": "Box-like 1x1x1.2 scaffold cell meant to be scaled in X/Z to any footprint; posts reach y = -0.65.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/astronaut.glb",
+      "id": "astronaut",
+      "kind": "character",
+      "size": [
+        0.14,
+        0.11
+      ],
+      "height": 0.35,
+      "triangles": 1526,
+      "bytes": 42948,
+      "spin_nodes": [],
+      "materials": [
+        "panel_grey",
+        "hull_white",
+        "trim_orange",
+        "hull_offwhite",
+        "glow_cyan",
+        "steel",
+        "mli_gold"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.099,
+          0.0,
+          -0.069
+        ],
+        "max": [
+          0.099,
+          0.35,
+          0.046
+        ]
+      },
+      "preview": "previews/astronaut.png",
+      "notes": "Standing pose, 0.35 tall, gold visor faces south (+Z). No face, no skeleton.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/rock_small_1.glb",
+      "id": "rock_small_1",
+      "kind": "prop",
+      "height": 0.18,
+      "triangles": 64,
+      "bytes": 3112,
+      "spin_nodes": [],
+      "materials": [
+        "loose_regolith"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.185,
+          -0.028,
+          -0.166
+        ],
+        "max": [
+          0.173,
+          0.177,
+          0.13
+        ]
+      },
+      "preview": "previews/rock_small_1.png",
+      "notes": "Low-poly Mars rock; slightly sunk below y = 0 so it beds into terrain.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/rock_small_2.glb",
+      "id": "rock_small_2",
+      "kind": "prop",
+      "height": 0.19,
+      "triangles": 128,
+      "bytes": 5812,
+      "spin_nodes": [],
+      "materials": [
+        "regolith_dark",
+        "loose_regolith"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.17,
+          -0.053,
+          -0.137
+        ],
+        "max": [
+          0.226,
+          0.188,
+          0.138
+        ]
+      },
+      "preview": "previews/rock_small_2.png",
+      "notes": "Low-poly Mars rock; slightly sunk below y = 0 so it beds into terrain.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/rock_small_3.glb",
+      "id": "rock_small_3",
+      "kind": "prop",
+      "height": 0.2,
+      "triangles": 128,
+      "bytes": 5928,
+      "spin_nodes": [],
+      "materials": [
+        "sintered_regolith",
+        "regolith_dark"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.193,
+          -0.041,
+          -0.144
+        ],
+        "max": [
+          0.13,
+          0.195,
+          0.138
+        ]
+      },
+      "preview": "previews/rock_small_3.png",
+      "notes": "Low-poly Mars rock; slightly sunk below y = 0 so it beds into terrain.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/rock_large_1.glb",
+      "id": "rock_large_1",
+      "kind": "prop",
+      "height": 0.57,
+      "triangles": 228,
+      "bytes": 9340,
+      "spin_nodes": [],
+      "materials": [
+        "regolith_dark",
+        "loose_regolith",
+        "sintered_regolith"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.598,
+          -0.107,
+          -0.6
+        ],
+        "max": [
+          0.718,
+          0.573,
+          0.562
+        ]
+      },
+      "preview": "previews/rock_large_1.png",
+      "notes": "Low-poly Mars rock; slightly sunk below y = 0 so it beds into terrain.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/rock_large_2.glb",
+      "id": "rock_large_2",
+      "kind": "prop",
+      "height": 0.65,
+      "triangles": 228,
+      "bytes": 9176,
+      "spin_nodes": [],
+      "materials": [
+        "loose_regolith",
+        "regolith_dark"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.5,
+          -0.135,
+          -0.663
+        ],
+        "max": [
+          0.554,
+          0.652,
+          0.583
+        ]
+      },
+      "preview": "previews/rock_large_2.png",
+      "notes": "Low-poly Mars rock; slightly sunk below y = 0 so it beds into terrain.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/crate.glb",
+      "id": "crate",
+      "kind": "prop",
+      "height": 0.41,
+      "triangles": 276,
+      "bytes": 11424,
+      "spin_nodes": [],
+      "materials": [
+        "hull_offwhite",
+        "trim_orange",
+        "dark_metal"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.206,
+          0.0,
+          -0.206
+        ],
+        "max": [
+          0.206,
+          0.412,
+          0.206
+        ]
+      },
+      "preview": "previews/crate.png",
+      "notes": "0.4 cell cargo crate.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/barrel.glb",
+      "id": "barrel",
+      "kind": "prop",
+      "height": 0.43,
+      "triangles": 228,
+      "bytes": 10104,
+      "spin_nodes": [],
+      "materials": [
+        "trim_teal",
+        "steel",
+        "dark_metal"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.158,
+          0.0,
+          -0.154
+        ],
+        "max": [
+          0.158,
+          0.432,
+          0.154
+        ]
+      },
+      "preview": "previews/barrel.png",
+      "notes": "Sealed drum, 0.42 tall.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/pipe_straight.glb",
+      "id": "pipe_straight",
+      "kind": "prop",
+      "footprint": [
+        1,
+        1
+      ],
+      "height": 0.4,
+      "triangles": 260,
+      "bytes": 11292,
+      "spin_nodes": [],
+      "materials": [
+        "copper",
+        "steel",
+        "dark_metal"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.5,
+          0.0,
+          -0.1
+        ],
+        "max": [
+          0.5,
+          0.4,
+          0.1
+        ]
+      },
+      "preview": "previews/pipe_straight.png",
+      "notes": "Runs west-east (X). Centre line at y = 0.3, ends at x = +-0.5.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/pipe_corner.glb",
+      "id": "pipe_corner",
+      "kind": "prop",
+      "footprint": [
+        1,
+        1
+      ],
+      "height": 0.4,
+      "triangles": 1292,
+      "bytes": 43092,
+      "spin_nodes": [],
+      "materials": [
+        "copper",
+        "steel",
+        "dark_metal"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.521,
+          0.0,
+          -0.1
+        ],
+        "max": [
+          0.1,
+          0.4,
+          0.521
+        ]
+      },
+      "preview": "previews/pipe_corner.png",
+      "notes": "Joins the WEST edge (-X) to the SOUTH edge (+Z). Centre line at y = 0.3.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/pipe_tee.glb",
+      "id": "pipe_tee",
+      "kind": "prop",
+      "footprint": [
+        1,
+        1
+      ],
+      "height": 0.44,
+      "triangles": 468,
+      "bytes": 18820,
+      "spin_nodes": [],
+      "materials": [
+        "copper",
+        "steel",
+        "signal_red",
+        "dark_metal"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.5,
+          0.0,
+          -0.1
+        ],
+        "max": [
+          0.5,
+          0.445,
+          0.5
+        ]
+      },
+      "preview": "previews/pipe_tee.png",
+      "notes": "Joins WEST (-X), EAST (+X) and SOUTH (+Z). Centre line at y = 0.3.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/conveyor_straight.glb",
+      "id": "conveyor_straight",
+      "kind": "prop",
+      "footprint": [
+        1,
+        1
+      ],
+      "height": 0.28,
+      "triangles": 332,
+      "bytes": 19920,
+      "spin_nodes": [],
+      "materials": [
+        "rubber_black",
+        "steel",
+        "safety_yellow",
+        "dark_metal"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.5,
+          0.0,
+          -0.325
+        ],
+        "max": [
+          0.5,
+          0.28,
+          0.325
+        ]
+      },
+      "preview": "previews/conveyor_straight.png",
+      "notes": "Runs west-east (X). Belt top at y = 0.25, ends at x = +-0.5.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/conveyor_corner.glb",
+      "id": "conveyor_corner",
+      "kind": "prop",
+      "footprint": [
+        1,
+        1
+      ],
+      "height": 0.28,
+      "triangles": 412,
+      "bytes": 18808,
+      "spin_nodes": [],
+      "materials": [
+        "rubber_black",
+        "steel",
+        "safety_yellow",
+        "dark_metal"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.5,
+          0.0,
+          -0.31
+        ],
+        "max": [
+          0.31,
+          0.28,
+          0.5
+        ]
+      },
+      "preview": "previews/conveyor_corner.png",
+      "notes": "Joins the WEST edge (-X) to the SOUTH edge (+Z). Belt top at y = 0.25.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/solar_panel_single.glb",
+      "id": "solar_panel_single",
+      "kind": "prop",
+      "height": 0.56,
+      "triangles": 224,
+      "bytes": 13424,
+      "spin_nodes": [],
+      "materials": [
+        "sintered_regolith",
+        "steel",
+        "dark_metal",
+        "aluminium",
+        "solar_blue"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.46,
+          -0.1,
+          -0.277
+        ],
+        "max": [
+          0.46,
+          0.556,
+          0.277
+        ]
+      },
+      "preview": "previews/solar_panel_single.png",
+      "notes": "Single tilted panel, faces south (+Z).",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/antenna_small.glb",
+      "id": "antenna_small",
+      "kind": "prop",
+      "height": 0.94,
+      "triangles": 564,
+      "bytes": 22788,
+      "spin_nodes": [],
+      "materials": [
+        "dark_metal",
+        "trim_orange",
+        "steel",
+        "hull_white",
+        "glow_red"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.183,
+          -0.006,
+          -0.209
+        ],
+        "max": [
+          0.183,
+          0.942,
+          0.16
+        ]
+      },
+      "preview": "previews/antenna_small.png",
+      "notes": "Small relay antenna, dish faces south (+Z) and up.",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "models/props/floodlight.glb",
+      "id": "floodlight",
+      "kind": "prop",
+      "height": 1.01,
+      "triangles": 344,
+      "bytes": 18164,
+      "spin_nodes": [],
+      "materials": [
+        "steel",
+        "rubber_black",
+        "safety_yellow",
+        "dark_metal",
+        "glow_white"
+      ],
+      "front": "+Z (south)",
+      "bounds": {
+        "min": [
+          -0.243,
+          -0.007,
+          -0.275
+        ],
+        "max": [
+          0.243,
+          1.011,
+          0.155
+        ]
+      },
+      "preview": "previews/floodlight.png",
+      "notes": "Tripod work light, glow_white head faces south (+Z).",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/battery_bank.svg",
+      "id": "battery_bank_icon",
+      "kind": "icon",
+      "for": "battery_bank",
+      "bytes": 324,
+      "notes": "asset in this pack",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/cargo_rover.svg",
+      "id": "cargo_rover_icon",
+      "kind": "icon",
+      "for": "cargo_rover",
+      "bytes": 410,
+      "notes": "asset in this pack",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/greenhouse.svg",
+      "id": "greenhouse_icon",
+      "kind": "icon",
+      "for": "greenhouse",
+      "bytes": 333,
+      "notes": "existing building",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/habitat.svg",
+      "id": "habitat_icon",
+      "kind": "icon",
+      "for": "habitat",
+      "bytes": 352,
+      "notes": "existing building",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/ice_drill.svg",
+      "id": "ice_drill_icon",
+      "kind": "icon",
+      "for": "ice_drill",
+      "bytes": 368,
+      "notes": "existing building",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/iron_refinery.svg",
+      "id": "iron_refinery_icon",
+      "kind": "icon",
+      "for": "iron_refinery",
+      "bytes": 296,
+      "notes": "existing building",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/life_support.svg",
+      "id": "life_support_icon",
+      "kind": "icon",
+      "for": "life_support",
+      "bytes": 338,
+      "notes": "existing building",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/moxie_unit.svg",
+      "id": "moxie_unit_icon",
+      "kind": "icon",
+      "for": "moxie_unit",
+      "bytes": 391,
+      "notes": "asset in this pack",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/regolith_excavator.svg",
+      "id": "regolith_excavator_icon",
+      "kind": "icon",
+      "for": "regolith_excavator",
+      "bytes": 352,
+      "notes": "existing building",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/solar_farm.svg",
+      "id": "solar_farm_icon",
+      "kind": "icon",
+      "for": "solar_farm",
+      "bytes": 340,
+      "notes": "existing building",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/storage_depot.svg",
+      "id": "storage_depot_icon",
+      "kind": "icon",
+      "for": "storage_depot",
+      "bytes": 280,
+      "notes": "asset in this pack",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/storage_silo.svg",
+      "id": "storage_silo_icon",
+      "kind": "icon",
+      "for": "storage_silo",
+      "bytes": 305,
+      "notes": "asset in this pack",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "icons/survey_rover.svg",
+      "id": "survey_rover_icon",
+      "kind": "icon",
+      "for": "survey_rover",
+      "bytes": 500,
+      "notes": "asset in this pack",
+      "license": "CC0-1.0",
+      "source": "original"
+    },
+    {
+      "file": "audio/ui_click.ogg",
+      "id": "ui_click",
+      "kind": "sound",
+      "duration_s": 0.067,
+      "loop": false,
+      "bytes": 3757,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": -13.9,
+      "peak_dbfs": -2.0,
+      "license": "CC0-1.0",
+      "source": "synthesised (source/make_audio.py)",
+      "notes": "Short soft tick."
+    },
+    {
+      "file": "audio/ui_open_panel.ogg",
+      "id": "ui_open_panel",
+      "kind": "sound",
+      "duration_s": 0.321,
+      "loop": false,
+      "bytes": 4698,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": -14.3,
+      "peak_dbfs": -5.1,
+      "license": "CC0-1.0",
+      "source": "synthesised (source/make_audio.py)",
+      "notes": "Quick upward whoosh."
+    },
+    {
+      "file": "audio/build_place.ogg",
+      "id": "build_place",
+      "kind": "sound",
+      "duration_s": 0.417,
+      "loop": false,
+      "bytes": 4540,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": -14.9,
+      "peak_dbfs": -1.0,
+      "license": "CC0-1.0",
+      "source": "synthesised (source/make_audio.py)",
+      "notes": "Low thunk + small clank."
+    },
+    {
+      "file": "audio/build_complete.ogg",
+      "id": "build_complete",
+      "kind": "sound",
+      "duration_s": 1.4,
+      "loop": false,
+      "bytes": 9169,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": -14.0,
+      "peak_dbfs": -2.9,
+      "license": "CC0-1.0",
+      "source": "synthesised (source/make_audio.py)",
+      "notes": "Happy four-note chime (C major arpeggio)."
+    },
+    {
+      "file": "audio/warning.ogg",
+      "id": "warning",
+      "kind": "sound",
+      "duration_s": 1.15,
+      "loop": false,
+      "bytes": 5980,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": -14.0,
+      "peak_dbfs": -4.1,
+      "license": "CC0-1.0",
+      "source": "synthesised (source/make_audio.py)",
+      "notes": "Gentle two-note \"uh-oh\", played twice. Not an alarm."
+    },
+    {
+      "file": "audio/rover_depart.ogg",
+      "id": "rover_depart",
+      "kind": "sound",
+      "duration_s": 1.6,
+      "loop": false,
+      "bytes": 7676,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": -14.0,
+      "peak_dbfs": -5.3,
+      "license": "CC0-1.0",
+      "source": "synthesised (source/make_audio.py)",
+      "notes": "Two beeps, electric motor winds up and fades away."
+    },
+    {
+      "file": "audio/rover_arrive.ogg",
+      "id": "rover_arrive",
+      "kind": "sound",
+      "duration_s": 1.5,
+      "loop": false,
+      "bytes": 7146,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": -14.0,
+      "peak_dbfs": -3.9,
+      "license": "CC0-1.0",
+      "source": "synthesised (source/make_audio.py)",
+      "notes": "Motor approaches and winds down, two-beep confirmation."
+    },
+    {
+      "file": "audio/rank_up.ogg",
+      "id": "rank_up",
+      "kind": "sound",
+      "duration_s": 2.3,
+      "loop": false,
+      "bytes": 14880,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": -14.0,
+      "peak_dbfs": -1.2,
+      "license": "CC0-1.0",
+      "source": "synthesised (source/make_audio.py)",
+      "notes": "Rising arpeggio into a sparkling major chord."
+    },
+    {
+      "file": "audio/ambient_wind_loop.ogg",
+      "id": "ambient_wind_loop",
+      "kind": "sound",
+      "duration_s": 30.0,
+      "loop": true,
+      "bytes": 138413,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": -14.2,
+      "peak_dbfs": -1.1,
+      "license": "CC0-1.0",
+      "source": "synthesised (source/make_audio.py)",
+      "notes": "Thin Martian wind with slow gusts; exactly periodic, loops sample-accurately. Normalised like the SFX - play it at low volume (about 0.15-0.3)."
+    }
+  ]
+}

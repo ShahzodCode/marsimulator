@@ -4,8 +4,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { BUILDING_TYPES, type BuildingType } from '../../data/buildings';
 
 /**
- * Detailed building models made in Blender (sources in /blender, exported to
- * /public/models/<type>.glb). They are loaded once at start-up; every building instance
+ * Detailed building models made in Blender (sources in /blender and
+ * /assets/mars-assets-v2/source, exported to /public/models/<type>.glb). They are loaded once at start-up; every building instance
  * is a clone that shares geometry and materials with the cached original.
  *
  * Nodes carrying a `spin` custom property (rad/s) rotate around their local up axis
@@ -13,9 +13,6 @@ import { BUILDING_TYPES, type BuildingType } from '../../data/buildings';
  */
 
 const cache = new Map<BuildingType, THREE.Group>();
-
-/** Buildings that only have a procedural model (no .glb exported yet). */
-const PROCEDURAL_ONLY = new Set<BuildingType>(['storage_depot', 'battery_bank', 'moxie_unit', 'storage_silo']);
 
 /** Emissive strengths from Blender are tuned for Eevee; keep them sane under ACES. */
 const MAX_EMISSIVE = 2.6;
@@ -27,7 +24,7 @@ export async function loadBuildingModels(renderer: THREE.WebGLRenderer, onProgre
   const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   pmrem.dispose();
   let done = 0;
-  const types = BUILDING_TYPES.filter((t) => !PROCEDURAL_ONLY.has(t));
+  const types = BUILDING_TYPES;
   await Promise.all(
     types.map(async (type) => {
       try {

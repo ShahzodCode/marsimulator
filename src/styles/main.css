@@ -2294,3 +2294,16 @@ svg {
   color: var(--accent-2);
   font-variant-numeric: tabular-nums;
 }
+
+/* SVG fallback when a building thumbnail is missing. */
+.card-icon > svg,
+.bp-icon > svg {
+  width: 62%;
+  height: 62%;
+}
+
+.row-icon > svg {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+}

@@ -13,6 +13,37 @@ const REMOVE = new THREE.Color('#ffb347');
 type Tile = [number, number];
 type OverlayKind = 'ok' | 'bad' | 'remove';
 
+/**
+ * The shortest edge-connected run of tiles from `a` to `b` (|dx|+|dy|+1 pieces) that hugs
+ * the straight segment between them: aligned ends give a straight road, a small sideways
+ * offset gives one jog, and a diagonal drag gives an angled, stepped road.
+ */
+export function roadLine(a: Tile, b: Tile): Tile[] {
+  const [ax, ay] = a;
+  const nx = Math.abs(b[0] - ax);
+  const ny = Math.abs(b[1] - ay);
+  const sx = Math.sign(b[0] - ax);
+  const sy = Math.sign(b[1] - ay);
+  const line: Tile[] = [[ax, ay]];
+  let x = ax;
+  let y = ay;
+  // Step along whichever axis lags the ideal line more (compare (ix+½)/nx with (iy+½)/ny
+  // by cross-multiplying); ties go to the longer axis so the road starts straight.
+  for (let ix = 0, iy = 0; ix < nx || iy < ny; ) {
+    const ex = (2 * ix + 1) * ny;
+    const ey = (2 * iy + 1) * nx;
+    if (iy >= ny || (ix < nx && (ex < ey || (ex === ey && nx >= ny)))) {
+      x += sx;
+      ix++;
+    } else {
+      y += sy;
+      iy++;
+    }
+    line.push([x, y]);
+  }
+  return line;
+}
+
 interface Overlay {
   fill: THREE.MeshBasicMaterial;
   mesh: THREE.Mesh;
@@ -21,8 +52,8 @@ interface Overlay {
 
 /**
  * The road tool: highlights the tile under the pointer (green = can build, red = can't,
- * amber = existing road that a click would remove). Pressing and dragging previews one
- * straight line of pieces along the main drag direction; letting go lays them. Each piece
+ * amber = existing road that a click would remove). Pressing and dragging previews the
+ * shortest road from the press point to the pointer (see roadLine); letting go lays it. Each piece
  * must join the Storage Depot or another piece, so a line can start or end on the network.
  */
 export class RoadPlacement {
@@ -30,7 +61,7 @@ export class RoadPlacement {
   private overlays: Record<OverlayKind, Overlay>;
   private active = false;
   private tile: { tx: number; ty: number } | null = null;
-  /** Current drag: the tile it started on and the straight line to the pointer. */
+  /** Current drag: the tile it started on and the road from there to the pointer. */
   private stroke: { anchor: Tile; line: Tile[] } | null = null;
   private placedInStroke = false;
   private readonly v = new THREE.Vector3();
@@ -59,7 +90,7 @@ export class RoadPlacement {
     this.tile = null;
     this.stroke = null;
     this.group.visible = false;
-    if (active) this.events.emit('placement:feedback', { valid: false, message: 'Drag from a building, the Storage Depot or a road end to lay a straight road.' });
+    if (active) this.events.emit('placement:feedback', { valid: false, message: 'Drag from a building, the Storage Depot or a road end — the road follows your pointer.' });
   }
 
   hover(hit: SurfaceHit | null): void {
@@ -103,7 +134,7 @@ export class RoadPlacement {
     this.events.emit('placement:feedback', { valid, message });
   }
 
-  /** Pointer pressed (start) or dragged: preview a straight line from where the drag began. */
+  /** Pointer pressed (start) or dragged: preview the road from where the drag began to the pointer. */
   paint(hit: SurfaceHit | null, start: boolean): void {
     if (!this.active) return;
     const g = hit ? this.grid.latLonToGrid(hit.lat, hit.lon) : null;
@@ -117,14 +148,7 @@ export class RoadPlacement {
     const st = this.stroke;
     if (!st || !g) return;
     const t = pointToTile(g.x, g.y);
-    const [ax, ay] = st.anchor;
-    const dx = t.tx - ax;
-    const dy = t.ty - ay;
-    // Follow whichever direction the pointer moved most: the road is always one straight line.
-    const line: Tile[] = [];
-    if (Math.abs(dx) >= Math.abs(dy)) for (let i = 0; i <= Math.abs(dx); i++) line.push([ax + i * Math.sign(dx), ay]);
-    else for (let i = 0; i <= Math.abs(dy); i++) line.push([ax, ay + i * Math.sign(dy)]);
-    st.line = line;
+    st.line = roadLine(st.anchor, [t.tx, t.ty]);
     this.showStroke();
   }
 

@@ -7,7 +7,7 @@ import { gameStore } from '../state/gameStore';
 import type { BuildingInstance, BuildingStatus } from '../state/types';
 import { buildingIcon, clear, h, setText, toggleClass } from './dom';
 import { buildingThumbnail } from '../settlement/buildings/thumbnails';
-import { ICONS, RESOURCE_ICONS } from './icons';
+import { BUILDING_ICONS, ICONS, RESOURCE_ICONS } from './icons';
 
 const STATUS: Record<BuildingStatus, { text: string; cls: string }> = {
   operational: { text: 'Working', cls: 'explored' },
@@ -146,7 +146,7 @@ export class BuildingPanel {
 
     this.body.append(
       h('div', { class: 'bp-head' }, [
-        buildingIcon('bp-icon', buildingThumbnail(def.id), def.icon),
+        buildingIcon('bp-icon', buildingThumbnail(def.id), BUILDING_ICONS[def.id]),
         h('div', { class: 'bp-title' }, [h('h3', { text: def.name }), this.status]),
         h('button', {
           class: 'icon-btn',

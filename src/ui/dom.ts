@@ -44,9 +44,9 @@ export function clear(el: HTMLElement): void {
 }
 
 /**
- * A building's picture: its rendered thumbnail when available, otherwise the emoji.
+ * A building's picture: its rendered thumbnail when available, otherwise the fallback (SVG or emoji markup).
  */
-export function buildingIcon(cls: string, src: string | undefined, fallback: string): HTMLElement {
-  if (!src) return h('span', { class: cls, text: fallback });
+export function buildingIcon(cls: string, src: string | undefined, fallbackHtml: string): HTMLElement {
+  if (!src) return h('span', { class: cls, html: fallbackHtml });
   return h('span', { class: `${cls} has-thumb` }, [h('img', { attrs: { src, alt: '', draggable: 'false' } })]);
 }

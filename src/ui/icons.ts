@@ -1,3 +1,4 @@
+import type { BuildingType } from '../data/buildings';
 import type { ResourceId } from '../data/resources';
 
 /** Inline SVG icons (no external assets). */
@@ -35,4 +36,21 @@ export const ICONS = {
   rover: svg('<rect x="4" y="8" width="14" height="6" rx="1.5" fill="currentColor"/><circle cx="7" cy="17" r="2.2" fill="currentColor"/><circle cx="15" cy="17" r="2.2" fill="currentColor"/><path d="M16 8V4h3" stroke="currentColor" stroke-width="1.8" fill="none"/>'),
   save: svg('<path d="M5 3h11l3 3v15H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="8" y="3" width="7" height="5" fill="currentColor"/><rect x="8" y="13" width="8" height="5" rx="1" fill="currentColor" opacity=".6"/>'),
   load: svg('<path d="M4 17v3h16v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 4v11m-5-5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+};
+
+const STROKE = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+
+/** Building icons from the mars-assets-v2 pack (assets/mars-assets-v2/icons, CC0). */
+export const BUILDING_ICONS: Record<BuildingType, string> = {
+  habitat: svg(`<g ${STROKE}><path d="M3 19a9 9 0 0 1 18 0z" fill="currentColor" fill-opacity=".3"/><path d="M10 19v-4a2 2 0 0 1 4 0v4M2 19h20M12 4v3"/><circle cx="12" cy="3" r="1" fill="currentColor" stroke="none"/></g>`),
+  solar_farm: svg(`<g ${STROKE}><path d="M3 17l3-8h12l3 8z" fill="currentColor" fill-opacity=".3"/><path d="M12 9v8M4.5 13h15M12 17v4M8 21h8"/><circle cx="19" cy="4" r="2" fill="currentColor" stroke="none"/></g>`),
+  life_support: svg(`<g ${STROKE}><path d="M12 20s-8-4.6-8-10.2A4.3 4.3 0 0 1 12 7.5a4.3 4.3 0 0 1 8 2.3C20 15.4 12 20 12 20z" fill="currentColor" fill-opacity=".3"/><path d="M6 12h3l1.5-3 2.5 6 1.5-3h3.5"/></g>`),
+  greenhouse: svg(`<g ${STROKE}><path d="M3 20v-8l9-7 9 7v8z" fill="currentColor" fill-opacity=".3"/><path d="M12 20v-6M12 16c-3 0-4-1.5-4-4 3 0 4 1.5 4 4zM12 14c0-2 1-3.5 4-3.5 0 2.5-1.5 3.5-4 3.5"/></g>`),
+  regolith_excavator: svg(`<g ${STROKE}><circle cx="8" cy="10" r="4" fill="currentColor" fill-opacity=".3"/><path d="M8 4v2M8 14v2M2 10h2M12 10h2M11 12l8 6M2 20h20"/><path d="M14 20l3-4 3 4z" fill="currentColor" stroke="none"/></g>`),
+  iron_refinery: svg(`<g ${STROKE}><path d="M5 20V9l3-5h8l3 5v11z" fill="currentColor" fill-opacity=".3"/><path d="M9 20v-5h6v5M9 9h6M2 20h20"/><path d="M10.5 12h3"/></g>`),
+  ice_drill: svg(`<g ${STROKE}><path d="M8 3h8v5H8z" fill="currentColor" fill-opacity=".3"/><path d="M12 8v6M9.5 10.5l5 2M9.5 13l5 2M12 15v3M2 18h20"/><path d="M12 19.5l1.7 2.2a1.9 1.9 0 1 1-3.4 0z" fill="currentColor" stroke="none"/></g>`),
+  storage_depot: svg(`<g ${STROKE}><path d="M3 20V11a9 6 0 0 1 18 0v9z" fill="currentColor" fill-opacity=".3"/><path d="M8 20v-6h8v6M8 17h8M2 20h20"/></g>`),
+  battery_bank: svg(`<g ${STROKE}><path d="M4 7h16v13H4z" fill="currentColor" fill-opacity=".3"/><path d="M8 7V4M16 7V4"/><path d="M13 9l-4 5h3l-1 4 4-5h-3z" fill="currentColor" stroke="none"/></g>`),
+  moxie_unit: svg(`<g ${STROKE}><path d="M3 9h12v11H3z" fill="currentColor" fill-opacity=".3"/><circle cx="9" cy="14.5" r="3"/><path d="M9 11.5v6M6 14.5h6"/><circle cx="19" cy="6" r="2.5"/><circle cx="19.5" cy="13" r="1.5" fill="currentColor" stroke="none"/></g>`),
+  storage_silo: svg(`<g ${STROKE}><path d="M4 20V8l4-4 4 4v12z" fill="currentColor" fill-opacity=".3"/><path d="M4 12h8M4 16h8M2 20h20"/><circle cx="17.5" cy="15.5" r="3.5"/></g>`),
 };

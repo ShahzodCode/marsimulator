@@ -11,7 +11,7 @@ import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore } from '../state/gameStore';
 import { buildingIcon, clear, h, setText, toggleClass } from './dom';
 import { buildingThumbnail } from '../settlement/buildings/thumbnails';
-import { ICONS, RESOURCE_ICONS } from './icons';
+import { BUILDING_ICONS, ICONS, RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
 
 // ---------------------------------------------------------------------------
@@ -356,7 +356,7 @@ export class SettlementPanel implements Panel {
                 },
               },
             },
-            [buildingIcon('row-icon', buildingThumbnail(def.id), def.icon), h('span', { class: 'row-name', text: def.name }), h('span', { class: 'row-status', text: `×${list.length}${building ? ` (${building} building)` : ''}` })],
+            [buildingIcon('row-icon', buildingThumbnail(def.id), BUILDING_ICONS[def.id]), h('span', { class: 'row-name', text: def.name }), h('span', { class: 'row-status', text: `×${list.length}${building ? ` (${building} building)` : ''}` })],
           ),
         );
       }
