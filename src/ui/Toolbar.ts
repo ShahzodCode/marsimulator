@@ -84,8 +84,8 @@ export class PlacementHint {
         rotate.style.display = mode === 'road' ? 'none' : '';
         if (mode === 'road') {
           setText(this.title, 'Laying roads');
-          setText(keys, 'Drag a straight line from the Storage Depot or a road · let go to build · click a piece to remove · WASD move · Esc done');
-          setText(this.feedback, 'Each piece must join the Storage Depot or another road.');
+          setText(keys, 'Drag a straight line from a building, the Storage Depot or a road · let go to build · click a piece to remove · WASD move · Esc done');
+          setText(this.feedback, 'Start in front of a building, the Storage Depot or a road — link it back to the depot to deliver goods.');
           setText(cancelLabel, 'Done');
           this.feedback.className = 'feedback';
         } else if (mode) {

@@ -11,6 +11,7 @@ import { footprintRect, type Rect } from './PlacementRules';
  *
  * Rules:
  *  - a new tile must touch (share an edge with) the depot or an existing road tile,
+ *    or sit right in front of a building (so a road can start at any building),
  *  - tiles can't overlap buildings or the depot (except a 1-cell margin, see BUILDING_MARGIN),
  *  - a building is "connected" when a road tile reachable from the depot runs along it.
  */
@@ -33,7 +34,7 @@ export const ROAD_PROBLEM_TEXT: Record<Exclude<RoadProblem, null>, string> = {
   outside: 'Too far from the base — stay inside the bright circle.',
   reserved: 'Roads can’t go over the Storage Depot.',
   building: 'A building is in the way.',
-  disconnected: 'Roads must join the Storage Depot or another road piece.',
+  disconnected: 'Start next to a building, the Storage Depot or another road piece.',
 };
 
 export const roadKey = (tx: number, ty: number): string => `${tx},${ty}`;
@@ -109,11 +110,21 @@ export function touchesNetwork(tx: number, ty: number, roads: ReadonlySet<string
   return false;
 }
 
+/** True when the tile sits right in front of (runs along) any building. */
+export function frontsBuilding(tx: number, ty: number, buildings: BuildingInstance[]): boolean {
+  return buildings.some((b) => buildingSideOfTile(tx, ty, b) !== null);
+}
+
+/**
+ * A new piece must join the depot, another road piece, or sit in front of a building —
+ * so players can start a road at a building's door and pave back toward the base.
+ * Only pieces linked to the depot count as connecting a building (see connectedBuildingIds).
+ */
 export function checkRoad(tx: number, ty: number, roads: ReadonlySet<string>, buildings: BuildingInstance[]): RoadProblem {
   if (roads.has(roadKey(tx, ty))) return 'exists';
   const p = siteProblem(tx, ty, buildings);
   if (p) return p;
-  return touchesNetwork(tx, ty, roads) ? null : 'disconnected';
+  return touchesNetwork(tx, ty, roads) || frontsBuilding(tx, ty, buildings) ? null : 'disconnected';
 }
 
 /** Every road tile reachable from the plaza. */
@@ -229,10 +240,12 @@ export function starterRoads(buildings: BuildingInstance[], existing: string[] =
     const prev = new Map<string, string | null>();
     const queue: [number, number][] = [];
     const lim = Math.ceil(SETTLEMENT.buildRadius / ROAD_TILE) + 1;
+    // Seed only from depot-linked roads: stray pieces in front of buildings don't count.
+    const net = reachableRoads(roads);
     for (let tx = -lim; tx <= lim; tx++) {
       for (let ty = -lim; ty <= lim; ty++) {
         const k = roadKey(tx, ty);
-        if (!roads.has(k) && checkRoad(tx, ty, roads, buildings) === null) {
+        if (!roads.has(k) && !siteProblem(tx, ty, buildings) && touchesNetwork(tx, ty, net)) {
           prev.set(k, null);
           queue.push([tx, ty]);
         }

@@ -59,7 +59,7 @@ export class RoadPlacement {
     this.tile = null;
     this.stroke = null;
     this.group.visible = false;
-    if (active) this.events.emit('placement:feedback', { valid: false, message: 'Drag from the Storage Depot or a road end to lay a straight road.' });
+    if (active) this.events.emit('placement:feedback', { valid: false, message: 'Drag from a building, the Storage Depot or a road end to lay a straight road.' });
   }
 
   hover(hit: SurfaceHit | null): void {
