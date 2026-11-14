@@ -1,4 +1,4 @@
-import { CARGO, PIPELINE } from '../data/logistics';
+import { CARGO, PIPE_DESIGN, PIPE_FAULTS, PIPELINE, pipelineFlowCap, thermalGrowthMPerKm } from '../data/logistics';
 import { RESOURCES, RESOURCE_IDS, formatAmount, type ResourceId } from '../data/resources';
 import { describeCost, Logistics } from '../simulation/Logistics';
 import { gameStore } from '../state/gameStore';
@@ -31,7 +31,7 @@ function flowText(p: Pipeline, baseId: string): string {
 export function pipelineSection(): PanelSection {
   const list = h('div', { class: 'link-list' });
   let key = '';
-  const rows = new Map<string, { status: HTMLElement; detail: HTMLElement; fill: HTMLElement }>();
+  const rows = new Map<string, { status: HTMLElement; detail: HTMLElement; fill: HTMLElement; faults: HTMLElement }>();
   const el = h('div', { class: 'logistics' }, [
     h('h4', { class: 'step-title', text: '🛢️ Pipelines from this base' }),
     list,
@@ -47,8 +47,14 @@ export function pipelineSection(): PanelSection {
     ),
     h('p', {
       class: 'muted',
-      text: `Like a road: drag from one base to another on the map. Costs a little more than a building, plus more for every 100 km (up to ${PIPELINE.maxKm.toLocaleString()} km). Both ends need a Pump Station that is switched on and powered.`,
+      text: `Like a road: drag from one base to another on the map. Costs a little more than a building, plus more for every 100 km (up to ${PIPELINE.maxKm.toLocaleString()} km). Both ends need a Pump Station that is switched on and powered. Longer pipes carry less: past ${PIPELINE.flowRefKm} km the flow falls as 1/√length, like real pipes.`,
     }),
+    h('details', { class: 'muted' }, [
+      h('summary', { text: '🔩 How the pipe is built to last' }),
+      h('p', {
+        text: `A ${PIPE_DESIGN.material} pressure line inside aerogel insulation and an armoured jacket that keeps out UV, dust and tiny meteorites. It is tested to ${PIPE_DESIGN.burstFactor}× its working pressure — NASA asks ${PIPE_DESIGN.nasaFactorSmallLines}× for thin lines and ${PIPE_DESIGN.nasaFactorLargeLines}× for wide ones, and we chose the stricter number so it lasts for centuries. Each km grows about ${thermalGrowthMPerKm().toFixed(1)} m between the ${PIPE_DESIGN.groundMinC} °C night and the +${PIPE_DESIGN.groundMaxC} °C afternoon, so — like the Trans-Alaska Pipeline — it zigzags and rests on sliding shoes, with bellows joints every few spans. A heat-trace wire stops water freezing inside.`,
+      }),
+    ]),
   ]);
 
   const build = (pipes: Pipeline[], baseId: string) => {
@@ -64,6 +70,7 @@ export function pipelineSection(): PanelSection {
       const status = h('span', { class: 'link-status' });
       const detail = h('span', { class: 'muted link-detail' });
       const fill = h('span', { class: 'progress-fill' });
+      const faults = h('div', { class: 'link-faults' });
       let armed = false;
       const remove = h(
         'button',
@@ -94,9 +101,10 @@ export function pipelineSection(): PanelSection {
           status,
           h('div', { class: 'progress' }, [fill]),
           detail,
+          faults,
         ]),
       );
-      rows.set(p.id, { status, detail, fill });
+      rows.set(p.id, { status, detail, fill, faults });
     }
   };
 
@@ -129,7 +137,23 @@ export function pipelineSection(): PanelSection {
         toggleClass(r.status, 'bad', !building && !p.working);
         r.fill.parentElement!.style.display = building ? '' : 'none';
         r.fill.style.transform = `scaleX(${p.progress.toFixed(3)})`;
-        setText(r.detail, building ? `Ready in about ${((1 - p.progress) * p.buildSols).toFixed(1)} sols.` : p.working ? flowText(p, s.base.id) : '');
+        const cap = Logistics.flowCap(p);
+        const capText = `Carries up to ${formatAmount(cap)} of each resource per sol${p.faults.length ? ` (${formatAmount(pipelineFlowCap(p.km))} when straight)` : ''}.`;
+        setText(r.detail, building ? `Ready in about ${((1 - p.progress) * p.buildSols).toFixed(1)} sols.` : p.working ? `${flowText(p, s.base.id)} ${capText}` : capText);
+        const fk = p.faults.map((f) => `${f.id}:${Math.floor(f.repair * 20)}`).join(',');
+        if (r.faults.dataset.key !== fk) {
+          r.faults.dataset.key = fk;
+          clear(r.faults);
+          for (const f of p.faults) {
+            const fromHere = p.fromBaseId === s.base.id ? f.at : 1 - f.at;
+            r.faults.append(
+              h('div', { class: 'link-fault bad', title: PIPE_FAULTS[f.kind].why }, [
+                h('span', { text: `⚠️ ${PIPE_FAULTS[f.kind].name} ${Math.round(fromHere * p.km).toLocaleString()} km out — ${Math.round(f.pinch * 100)}% pinched` }),
+                h('span', { class: 'muted', text: ` · robots ${f.repair < 0.05 ? 'on the way' : `repairing ${Math.floor(f.repair * 100)}%`}` }),
+              ]),
+            );
+          }
+        }
       }
     },
   };

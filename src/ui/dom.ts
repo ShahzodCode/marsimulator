@@ -19,7 +19,13 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = 
   if (props.html !== undefined) el.innerHTML = props.html;
   if (props.title) el.title = props.title;
   if (props.attrs) for (const [k, v] of Object.entries(props.attrs)) el.setAttribute(k, v);
-  if (props.style) Object.assign(el.style, props.style);
+  if (props.style) {
+    // Custom properties (--name) only work through setProperty.
+    for (const [k, v] of Object.entries(props.style)) {
+      if (k.startsWith('--')) el.style.setProperty(k, String(v));
+      else (el.style as unknown as Record<string, unknown>)[k] = v;
+    }
+  }
   if (props.on) {
     for (const [k, fn] of Object.entries(props.on)) el.addEventListener(k, fn as EventListener);
   }

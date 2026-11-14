@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BASE_SITES, SITE_BY_ID, sitesIn, TRAITS } from '../data/baseSites';
 import { FOUNDING } from '../data/missions';
 import { REGIONS } from '../data/regions';
-import { TECHS } from '../data/research';
+import { STAGES, TECHS, TECH_BY_ID, stageMaterials, stageRp } from '../data/research';
 import { RegionManager } from '../planet/RegionManager';
 import { fromSave, toSave, SAVE_VERSION } from '../persistence/SaveSchema';
 import { createInitialState, makeBuilding, switchBase } from '../state/factory';
@@ -62,7 +62,7 @@ describe('Site effects', () => {
   it('hematite doubles iron and unlocks the strip mine only there (after research)', () => {
     expect(baseEnv('opportunity', []).output.iron).toBeCloseTo(2);
     const s = createInitialState();
-    const done = { ...s, research: { completed: ['regolith_bricks', 'megadigger', 'strip_mine'] as GameState['research']['completed'], active: null, progress: 0 } };
+    const done = { ...s, research: { ...s.research, completed: ['regolith_bricks', 'megadigger', 'strip_mine'] as GameState['research']['completed'] } };
     expect(lockReason('strip_mine', { ...done, base: { ...s.base, siteId: 'opportunity' } }, baseEnv('opportunity', done.research.completed))).toBeNull();
     expect(lockReason('strip_mine', done, baseEnv('jezero', done.research.completed))).toMatch(/hematite/);
     expect(lockReason('strip_mine', { ...s, base: { ...s.base, siteId: 'opportunity' } }, baseEnv('opportunity', []))).toMatch(/research/);
@@ -72,8 +72,8 @@ describe('Site effects', () => {
     const s = createInitialState();
     const at = { ...s, base: { ...s.base, siteId: 'insight' } };
     const all = TECHS.map((t) => t.id);
-    expect(lockReason('deep_aquifer_drill', { ...at, research: { completed: all.filter((t) => t !== 'orbiter_mk3'), active: null, progress: 0 } }, baseEnv('insight', []))).not.toBeNull();
-    expect(lockReason('deep_aquifer_drill', { ...at, research: { completed: all, active: null, progress: 0 } }, baseEnv('insight', all))).toBeNull();
+    expect(lockReason('deep_aquifer_drill', { ...at, research: { ...at.research, completed: all.filter((t) => t !== 'orbiter_mk3') } }, baseEnv('insight', []))).not.toBeNull();
+    expect(lockReason('deep_aquifer_drill', { ...at, research: { ...at.research, completed: all } }, baseEnv('insight', all))).toBeNull();
   });
 });
 
@@ -165,20 +165,31 @@ describe('Founding a base', () => {
 });
 
 describe('Research', () => {
-  it('labs make research points that finish projects', () => {
+  it('labs take a project through its stages, pausing for test materials', () => {
     const s0 = createInitialState();
     const lab = makeBuilding('research_lab', 14, 14, 0, true, 0);
-    let s: GameState = { ...s0, buildings: [...s0.buildings, lab], research: { completed: [], active: 'better_drills', progress: 0 } };
+    let s: GameState = { ...s0, buildings: [...s0.buildings, lab], research: { ...s0.research, active: 'better_drills' } };
     s = run(s, 10);
+    // The concept study is done; the lab prototype waits for its materials.
+    expect(s.research).toMatchObject({ active: 'better_drills', stage: 0, awaiting: true });
+    expect(stageMaterials(TECH_BY_ID.better_drills, 1)).toMatchObject({ iron: expect.any(Number), regolith: expect.any(Number) });
+    for (let i = 0; i < STAGES.length && !s.research.completed.includes('better_drills'); i++) {
+      if (s.research.awaiting) s = { ...s, research: { ...s.research, stage: s.research.stage + 1, progress: 0, awaiting: false } };
+      s = run(s, 10);
+    }
     expect(s.research.completed).toContain('better_drills');
     expect(s.research.active).toBeNull();
+  });
+
+  it('stages add up to the full project cost', () => {
+    for (const t of TECHS) expect(STAGES.reduce((sum, _, i) => sum + stageRp(t, i), 0)).toBeCloseTo(t.cost, -1);
   });
 });
 
 describe('Saves', () => {
   it('round-trips several bases and research; old saves load as one base', () => {
     const s0 = createInitialState();
-    const st: GameState = { ...s0, research: { completed: ['hydroponics'], active: 'big_dome', progress: 40 } };
+    const st: GameState = { ...s0, research: { completed: ['hydroponics'], active: 'big_dome', stage: 1, progress: 40, awaiting: false, shelved: { fission: { stage: 2, progress: 5, awaiting: true } } } };
     const back = fromSave(toSave(st));
     expect(back.research).toEqual(st.research);
     expect(back.base.siteId).toBe('jezero');

@@ -1,11 +1,11 @@
-import { CARGO, PIPELINE, pipelineBuildSols, pipelineCost } from '../data/logistics';
+import { CARGO, PIPE_FAULTS, PIPE_REPAIR, PIPELINE, pipelineBuildSols, pipelineCost, pipelineFlowCap, type PipeFaultKind } from '../data/logistics';
 import { EXPEDITION } from '../data/missions';
 import { sunFactor } from '../data/power';
 import { RESOURCES, RESOURCE_IDS, type ResourceId } from '../data/resources';
 import { SETTLEMENT } from '../data/settlement';
 import { angularDistance, MARS_RADIUS_KM, type LatLon } from '../planet/geo';
 import { activeBaseData, makeId } from '../state/factory';
-import type { BaseData, BuildingInstance, GameState, Pipeline, Shipment } from '../state/types';
+import type { BaseData, BuildingInstance, GameState, PipeFault, Pipeline, Shipment } from '../state/types';
 import { MissionManager, type HeightSampler } from './MissionManager';
 import { ResourceManager, type Cost, type ResourceBag } from './ResourceManager';
 
@@ -24,6 +24,17 @@ type LogisticsState = Pick<GameState, 'base' | 'otherBases' | 'pipelines' | 'res
 function km(a: LatLon, b: LatLon): number {
   return angularDistance(a.lat, a.lon, b.lat, b.lon) * MARS_RADIUS_KM;
 }
+
+/** Same string → same number in [0, 1), so a pipe's twists are the same after loading a save. */
+function hash01(key: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  h = Math.imul(h ^ (h >>> 15), 2246822507);
+  h = Math.imul(h ^ (h >>> 13), 3266489909);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+const FAULT_KINDS = Object.keys(PIPE_FAULTS) as PipeFaultKind[];
 
 function sumCost(c: Cost): number {
   return Object.values(c).reduce((a, b) => a + (b ?? 0), 0);
@@ -86,7 +97,53 @@ export const Logistics = {
   },
 
   makePipeline(fromId: string, toId: string, d: number, sol: number): Pipeline {
-    return { id: makeId('pipe'), fromBaseId: fromId, toBaseId: toId, km: d, progress: 0, buildSols: pipelineBuildSols(d), placedAtSol: sol, flow: {}, working: false };
+    return { id: makeId('pipe'), fromBaseId: fromId, toBaseId: toId, km: d, progress: 0, buildSols: pipelineBuildSols(d), placedAtSol: sol, flow: {}, working: false, faults: [] };
+  },
+
+  /** Most of one resource the pipeline can move per sol right now (length and twists included). */
+  flowCap(p: Pipeline): number {
+    return pipelineFlowCap(p.km) * p.faults.reduce((k, f) => k * (1 - f.pinch), 1);
+  },
+
+  /**
+   * Moves a finished pipeline's twists along by `dt` sols: robots repair the ones they have
+   * reached, and every whole sol that starts may bring a new twist (chance grows with length).
+   */
+  advanceFaults(p: Pipeline, sol: number, dt: number): { pipe: Pipeline; added: PipeFault[]; fixed: PipeFault[] } {
+    if (p.progress < 1 || dt <= 0) return { pipe: p, added: [], fixed: [] };
+    const fixed: PipeFault[] = [];
+    let faults = p.faults.flatMap((f) => {
+      const repair = Math.min(1, f.repair + dt / f.repairSols);
+      if (repair >= 1) {
+        fixed.push(f);
+        return [];
+      }
+      return [{ ...f, repair }];
+    });
+    const added: PipeFault[] = [];
+    for (let day = Math.floor(sol) + 1; day <= Math.floor(sol + dt); day++) {
+      if (faults.length >= PIPE_REPAIR.maxFaults) break;
+      for (const kind of FAULT_KINDS) {
+        const def = PIPE_FAULTS[kind];
+        if (hash01(`${p.id}|${day}|${kind}`) >= (def.chancePer1000KmSol * p.km) / 1000) continue;
+        const at = 0.04 + 0.92 * hash01(`${p.id}|${day}|${kind}|at`);
+        const driveKm = Math.min(at, 1 - at) * p.km;
+        const f: PipeFault = {
+          id: `${p.id}-f${day}-${kind}`,
+          kind,
+          at,
+          pinch: def.pinch[0] + (def.pinch[1] - def.pinch[0]) * hash01(`${p.id}|${day}|${kind}|pinch`),
+          sinceSol: day,
+          repairSols: driveKm / PIPE_REPAIR.driveKmPerSol + PIPE_REPAIR.fixSols,
+          repair: 0,
+        };
+        added.push(f);
+        faults = [...faults, f];
+        break;
+      }
+    }
+    if (!p.faults.length && !added.length) return { pipe: p, added, fixed };
+    return { pipe: { ...p, faults }, added, fixed };
   },
 
   /** Other bases joined to `baseId` through working pipelines (directly or via other bases). */
@@ -168,6 +225,7 @@ export const Logistics = {
       const b = invs.get(p.toBaseId);
       if (!p.working || !a || !b || dt <= 0) return p.working || !Object.keys(p.flow).length ? p : { ...p, flow: {} };
       const flow: Partial<Record<ResourceId, number>> = {};
+      const cap = Logistics.flowCap(p);
       for (const id of RESOURCE_IDS) {
         const ca = a.inv.capacityOf(id);
         const cb = b.inv.capacityOf(id);
@@ -175,7 +233,7 @@ export const Logistics = {
         const total = a.inv.get(id) + b.inv.get(id);
         // Positive: A is fuller than B and sends.
         const diff = a.inv.get(id) - (total * ca) / (ca + cb);
-        const want = Math.sign(diff) * Math.min(Math.abs(diff) * k, PIPELINE.maxFlowPerSol * dt);
+        const want = Math.sign(diff) * Math.min(Math.abs(diff) * k, cap * dt);
         if (Math.abs(want) < 1e-6) continue;
         const [src, dst] = want > 0 ? [a, b] : [b, a];
         const moved = ResourceManager.transfer(src.inv, dst.inv, id, Math.abs(want));

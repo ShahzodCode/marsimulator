@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILDING_TYPES, type BuildingType } from '../../data/buildings';
+import { BUILDINGS, BUILDING_TYPES, type BuildingType } from '../../data/buildings';
 import { buildBuildingModel } from './models';
 
 /**
@@ -12,8 +12,15 @@ export type ThumbKey = BuildingType | 'road';
 const SIZE = 128;
 const thumbs = new Map<ThumbKey, string>();
 
+const silhouettes = new Map<BuildingType, string>();
+
 export function buildingThumbnail(key: ThumbKey): string | undefined {
   return thumbs.get(key);
+}
+
+/** A solid black cut-out (transparent background) of a building that still needs research. */
+export function buildingSilhouette(type: BuildingType): string | undefined {
+  return silhouettes.get(type);
 }
 
 /** Renders all thumbnails with the main renderer (call before the first frame). */
@@ -40,7 +47,12 @@ export function renderBuildingThumbnails(renderer: THREE.WebGLRenderer): void {
   renderer.setPixelRatio(1);
   renderer.setSize(SIZE, SIZE, false);
 
-  const shot = (key: ThumbKey, obj: THREE.Object3D) => {
+  const black = new THREE.MeshBasicMaterial({ color: '#000000' });
+  const cutout = document.createElement('canvas');
+  cutout.width = cutout.height = SIZE;
+  const ctx = cutout.getContext('2d', { willReadFrequently: true });
+
+  const shot = (key: ThumbKey, obj: THREE.Object3D, silhouette = false) => {
     scene.add(obj);
     obj.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(obj);
@@ -53,8 +65,31 @@ export function renderBuildingThumbnails(renderer: THREE.WebGLRenderer): void {
     camera.far = dist * 4;
     camera.updateProjectionMatrix();
     camera.lookAt(sphere.center);
-    renderer.render(scene, camera);
-    thumbs.set(key, renderer.domElement.toDataURL('image/png'));
+    if (!silhouette) {
+      renderer.render(scene, camera);
+      thumbs.set(key, renderer.domElement.toDataURL('image/png'));
+    } else if (ctx) {
+      // Black model on white, then white → transparent (the main canvas has no alpha).
+      const bg = scene.background;
+      scene.background = new THREE.Color('#ffffff');
+      scene.overrideMaterial = black;
+      ground.visible = false;
+      renderer.render(scene, camera);
+      scene.background = bg;
+      scene.overrideMaterial = null;
+      ground.visible = true;
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      ctx.drawImage(renderer.domElement, 0, 0, SIZE, SIZE);
+      const img = ctx.getImageData(0, 0, SIZE, SIZE);
+      const px = img.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const lum = (px[i] + px[i + 1] + px[i + 2]) / 3;
+        px[i + 3] = Math.max(0, Math.min(255, Math.round(255 * (1 - lum / 205))));
+        px[i] = px[i + 1] = px[i + 2] = 0;
+      }
+      ctx.putImageData(img, 0, 0);
+      silhouettes.set(key as BuildingType, cutout.toDataURL('image/png'));
+    }
     scene.remove(obj);
   };
 
@@ -62,6 +97,7 @@ export function renderBuildingThumbnails(renderer: THREE.WebGLRenderer): void {
     for (const type of BUILDING_TYPES) {
       try {
         shot(type, buildBuildingModel(type).group);
+        if (BUILDINGS[type].requiresTech) shot(type, buildBuildingModel(type).group, true);
       } catch (err) {
         console.warn(`Could not render thumbnail for ${type}`, err);
       }
@@ -75,6 +111,7 @@ export function renderBuildingThumbnails(renderer: THREE.WebGLRenderer): void {
     renderer.shadowMap.needsUpdate = prevShadowUpdate;
     ground.geometry.dispose();
     groundMat.dispose();
+    black.dispose();
   }
 }
 

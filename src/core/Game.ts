@@ -571,7 +571,7 @@ export class Game {
     this.updateHover();
     this.fog.update(dt);
     this.fleet.update(dt, alt);
-    this.logistics.update(alt);
+    this.logistics.update(alt, cam.position);
     this.mars.update(cam.position, alt, dt);
     // The radar view is for maps: zooming in to a base switches it off.
     if (this.xray.isOn && alt < 10) this.xray.toggle();

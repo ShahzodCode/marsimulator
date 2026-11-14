@@ -87,12 +87,3 @@ export const GOALS: GoalDefinition[] = [
   { id: 'goal-builder', title: 'Build 6 new buildings', hint: 'Grow the settlement!', icon: '🏘️', xp: 60, condition: { kind: 'buildings', count: 6 } },
   { id: 'goal-explore-7', title: 'Send a crew to 2 new regions', hint: 'Map a region next to home, then send the crew rover there.', icon: '🗺️', xp: 60, condition: { kind: 'explored', count: 3 } },
 ];
-
-/** Upcoming technologies (research system arrives in a later stage). */
-export const TECHNOLOGIES = [
-  { id: 'nuclear', name: 'Compact Fission Power', icon: '⚛️', description: 'Steady power day and night — even during dust storms.' },
-  { id: 'bricks', name: 'Regolith Bricks', icon: '🧱', description: 'Sinter Martian soil into strong bricks to build cheaper habitats.' },
-  { id: 'hydroponics', name: 'Advanced Hydroponics', icon: '🥬', description: 'Grow more food with less water by feeding roots directly.' },
-  { id: 'sabatier', name: 'Rocket Fuel Plant', icon: '🚀', description: 'Combine stored hydrogen with carbon dioxide to make methane rocket fuel.' },
-  { id: 'rovers', name: 'Long-Range Rovers', icon: '🚙', description: 'Crew rovers that can drive farther on one trip.' },
-];

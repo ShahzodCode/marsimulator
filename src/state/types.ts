@@ -1,5 +1,6 @@
 import type { BuildingType } from '../data/buildings';
 import type { ResourceId } from '../data/resources';
+import type { PipeFaultKind } from '../data/logistics';
 import type { RecipeId } from '../data/recipes';
 import type { TechId } from '../data/research';
 
@@ -149,6 +150,23 @@ export interface Pipeline {
   flow: Partial<Record<ResourceId, number>>;
   /** Pumps on at both ends (computed by the simulation). */
   working: boolean;
+  /** Twisted sections waiting for (or under) repair. */
+  faults: PipeFault[];
+}
+
+/** A twisted or buckled section of a pipeline (see PIPE_FAULTS in data/logistics.ts). */
+export interface PipeFault {
+  id: string;
+  kind: PipeFaultKind;
+  /** Where along the pipe, 0 = the `fromBaseId` end, 1 = the other end. */
+  at: number;
+  /** Share of the bore the twist closes (flow drops by the same share). */
+  pinch: number;
+  sinceSol: number;
+  /** Sols until the repair robots have it fixed (driving out included). */
+  repairSols: number;
+  /** 0..1 */
+  repair: number;
 }
 
 /** Cargo haulers driving goods from one base's Garage to another base and back. */
@@ -219,8 +237,20 @@ export interface ResearchState {
   completed: TechId[];
   /** Project the labs are working on. */
   active: TechId | null;
-  /** Research points put into the active project. */
+  /** Development stage of the active project (index into STAGES: concept … mission ready). */
+  stage: number;
+  /** Research points put into the active stage. */
   progress: number;
+  /** The stage is finished and the next one waits for its test materials to be paid. */
+  awaiting: boolean;
+  /** Projects put on hold, so switching never throws away work already paid for. */
+  shelved: Partial<Record<TechId, ShelvedProject>>;
+}
+
+export interface ShelvedProject {
+  stage: number;
+  progress: number;
+  awaiting: boolean;
 }
 
 /** Who and where a base is. The active base's data lives at the top of GameState. */

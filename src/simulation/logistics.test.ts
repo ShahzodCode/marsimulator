@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CARGO, PIPELINE, pipelineCost } from '../data/logistics';
+import { CARGO, PIPELINE, pipelineCost, pipelineFlowCap, thermalGrowthMPerKm } from '../data/logistics';
 import { RegionManager } from '../planet/RegionManager';
 import { fromSave, toSave } from '../persistence/SaveSchema';
 import { createInitialState, makeBuilding, makeNewBase } from '../state/factory';
@@ -104,6 +104,44 @@ describe('Pipelines', () => {
     const back = fromSave(JSON.parse(JSON.stringify(toSave(s))));
     expect(back.pipelines).toHaveLength(1);
     expect(back.pipelines[0].km).toBeCloseTo(s.pipelines[0].km);
+  });
+});
+
+describe('Pipe physics and twists', () => {
+  const finished = (km: number) => ({ ...Logistics.makePipeline('a', 'b', km, 0), progress: 1 });
+
+  it('carry less over longer distances (flow ∝ 1/√length)', () => {
+    expect(pipelineFlowCap(100)).toBe(PIPELINE.maxFlowPerSol);
+    expect(pipelineFlowCap(PIPELINE.flowRefKm * 4)).toBeCloseTo(PIPELINE.maxFlowPerSol / 2);
+  });
+
+  it('a 1 km stretch grows under a metre between night and day', () => {
+    expect(thermalGrowthMPerKm()).toBeGreaterThan(0.7);
+    expect(thermalGrowthMPerKm()).toBeLessThan(0.9);
+  });
+
+  it('get twisted now and then, pinch the flow, and get repaired', () => {
+    let p = finished(PIPELINE.maxKm);
+    let sol = 0;
+    while (!p.faults.length && sol < 2000) p = Logistics.advanceFaults(p, sol, 1).pipe, sol++;
+    expect(p.faults.length).toBeGreaterThan(0);
+    const f = p.faults[0];
+    expect(Logistics.flowCap(p)).toBeLessThan(pipelineFlowCap(p.km));
+    // Same pipe, same sol → same twist (loading a save doesn't reroll it).
+    expect(Logistics.advanceFaults({ ...p, faults: [] }, f.sinceSol - 1, 1).added.map((x) => x.id)).toContain(f.id);
+    const fixedAt = Math.ceil(f.repairSols) + 1;
+    let fixed = false;
+    for (let i = 0; i < fixedAt * 10 && !fixed; i++) {
+      const r = Logistics.advanceFaults(p, 0.05 + i * 0.1, 0.1);
+      p = r.pipe;
+      fixed = r.fixed.some((x) => x.id === f.id);
+    }
+    expect(fixed).toBe(true);
+  });
+
+  it('are never twisted while still being laid', () => {
+    const p = { ...Logistics.makePipeline('a', 'b', PIPELINE.maxKm, 0), progress: 0.5 };
+    expect(Logistics.advanceFaults(p, 0, 500).pipe.faults).toHaveLength(0);
   });
 });
 

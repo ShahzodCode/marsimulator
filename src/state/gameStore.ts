@@ -9,7 +9,7 @@ import { ProgressionManager } from '../simulation/ProgressionManager';
 import { ROAD_COST, ROAD_PROBLEM_TEXT, canRemoveRoad, checkRoad, roadKey } from '../settlement/RoadRules';
 import { RegionManager } from '../planet/RegionManager';
 import { SITE_BY_ID } from '../data/baseSites';
-import { canResearch, TECH_BY_ID, type TechId } from '../data/research';
+import { canResearch, STAGES, TECH_BY_ID, stageMaterials, type TechId } from '../data/research';
 import { envOf } from '../simulation/BaseEnv';
 import { createInitialState, gridToLatLon, makeId, switchBase } from './factory';
 import type { Alert, GameState, PanelId, SimSpeed } from './types';
@@ -90,8 +90,10 @@ export interface GameActions {
   foundingCheck(siteId: string): ActionResult;
   /** Make another base the one on screen. */
   switchBase(id: string): ActionResult;
-  /** Point the Research Labs at a project (progress on a switched-away project is lost). */
+  /** Point the Research Labs at a project; the old one is put on hold with its progress kept. */
   startResearch(id: TechId): ActionResult;
+  /** Pay the test materials for the next development stage of the active project. */
+  advanceResearch(): ActionResult;
   pushAlert(alert: Omit<Alert, 'id' | 'sol' | 'persistent'>): void;
   dismissAlert(id: string): void;
   setPersistentAlerts(alerts: Omit<Alert, 'id' | 'sol' | 'persistent'>[]): void;
@@ -444,7 +446,24 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
       return { ok: false, reason: `Research ${need.join(' and ')} first.` };
     }
     if (s.research.active === id) return { ok: true };
-    set({ research: { ...s.research, active: id, progress: 0 } });
+    const shelved = { ...s.research.shelved };
+    const resume = shelved[id];
+    delete shelved[id];
+    if (s.research.active) shelved[s.research.active] = { stage: s.research.stage, progress: s.research.progress, awaiting: s.research.awaiting };
+    const from = resume ?? { stage: 0, progress: 0, awaiting: false };
+    set({ research: { ...s.research, ...from, active: id, shelved } });
+    return { ok: true };
+  },
+
+  advanceResearch() {
+    const s = get();
+    const r = s.research;
+    if (!r.active || !r.awaiting) return { ok: false, reason: 'The current stage is not finished yet.' };
+    const tech = TECH_BY_ID[r.active];
+    const cost = stageMaterials(tech, r.stage + 1);
+    const paid = Logistics.payFromNetwork(s, cost);
+    if (!paid) return { ok: false, reason: `The ${STAGES[r.stage + 1].name.toLowerCase()} needs ${describeCost(cost)}.` };
+    set({ resources: paid.resources, otherBases: paid.otherBases, research: { ...r, stage: r.stage + 1, progress: 0, awaiting: false } });
     return { ok: true };
   },
 
@@ -486,8 +505,6 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
   },
 }));
 
-export type Store = typeof gameStore;
-
 /** Subscribe to a derived slice; the callback fires only when the slice changes. */
 export function watch<T>(
   selector: (s: GameStore) => T,
@@ -505,13 +522,6 @@ export function watch<T>(
       callback(next, old);
     }
   });
-}
-
-export function shallowEqual<T extends object>(a: T, b: T): boolean {
-  if (a === b) return true;
-  const ka = Object.keys(a) as (keyof T)[];
-  if (ka.length !== Object.keys(b).length) return false;
-  return ka.every((k) => Object.is(a[k], b[k]));
 }
 
 export type { ResourceId };

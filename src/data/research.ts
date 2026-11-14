@@ -1,7 +1,12 @@
+import type { ResourceId } from './resources';
+
+type Cost = Partial<Record<ResourceId, number>>;
+
 /**
- * The research tree. Research Labs make research points (RP); each project costs RP and
- * unlocks buildings or upgrades. Costs are game values. Real science behind a project is in
- * its `fact` (sources in docs/sources.md).
+ * The research tree. Research Labs make research points (RP); each project goes through
+ * four development stages (modelled on NASA's Technology Readiness Levels) and unlocks
+ * buildings or upgrades. Costs are game values. Real science behind a project is in its
+ * `fact` (sources in docs/sources.md).
  */
 
 export type TechId =
@@ -60,7 +65,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'orbit',
     name: 'Orbiter Mk II: deep radar',
     icon: '📡',
-    cost: 160,
+    cost: 240,
     requires: [],
     effect: 'X-ray view down to 5 km · maps regions twice as fast · confirms “likely” finds from orbit',
     fact: 'Mars Express carries MARSIS, a radar whose long waves reach about 3–5 km into the ground.',
@@ -70,7 +75,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'orbit',
     name: 'Orbiter Mk III: crust sounder',
     icon: '🌐',
-    cost: 420,
+    cost: 630,
     requires: ['orbiter_mk2'],
     effect: 'X-ray view down to 20 km · reveals deep groundwater',
     fact: 'Future technology. Today the deep water was found by InSight’s seismometer listening to marsquakes, not from orbit.',
@@ -81,7 +86,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'water',
     name: 'Better ice drills',
     icon: '🧊',
-    cost: 80,
+    cost: 120,
     requires: [],
     effect: 'Every Ice Drill makes 25% more water',
     fact: 'NASA tests Mars ice drills in Antarctica and the Arctic, where the ground is frozen too.',
@@ -91,7 +96,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'water',
     name: 'Glacier Mine',
     icon: '🏔️',
-    cost: 220,
+    cost: 330,
     requires: ['better_drills'],
     effect: 'Unlocks the Glacier Mine (icy sites only)',
     fact: 'The South Pole station on Earth melts its drinking water out of the ice with a “Rodriguez well”.',
@@ -101,7 +106,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'water',
     name: 'Deep Aquifer Drill',
     icon: '🌊',
-    cost: 600,
+    cost: 900,
     requires: ['glacier_mine', 'orbiter_mk3'],
     effect: 'Unlocks the Deep Aquifer Drill (where the radar orbiter found deep water)',
     fact: 'InSight’s data suggests water 11.5–20 km down, enough to cover Mars 1–2 km deep.',
@@ -112,7 +117,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'mining',
     name: 'Regolith bricks',
     icon: '🧱',
-    cost: 90,
+    cost: 135,
     requires: [],
     effect: 'All buildings cost 15% less regolith and iron',
     fact: 'Scientists have baked Mars-like soil into bricks stronger than concrete.',
@@ -122,7 +127,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'mining',
     name: 'Bucket-Wheel Megadigger',
     icon: '⚙️',
-    cost: 200,
+    cost: 300,
     requires: ['regolith_bricks'],
     effect: 'Unlocks the Megadigger: 5× the regolith of an excavator',
     fact: 'Bucket-wheel excavators are the biggest land machines ever built on Earth.',
@@ -132,7 +137,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'mining',
     name: 'Hematite Strip Mine',
     icon: '⛏️',
-    cost: 300,
+    cost: 450,
     requires: ['megadigger'],
     effect: 'Unlocks the Strip Mine (hematite sites only)',
     fact: 'Opportunity found hematite “blueberries” at Meridiani, and orbiters see up to 20% hematite there.',
@@ -143,7 +148,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'energy',
     name: 'Self-cleaning panels',
     icon: '🧹',
-    cost: 100,
+    cost: 150,
     requires: [],
     effect: 'All solar output +15%',
     fact: 'Dust slowly covered Opportunity’s and InSight’s panels; lucky gusts of wind sometimes cleaned them.',
@@ -153,7 +158,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'energy',
     name: 'Compact fission power',
     icon: '⚛️',
-    cost: 360,
+    cost: 540,
     requires: ['dust_cleaning'],
     effect: 'Unlocks the Fission Reactor: 40 kW day and night',
     fact: 'NASA’s KRUSTY test reactor ran in 2018; Mars plans use several 10 kW units together.',
@@ -164,7 +169,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'life',
     name: 'Advanced hydroponics',
     icon: '🥬',
-    cost: 90,
+    cost: 135,
     requires: [],
     effect: 'Greenhouses grow 30% more food',
     fact: 'On the Space Station, astronauts grow lettuce in the “Veggie” chamber with LED light and no soil.',
@@ -174,7 +179,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'life',
     name: 'Big Dome',
     icon: '🏟️',
-    cost: 240,
+    cost: 360,
     requires: ['hydroponics'],
     effect: 'Unlocks the Big Dome: 18 beds',
     fact: 'Bigger domes mean more space per person, which matters on a long mission.',
@@ -184,7 +189,7 @@ export const TECHS: TechDefinition[] = [
     branch: 'life',
     name: 'Lava-tube habitat',
     icon: '🕳️',
-    cost: 380,
+    cost: 570,
     requires: ['big_dome'],
     effect: 'Unlocks the Lava-Tube Habitat: 30 beds (cave sites only)',
     fact: 'HiRISE has photographed pits on Arsia Mons that may be skylights into lava tubes.',
@@ -195,12 +200,88 @@ export const TECHS: TechDefinition[] = [
     branch: 'transport',
     name: 'Long-range convoys',
     icon: '🛣️',
-    cost: 150,
+    cost: 225,
     requires: [],
     effect: 'Founding convoys can drive 50% farther',
     fact: 'NASA’s pressurised rover concept is designed to let two astronauts live in it for days at a time.',
   },
 ];
+
+/** A step on the way from idea to working machine (NASA Technology Readiness Levels). */
+export interface StageDefinition {
+  id: 'concept' | 'prototype' | 'field_test' | 'mission_ready';
+  name: string;
+  /** The NASA readiness levels this stage covers. */
+  trl: string;
+  /** What happens in this stage, in plain words. */
+  blurb: string;
+  /** Share of the project's research points spent in this stage. */
+  share: number;
+  /** Materials for test hardware, as a share of the project's RP (game values). */
+  materials: Cost;
+}
+
+export const STAGES: StageDefinition[] = [
+  {
+    id: 'concept',
+    name: 'Concept study',
+    trl: 'TRL 1–2',
+    blurb: 'Scientists work out the idea on paper and check the physics.',
+    share: 0.15,
+    materials: {},
+  },
+  {
+    id: 'prototype',
+    name: 'Lab prototype',
+    trl: 'TRL 3–4',
+    blurb: 'Engineers build a small working model and test it in the lab.',
+    share: 0.3,
+    materials: { iron: 0.1, regolith: 0.15 },
+  },
+  {
+    id: 'field_test',
+    name: 'Field test',
+    trl: 'TRL 5–6',
+    blurb: 'A full-size test unit goes outside into real Mars dust, cold and thin air.',
+    share: 0.35,
+    materials: { iron: 0.15, water: 0.05 },
+  },
+  {
+    id: 'mission_ready',
+    name: 'Mission ready',
+    trl: 'TRL 7–9',
+    blurb: 'The design is proven, written up and approved for every base.',
+    share: 0.2,
+    materials: {},
+  },
+];
+
+/** Research points needed to finish one stage of a project. */
+export function stageRp(tech: TechDefinition, stage: number): number {
+  return Math.round(tech.cost * STAGES[stage].share);
+}
+
+/** Materials paid when a stage starts (prototype and test hardware). */
+export function stageMaterials(tech: TechDefinition, stage: number): Cost {
+  const out: Cost = {};
+  for (const [id, f] of Object.entries(STAGES[stage].materials) as [ResourceId, number][]) {
+    out[id] = Math.max(5, Math.round((tech.cost * f) / 5) * 5);
+  }
+  return out;
+}
+
+/** Research points already spent on a project (all earlier stages plus this one). */
+export function rpDone(tech: TechDefinition, stage: number, progress: number): number {
+  let rp = progress;
+  for (let i = 0; i < stage; i++) rp += stageRp(tech, i);
+  return rp;
+}
+
+/** How deep a project sits in the tree (0 = no prerequisites). */
+export function techTier(id: TechId): number {
+  const t = TECH_BY_ID[id];
+  return t.requires.length ? 1 + Math.max(...t.requires.map(techTier)) : 0;
+}
 
 export const TECH_BY_ID: Record<TechId, TechDefinition> = Object.fromEntries(TECHS.map((t) => [t.id, t])) as Record<TechId, TechDefinition>;
 

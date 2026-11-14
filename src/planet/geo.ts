@@ -34,11 +34,6 @@ export function wrapLon(lon: number): number {
   return ((((lon + 180) % 360) + 360) % 360) - 180;
 }
 
-/** Normalise longitude into [0, 360). */
-export function lon360(lon: number): number {
-  return ((lon % 360) + 360) % 360;
-}
-
 /** East / north unit vectors of the local tangent frame at (lat, lon). */
 export function tangentFrame(
   lat: number,

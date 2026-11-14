@@ -1,9 +1,9 @@
-"""Research buildings: Research Lab, Fission Reactor, Megadigger, Hematite Strip Mine,
+"""Research buildings: Fission Reactor, Megadigger, Hematite Strip Mine,
 Glacier Mine, Deep Aquifer Drill, Big Dome, Lava-Tube Habitat.
 
 Run after mars_lib.py (see its docstring). 1 unit = 1 grid cell, +X east, +Y north, +Z up,
 centred on the footprint; foundations go below ground. Each model exports to
-public/models/<type>.glb."""
+public/models/<type>.glb. The Research Lab has its own script: blender/research_lab.py."""
 import math
 import random
 from mathutils import Vector
@@ -23,34 +23,6 @@ def pad(M, w, d, round_=False):
         cyl(M['concrete'], max(w, d) / 2, 0.75, 0, 0, -0.65, seg=48)
     else:
         box(M['concrete'], w, d, 0.75, 0, 0, -0.65, bev=0.05)
-
-
-def research_lab():
-    begin('research_lab')
-    M = library()
-    pad(M, 6.8, 5.8)
-    # Main lab block with a glass clean-room wing.
-    box(M['white'], 4.2, 3.4, 1.7, -0.7, 0.2, 0.1, bev=0.12)
-    box(M['teal'], 4.24, 3.44, 0.14, -0.7, 0.2, 1.55, bev=0.02)
-    for i in range(4):
-        box(M['window'], 0.7, 0.03, 0.45, -2.2 + i * 1.0, -1.52, 0.85, bev=0.01)
-        box(M['glow_cyan'], 0.6, 0.02, 0.04, -2.2 + i * 1.0, -1.54, 1.15, bev=0)
-    tube(M['white'], 0.9, 2.2, 1.9, 1.0, 0.95, heading=math.pi / 2, seg=24)
-    dome(M['glass'], 1.05, 1.9, -0.6, 0.1, seg=28, rings=10)
-    for a, x, y in polar(6, 0.55):
-        cyl(PLANT, 0.15, 0.25, 1.9 + x, -0.6 + y, 0.12, seg=10)
-    # Roof equipment: sensor mast with radar dish, telescope dome.
-    cyl(M['metal'], 0.06, 2.0, -2.4, -0.9, 1.7, seg=8)
-    lathe(M['white'], [(0.0, 0.0), (0.25, 0.04), (0.5, 0.18), (0.55, 0.2)], -2.4, -0.9, 3.55, seg=24)
-    sphere(M['glow_green'], 0.08, -2.4, -0.9, 3.85, 10, 6)
-    dome(M['white'], 0.55, 0.6, 1.1, 1.7, seg=24, rings=8)
-    box(M['dark'], 0.18, 0.7, 0.4, 0.6, 1.1, 2.0, bev=0.02)
-    grille(M['dark'], 1.4, 0.4, -0.7, 1.9, 0.5, rz=math.pi, slats=5)
-    # Airlock to the south.
-    box(M['panel'], 1.0, 0.9, 1.15, -0.7, -2.2, 0.1, bev=0.06)
-    box(M['orange'], 1.04, 0.94, 0.12, -0.7, -2.2, 1.18, bev=0.02)
-    box(M['glow_white'], 0.5, 0.02, 0.05, -0.7, -2.66, 0.95, bev=0)
-    return finish()
 
 
 def fission_reactor():
@@ -256,4 +228,4 @@ def lava_habitat():
     return finish()
 
 
-result = [f() for f in (research_lab, fission_reactor, megadigger, strip_mine, glacier_mine, deep_aquifer_drill, big_dome, lava_habitat)]
+result = [f() for f in (fission_reactor, megadigger, strip_mine, glacier_mine, deep_aquifer_drill, big_dome, lava_habitat)]

@@ -14,6 +14,9 @@ import { BUILDING_TYPES, type BuildingType } from '../../data/buildings';
 
 const cache = new Map<BuildingType, THREE.Group>();
 
+/** Buildings that only have the simple code-built model (no .glb to fetch). */
+const CODE_ONLY_BUILDINGS: ReadonlySet<BuildingType> = new Set<BuildingType>(['cargo_garage']);
+
 /** Emissive strengths from Blender are tuned for Eevee; keep them sane under ACES. */
 const MAX_EMISSIVE = 2.6;
 
@@ -24,8 +27,8 @@ export async function loadBuildingModels(renderer: THREE.WebGLRenderer, onProgre
   const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   pmrem.dispose();
   let done = 0;
-  const types = BUILDING_TYPES;
-  const total = types.length + VEHICLE_MODELS.length;
+  const types = BUILDING_TYPES.filter((t) => !CODE_ONLY_BUILDINGS.has(t));
+  const total = types.length + VEHICLE_MODELS.length + PIPE_MODELS.length;
   await Promise.all([
     ...types.map(async (type) => {
       try {
@@ -47,7 +50,42 @@ export async function loadBuildingModels(renderer: THREE.WebGLRenderer, onProgre
         onProgress?.(++done / total);
       }
     }),
+    ...PIPE_MODELS.map(async (name) => {
+      try {
+        const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}models/${name}.glb`);
+        const root = prepare(gltf.scene, env);
+        root.updateMatrixWorld(true);
+        const parts: PipePart[] = [];
+        root.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          parts.push({ geometry: mesh.geometry.clone().applyMatrix4(mesh.matrixWorld), material: mesh.material as THREE.MeshStandardMaterial });
+        });
+        pipeParts.set(name, parts);
+      } catch (err) {
+        console.warn(`Pipeline model ${name}.glb could not be loaded — using the simple tube.`, err);
+      } finally {
+        onProgress?.(++done / total);
+      }
+    }),
   ]);
+}
+
+/**
+ * Pipeline modules made in Blender (blender/pipeline.py): 1 unit = 1 cell, pipe along +X.
+ * They are drawn as instanced meshes, so each comes as plain geometry + material pairs.
+ */
+export const PIPE_MODELS = ['pipe_span', 'pipe_support', 'pipe_expansion', 'pipe_buckled'] as const;
+export type PipeModel = (typeof PIPE_MODELS)[number];
+export interface PipePart {
+  geometry: THREE.BufferGeometry;
+  material: THREE.MeshStandardMaterial;
+}
+const pipeParts = new Map<PipeModel, PipePart[]>();
+
+/** The parts of a pipeline module, or null if it didn't load. */
+export function pipeModelParts(name: PipeModel): PipePart[] | null {
+  return pipeParts.get(name) ?? null;
 }
 
 /** Vehicles made in Blender (blender/crew_rover.py), +X forward. */
@@ -102,10 +140,6 @@ function prepare(root: THREE.Group, env: THREE.Texture): THREE.Group {
     if (mats.some((m) => m.transparent)) mesh.renderOrder = 2;
   });
   return root;
-}
-
-export function hasBuildingModel(type: BuildingType): boolean {
-  return cache.has(type);
 }
 
 export interface GlbInstance {

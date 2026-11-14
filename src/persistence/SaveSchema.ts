@@ -82,8 +82,8 @@ export function toSave(state: GameState): SaveData {
       base: { ...state.base },
       otherBases: state.otherBases.map(copyBase),
       sitesSeen: { ...state.sitesSeen },
-      research: { ...state.research, completed: [...state.research.completed] },
-      pipelines: state.pipelines.map((p) => ({ ...p, flow: { ...p.flow } })),
+      research: { ...state.research, completed: [...state.research.completed], shelved: { ...state.research.shelved } },
+      pipelines: state.pipelines.map((p) => ({ ...p, flow: { ...p.flow }, faults: p.faults.map((f) => ({ ...f })) })),
       shipments: state.shipments.map((x) => ({ ...x, cargo: { ...x.cargo } })),
     },
   };
@@ -146,14 +146,17 @@ export function fromSave(save: SaveData): GameState {
   const batteryCapacityKwh = PowerManager.batteryCapacity(buildings);
   // Before v4 there was one base (Jezero) and no research or base sites.
   const activeBase: BaseMeta = st.base ? { ...st.base } : { ...base.base };
-  const research: ResearchState = st.research ? { ...st.research, completed: [...st.research.completed] } : base.research;
+  // Saves from before staged research count old progress towards the concept study.
+  const research: ResearchState = st.research
+    ? { ...base.research, ...st.research, completed: [...st.research.completed], shelved: { ...(st.research.shelved ?? {}) } }
+    : base.research;
   return {
     ...base,
     base: activeBase,
     otherBases: (st.otherBases ?? []).map(copyBase),
     sitesSeen: { ...base.sitesSeen, ...(st.sitesSeen ?? {}) },
     research,
-    pipelines: (st.pipelines ?? []).map((p) => ({ ...p, flow: { ...(p.flow ?? {}) }, working: p.working ?? false })),
+    pipelines: (st.pipelines ?? []).map((p) => ({ ...p, flow: { ...(p.flow ?? {}) }, working: p.working ?? false, faults: (p.faults ?? []).map((f) => ({ ...f })) })),
     shipments: (st.shipments ?? []).map((x) => ({ ...x, cargo: { ...x.cargo } })),
     timeSols: st.timeSols,
     speed: st.speed ?? 1,

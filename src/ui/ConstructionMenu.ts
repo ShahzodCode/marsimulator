@@ -7,8 +7,10 @@ import { RESOURCES, RESOURCE_IDS, type ResourceId } from '../data/resources';
 import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore } from '../state/gameStore';
 import { buildingIcon, h, setText, toggleClass } from './dom';
-import { buildingThumbnail } from '../settlement/buildings/thumbnails';
-import { BUILDING_ICONS, RESOURCE_ICONS } from './icons';
+import { buildingSilhouette, buildingThumbnail } from '../settlement/buildings/thumbnails';
+import { BUILDING_ICONS, MISC_ICONS, RESOURCE_ICONS } from './icons';
+import { hasTech, TECH_BY_ID } from '../data/research';
+import { focusResearch } from './ResearchPanel';
 import type { Panel } from './SidePanel';
 import { ROAD_COST } from '../settlement/RoadRules';
 import { Logistics } from '../simulation/Logistics';
@@ -19,6 +21,14 @@ interface Card {
   costs: Map<ResourceId, HTMLElement>;
   note: HTMLElement;
   badge: HTMLElement;
+}
+
+/** The black cut-out shown in place of a building nobody has invented yet. */
+function shadowIcon(type: BuildingType): HTMLElement {
+  const src = buildingSilhouette(type);
+  return src
+    ? h('span', { class: 'card-icon shadow-icon has-thumb' }, [h('img', { attrs: { src, alt: '', draggable: 'false' } })])
+    : h('span', { class: 'card-icon shadow-icon', html: BUILDING_ICONS[type] });
 }
 
 const SUB: Record<ResourceId, string> = { regolith: 'regolith', iron: 'iron', water: 'water', oxygen: 'O₂', food: 'food', hydrogen: 'H₂' };
@@ -81,9 +91,19 @@ export class ConstructionMenu implements Panel {
           on: { click: () => this.choose(type) },
         },
         [
-          buildingIcon('card-icon', buildingThumbnail(type), BUILDING_ICONS[type]),
+          buildingIcon('card-icon real-icon', buildingThumbnail(type), BUILDING_ICONS[type]),
+          def.requiresTech ? shadowIcon(type) : null,
           h('div', { class: 'card-main' }, [
-            h('div', { class: 'card-title' }, [def.name, badge]),
+            h('div', { class: 'card-title' }, [h('span', { class: 'card-name', text: def.name }), badge]),
+            def.requiresTech
+              ? h('div', { class: 'shadow-title' }, [h('span', { text: 'Unknown technology' })])
+              : null,
+            def.requiresTech
+              ? h('div', { class: 'shadow-note' }, [
+                  h('span', { class: 'row-icon', html: MISC_ICONS.rp }),
+                  h('span', { text: `Invent it first: research “${TECH_BY_ID[def.requiresTech].name}”.` }),
+                ])
+              : null,
             h('div', { class: 'card-desc', text: def.description }),
             h('div', { class: 'card-effects', text: effects.join(' · ') }),
             h('div', { class: 'card-foot' }, [costRow, h('span', { class: 'build-time', text: `⏱ ${def.buildTimeSols} sol` })]),
@@ -137,6 +157,11 @@ export class ConstructionMenu implements Panel {
   }
 
   private choose(type: BuildingType): void {
+    const tech = BUILDINGS[type].requiresTech;
+    if (tech && !hasTech(gameStore.getState().research.completed, tech)) {
+      focusResearch(tech);
+      return;
+    }
     const res = gameStore.getState().startPlacement(type);
     if (!res.ok) {
       gameStore.getState().pushAlert({ key: 'cant-afford', level: 'warning', title: `Not enough materials for ${BUILDINGS[type].name}`, message: res.reason });
@@ -167,6 +192,9 @@ export class ConstructionMenu implements Panel {
       const cost = buildCost(c.type, envOf(s));
       toggleClass(c.root, 'disabled', !check.ok);
       toggleClass(c.root, 'locked', locked);
+      const unknown = !hasTech(s.research.completed, def.requiresTech);
+      toggleClass(c.root, 'unresearched', unknown);
+      c.root.setAttribute('aria-label', unknown ? `Unknown technology — open research for ${TECH_BY_ID[def.requiresTech!].name}` : `Build ${def.name}`);
       c.root.setAttribute('aria-disabled', String(!check.ok));
       for (const [id, el] of c.costs) {
         toggleClass(el, 'short', (cost[id] ?? 0) > stock[id] + 1e-9);

@@ -54,6 +54,7 @@ export class SidePanel {
     this.current?.el.remove();
     this.current = next;
     this.el.classList.toggle('open', !!next);
+    if (next) this.el.dataset.panel = next.id;
     if (next) {
       setText(this.titleEl, next.title);
       setText(this.subtitleEl, next.subtitle ?? '');

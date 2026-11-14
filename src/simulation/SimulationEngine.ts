@@ -2,7 +2,7 @@ import { BUILDINGS, DEPOT_SUPPLY } from '../data/buildings';
 import { XP_REWARDS } from '../data/progression';
 import { FOUNDING, ORBITAL_SCAN, rewardFor } from '../data/missions';
 import { SITE_BY_ID, sitesIn, TRAITS, visibleTraits } from '../data/baseSites';
-import { TECH_BY_ID } from '../data/research';
+import { STAGES, TECH_BY_ID, stageMaterials, stageRp } from '../data/research';
 import { COLONIST_NEEDS_PER_SOL, RESOURCES, RESOURCE_IDS, WATER_RECOVERY, emptyResources, type ResourceId } from '../data/resources';
 import { SETTLEMENT } from '../data/settlement';
 import type { RegionManager } from '../planet/RegionManager';
@@ -20,7 +20,7 @@ import { StorageManager } from './StorageManager';
 import { RoadTransport, type TransportNetwork } from './Transport';
 import { computeWarnings, type AlertSpec } from './Warnings';
 import { describeCost, Logistics } from './Logistics';
-import { CARGO } from '../data/logistics';
+import { CARGO, PIPE_FAULTS } from '../data/logistics';
 
 export { SIM_STEP_SOLS } from './SimulationClock';
 
@@ -261,7 +261,29 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
       }
     }
     const working = q.progress >= 1 && pumpsOn.has(q.fromBaseId) && pumpsOn.has(q.toBaseId);
-    return working === q.working ? q : { ...q, working };
+    if (working !== q.working) q = { ...q, working };
+    // Twisted sections: new ones appear now and then, robots drive out and fix them.
+    const tw = Logistics.advanceFaults(q, state.timeSols, dt);
+    const route = `${nameOf(q.fromBaseId)} ⇄ ${nameOf(q.toBaseId)}`;
+    for (const f of tw.added) {
+      const def = PIPE_FAULTS[f.kind];
+      const km = Math.round(f.at * q.km);
+      notices.push({
+        key: `pipe-fault-${f.id}`,
+        level: 'warning',
+        title: `⚠️ ${def.name} on the ${route} pipeline`,
+        message: `${def.why} About ${km.toLocaleString()} km from ${nameOf(q.fromBaseId)}, ${Math.round(f.pinch * 100)}% of the pipe is pinched shut, so less can flow. Repair robots are on their way (about ${f.repairSols.toFixed(1)} sols).`,
+      });
+    }
+    for (const f of tw.fixed) {
+      notices.push({
+        key: `pipe-fixed-${f.id}`,
+        level: 'success',
+        title: `🔧 ${route} pipeline repaired`,
+        message: `The robots straightened the ${PIPE_FAULTS[f.kind].name.toLowerCase()}, cleaned the sliding shoes and fitted a new section. Full flow again.`,
+      });
+    }
+    return tw.pipe;
   });
   pipelines = Logistics.balance(pipelines, new Map(steps.map((st) => [st.base.id, { inv: st.inv, rates: st.base.rates }])), dt);
 
@@ -419,16 +441,30 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
 
   // 6. Research.
   let research = state.research;
-  if (research.active && dt > 0 && researchRp > 0) {
+  if (research.active && !research.awaiting && dt > 0 && researchRp > 0) {
     const tech = TECH_BY_ID[research.active];
     const progress = research.progress + researchRp * dt;
-    if (progress >= tech.cost) {
-      research = { completed: [...research.completed, tech.id], active: null, progress: 0 };
+    const need = stageRp(tech, research.stage);
+    const last = research.stage >= STAGES.length - 1;
+    if (progress < need) {
+      research = { ...research, progress };
+    } else if (!last) {
+      // Stages that need test hardware wait for the player to pay for it.
+      const done = STAGES[research.stage];
+      const next = STAGES[research.stage + 1];
+      const paid = Object.keys(stageMaterials(tech, research.stage + 1)).length > 0;
+      research = paid ? { ...research, progress: need, awaiting: true } : { ...research, stage: research.stage + 1, progress: 0 };
+      notices.push({
+        key: `tech-stage-${tech.id}`,
+        level: 'info',
+        title: `${done.name} done: ${tech.name}`,
+        message: paid ? `Ready for the ${next.name.toLowerCase()}. Open Research to send the materials.` : `Now: ${next.name.toLowerCase()}.`,
+      });
+    } else {
+      research = { ...research, completed: [...research.completed, tech.id], active: null, stage: 0, progress: 0, awaiting: false };
       notices.push({ key: `tech-${tech.id}`, level: 'success', title: `${tech.icon} Research complete: ${tech.name}`, message: `${tech.effect}. ${tech.fact}` });
       grant(Math.round(tech.cost / 4), `tech-${tech.id}`);
       if (tech.id === 'orbiter_mk2') for (const id of Object.keys(sitesSeen)) sitesSeen = { ...sitesSeen, [id]: 2 };
-    } else {
-      research = { ...research, progress };
     }
   }
 
