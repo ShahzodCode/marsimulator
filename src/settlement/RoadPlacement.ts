@@ -10,20 +10,28 @@ const VALID = new THREE.Color('#58ff9a');
 const INVALID = new THREE.Color('#ff5a4f');
 const REMOVE = new THREE.Color('#ffb347');
 
+type Tile = [number, number];
+type OverlayKind = 'ok' | 'bad' | 'remove';
+
+interface Overlay {
+  fill: THREE.MeshBasicMaterial;
+  mesh: THREE.Mesh;
+  lines: THREE.LineSegments;
+}
+
 /**
  * The road tool: highlights the tile under the pointer (green = can build, red = can't,
- * amber = existing road that a click would remove) and lays tiles one piece at a time.
- * Dragging paints a line of pieces; each one must join the Storage Depot or a previous piece.
+ * amber = existing road that a click would remove). Pressing and dragging previews one
+ * straight line of pieces along the main drag direction; letting go lays them. Each piece
+ * must join the Storage Depot or another piece, so a line can start or end on the network.
  */
 export class RoadPlacement {
   readonly group = new THREE.Group();
-  private material = new THREE.MeshBasicMaterial({ color: VALID, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide });
-  private outline = new THREE.LineBasicMaterial({ color: VALID, transparent: true, opacity: 0.95 });
-  private quad: THREE.Mesh;
-  private border: THREE.LineLoop;
+  private overlays: Record<OverlayKind, Overlay>;
   private active = false;
   private tile: { tx: number; ty: number } | null = null;
-  private lastPaint: { tx: number; ty: number } | null = null;
+  /** Current drag: the tile it started on and the straight line to the pointer. */
+  private stroke: { anchor: Tile; line: Tile[] } | null = null;
   private placedInStroke = false;
   private readonly v = new THREE.Vector3();
 
@@ -32,23 +40,30 @@ export class RoadPlacement {
     private events: EventBus,
   ) {
     this.group.name = 'road-preview';
-    this.quad = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
-    this.quad.renderOrder = 4;
-    this.border = new THREE.LineLoop(new THREE.BufferGeometry(), this.outline);
-    this.border.renderOrder = 5;
-    this.group.add(this.quad, this.border);
+    const mk = (color: THREE.Color): Overlay => {
+      const fill = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide });
+      const edge = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 });
+      const mesh = new THREE.Mesh(new THREE.BufferGeometry(), fill);
+      mesh.renderOrder = 4;
+      const lines = new THREE.LineSegments(new THREE.BufferGeometry(), edge);
+      lines.renderOrder = 5;
+      this.group.add(mesh, lines);
+      return { fill, mesh, lines };
+    };
+    this.overlays = { ok: mk(VALID), bad: mk(INVALID), remove: mk(REMOVE) };
     this.group.visible = false;
   }
 
   setActive(active: boolean): void {
     this.active = active;
     this.tile = null;
+    this.stroke = null;
     this.group.visible = false;
-    if (active) this.events.emit('placement:feedback', { valid: false, message: 'Point at the Storage Depot edge or the end of a road.' });
+    if (active) this.events.emit('placement:feedback', { valid: false, message: 'Drag from the Storage Depot or a road end to lay a straight road.' });
   }
 
   hover(hit: SurfaceHit | null): void {
-    if (!this.active) return;
+    if (!this.active || this.stroke) return;
     const g = hit ? this.grid.latLonToGrid(hit.lat, hit.lon) : null;
     if (!g) {
       this.tile = null;
@@ -61,63 +76,74 @@ export class RoadPlacement {
     this.refresh();
   }
 
-  /** Re-evaluates the highlighted tile (after state changes). */
+  /** Re-evaluates the highlighted tile or the dragged line (after state changes). */
   refresh(): void {
-    if (!this.active || !this.tile) return;
+    if (!this.active) return;
+    if (this.stroke) {
+      this.showStroke();
+      return;
+    }
+    if (!this.tile) return;
     const { tx, ty } = this.tile;
     const s = gameStore.getState();
     const roads = roadSet(s.roads);
-    let color = VALID;
     let message: string | null = null;
     let valid = true;
     if (roads.has(roadKey(tx, ty))) {
-      color = REMOVE;
       valid = false;
       message = canRemoveRoad(roadKey(tx, ty), roads) ? 'Click to remove this road piece.' : 'This piece joins other roads to the Storage Depot.';
+      this.draw({ remove: [[tx, ty]] });
     } else {
       const problem = checkRoad(tx, ty, roads, s.buildings);
       const affordable = ResourceManager.canAfford(s.resources, ROAD_COST);
       valid = !problem && affordable;
-      color = valid ? VALID : INVALID;
       message = problem ? ROAD_PROBLEM_TEXT[problem] : affordable ? null : ResourceManager.describeMissing(s.resources, ROAD_COST);
+      this.draw(valid ? { ok: [[tx, ty]] } : { bad: [[tx, ty]] });
     }
-    this.material.color.copy(color);
-    this.outline.color.copy(color);
-    this.buildTileGeometry(tx, ty);
-    this.group.visible = true;
     this.events.emit('placement:feedback', { valid, message });
   }
 
-  /** Pointer pressed (start) or dragged: lay road pieces under the pointer. */
+  /** Pointer pressed (start) or dragged: preview a straight line from where the drag began. */
   paint(hit: SurfaceHit | null, start: boolean): void {
     if (!this.active) return;
+    const g = hit ? this.grid.latLonToGrid(hit.lat, hit.lon) : null;
     if (start) {
       this.placedInStroke = false;
-      this.lastPaint = null;
+      this.stroke = null;
+      if (!g) return;
+      const t = pointToTile(g.x, g.y);
+      this.stroke = { anchor: [t.tx, t.ty], line: [[t.tx, t.ty]] };
     }
-    const g = hit ? this.grid.latLonToGrid(hit.lat, hit.lon) : null;
-    if (!g) return;
-    const target = pointToTile(g.x, g.y);
-    const from = this.lastPaint ?? target;
-    // Walk one tile at a time (never diagonally) so fast drags still give a joined road.
-    let { tx, ty } = from;
-    const steps: [number, number][] = [[tx, ty]];
-    while (tx !== target.tx || ty !== target.ty) {
-      if (Math.abs(target.tx - tx) >= Math.abs(target.ty - ty)) tx += Math.sign(target.tx - tx);
-      else ty += Math.sign(target.ty - ty);
-      steps.push([tx, ty]);
-    }
-    const store = gameStore.getState();
-    for (const [x, y] of steps) {
-      if (roadSet(gameStore.getState().roads).has(roadKey(x, y))) continue;
-      const res = store.placeRoad(x, y);
-      if (res.ok) this.placedInStroke = true;
-      else if (start && !this.placedInStroke) {
-        store.pushAlert({ key: 'road-error', level: 'warning', title: 'Can’t build a road here', message: res.reason });
+    const st = this.stroke;
+    if (!st || !g) return;
+    const t = pointToTile(g.x, g.y);
+    const [ax, ay] = st.anchor;
+    const dx = t.tx - ax;
+    const dy = t.ty - ay;
+    // Follow whichever direction the pointer moved most: the road is always one straight line.
+    const line: Tile[] = [];
+    if (Math.abs(dx) >= Math.abs(dy)) for (let i = 0; i <= Math.abs(dx); i++) line.push([ax + i * Math.sign(dx), ay]);
+    else for (let i = 0; i <= Math.abs(dy); i++) line.push([ax, ay + i * Math.sign(dy)]);
+    st.line = line;
+    this.showStroke();
+  }
+
+  /** Pointer released: lay the previewed line (or drop it when the stroke was cancelled). */
+  endStroke(commit: boolean): void {
+    const st = this.stroke;
+    this.stroke = null;
+    if (!this.active || !st) return;
+    if (commit) {
+      const { order, firstProblem } = this.plan(st.line);
+      const store = gameStore.getState();
+      const hadNew = st.line.some(([x, y]) => !roadSet(store.roads).has(roadKey(x, y)));
+      for (const [x, y] of order) if (store.placeRoad(x, y).ok) this.placedInStroke = true;
+      if (!this.placedInStroke && hadNew && firstProblem) {
+        store.pushAlert({ key: 'road-error', level: 'warning', title: 'Can’t build a road here', message: firstProblem });
       }
     }
-    this.lastPaint = target;
-    this.tile = target;
+    const end = st.line[st.line.length - 1];
+    this.tile = { tx: end[0], ty: end[1] };
     this.refresh();
   }
 
@@ -135,43 +161,107 @@ export class RoadPlacement {
   }
 
   update(time: number): void {
-    if (this.group.visible) this.material.opacity = 0.32 + 0.14 * Math.sin(time * 5);
+    if (!this.group.visible) return;
+    const a = 0.32 + 0.14 * Math.sin(time * 5);
+    for (const o of Object.values(this.overlays)) o.fill.opacity = a;
   }
 
-  private buildTileGeometry(tx: number, ty: number): void {
+  /**
+   * Which new pieces of a line can be laid, and in what order: a piece is laid once it
+   * touches the network, so a line drawn toward the depot fills in from that end.
+   */
+  private plan(line: Tile[]): { order: Tile[]; blocked: Tile[]; firstProblem: string | null } {
+    const s = gameStore.getState();
+    const roads = roadSet(s.roads);
+    let budget = Infinity;
+    for (const [id, c] of Object.entries(ROAD_COST)) budget = Math.min(budget, Math.floor(s.resources[id as keyof typeof s.resources] / c));
+    let pending = line.filter(([x, y]) => !roads.has(roadKey(x, y)));
+    const order: Tile[] = [];
+    let progress = true;
+    while (progress && pending.length) {
+      progress = false;
+      const rest: Tile[] = [];
+      for (const t of pending) {
+        if (budget > 0 && !checkRoad(t[0], t[1], roads, s.buildings)) {
+          roads.add(roadKey(t[0], t[1]));
+          order.push(t);
+          budget--;
+          progress = true;
+        } else rest.push(t);
+      }
+      pending = rest;
+    }
+    let firstProblem: string | null = null;
+    if (pending.length) {
+      const [x, y] = pending[0];
+      const problem = checkRoad(x, y, roads, s.buildings);
+      firstProblem = problem ? ROAD_PROBLEM_TEXT[problem] : ResourceManager.describeMissing(s.resources, ROAD_COST);
+    }
+    return { order, blocked: pending, firstProblem };
+  }
+
+  private showStroke(): void {
+    const st = this.stroke!;
+    const { order, blocked, firstProblem } = this.plan(st.line);
+    const roads = roadSet(gameStore.getState().roads);
+    const existing = st.line.filter(([x, y]) => roads.has(roadKey(x, y)));
+    // A press on an existing piece (no drag yet) shows it amber: letting go there removes it.
+    this.draw({ ok: order, bad: blocked, remove: st.line.length === 1 ? existing : [] });
+    const n = order.length;
+    let message: string | null = null;
+    if (blocked.length) message = firstProblem;
+    else if (n) message = `${n} piece${n === 1 ? '' : 's'} · ${n * ROAD_COST.regolith} regolith. Let go to build.`;
+    else if (existing.length > 1) message = 'Already paved.';
+    this.events.emit('placement:feedback', { valid: n > 0 && !blocked.length, message });
+  }
+
+  private draw(sets: Partial<Record<OverlayKind, Tile[]>>): void {
+    let any = false;
+    for (const key of ['ok', 'bad', 'remove'] as const) {
+      const tiles = sets[key] ?? [];
+      if (tiles.length) any = true;
+      this.buildTiles(this.overlays[key], tiles);
+    }
+    this.group.visible = any;
+  }
+
+  private buildTiles(o: Overlay, tiles: Tile[]): void {
     const h = ROAD_TILE / 2 - 0.04;
-    const cx = tx * ROAD_TILE;
-    const cy = ty * ROAD_TILE;
     const k = 4;
     const pos: number[] = [];
+    const ring: number[] = [];
     const lift = 0.0014;
     const P = (x: number, y: number) => {
       this.grid.surfacePoint(x, y, lift, this.v);
       return [this.v.x, this.v.y, this.v.z];
     };
-    for (let i = 0; i < k; i++) {
-      for (let j = 0; j < k; j++) {
-        const x0 = cx - h + (2 * h * i) / k;
-        const x1 = cx - h + (2 * h * (i + 1)) / k;
-        const y0 = cy - h + (2 * h * j) / k;
-        const y1 = cy - h + (2 * h * (j + 1)) / k;
-        pos.push(...P(x0, y0), ...P(x1, y0), ...P(x0, y1), ...P(x1, y0), ...P(x1, y1), ...P(x0, y1));
+    for (const [tx, ty] of tiles) {
+      const cx = tx * ROAD_TILE;
+      const cy = ty * ROAD_TILE;
+      for (let i = 0; i < k; i++) {
+        for (let j = 0; j < k; j++) {
+          const x0 = cx - h + (2 * h * i) / k;
+          const x1 = cx - h + (2 * h * (i + 1)) / k;
+          const y0 = cy - h + (2 * h * j) / k;
+          const y1 = cy - h + (2 * h * (j + 1)) / k;
+          pos.push(...P(x0, y0), ...P(x1, y0), ...P(x0, y1), ...P(x1, y0), ...P(x1, y1), ...P(x0, y1));
+        }
       }
+      const c: Tile[] = [
+        [cx - h, cy - h],
+        [cx + h, cy - h],
+        [cx + h, cy + h],
+        [cx - h, cy + h],
+      ];
+      for (let i = 0; i < 4; i++) ring.push(...P(...c[i]), ...P(...c[(i + 1) % 4]));
     }
-    this.quad.geometry.dispose();
+    o.mesh.geometry.dispose();
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    this.quad.geometry = g;
-    const ring: number[] = [];
-    for (const [x, y] of [
-      [cx - h, cy - h],
-      [cx + h, cy - h],
-      [cx + h, cy + h],
-      [cx - h, cy + h],
-    ]) ring.push(...P(x, y));
-    this.border.geometry.dispose();
+    o.mesh.geometry = g;
+    o.lines.geometry.dispose();
     const rg = new THREE.BufferGeometry();
     rg.setAttribute('position', new THREE.Float32BufferAttribute(ring, 3));
-    this.border.geometry = rg;
+    o.lines.geometry = rg;
   }
 }

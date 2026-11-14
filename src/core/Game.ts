@@ -122,6 +122,7 @@ export class Game {
       onKey: (k, e) => this.handleKey(k, e),
       paintMode: () => gameStore.getState().roadMode,
       onPaint: (x, y, start) => this.settlement.roadPlacement.paint(this.camera.pickSurface(x, y), start),
+      onPaintEnd: (commit) => this.settlement.roadPlacement.endStroke(commit),
     });
 
     this.buildUI(terrain);

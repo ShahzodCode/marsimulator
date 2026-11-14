@@ -11,7 +11,7 @@ import { footprintRect, type Rect } from './PlacementRules';
  *
  * Rules:
  *  - a new tile must touch (share an edge with) the depot or an existing road tile,
- *  - tiles can't overlap buildings or the depot,
+ *  - tiles can't overlap buildings or the depot (except a 1-cell margin, see BUILDING_MARGIN),
  *  - a building is "connected" when a road tile reachable from the depot runs along it.
  */
 
@@ -58,6 +58,17 @@ export function isPlazaTile(tx: number, ty: number): boolean {
   return Math.abs(tx) <= 1 && Math.abs(ty) <= 1;
 }
 
+/**
+ * Road tiles are 2 cells wide but buildings snap to single cells, so the tile right in
+ * front of a building can overlap its footprint by one cell. Footprints have room to
+ * spare at their edges, so roads may cover that outer cell.
+ */
+const BUILDING_MARGIN = 1;
+
+function inset(r: Rect, d: number): Rect {
+  return { x0: r.x0 + d, y0: r.y0 + d, x1: r.x1 - d, y1: r.y1 - d };
+}
+
 function overlaps(a: Rect, b: Rect): boolean {
   return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 }
@@ -84,7 +95,7 @@ function siteProblem(tx: number, ty: number, buildings: BuildingInstance[]): Roa
     [r.x1, r.y1],
   ];
   if (corners.some(([x, y]) => Math.hypot(x, y) > SETTLEMENT.buildRadius)) return 'outside';
-  for (const b of buildings) if (overlaps(r, footprintRect(b.type, b.gridX, b.gridY, b.rotation))) return 'building';
+  for (const b of buildings) if (overlaps(r, inset(footprintRect(b.type, b.gridX, b.gridY, b.rotation), BUILDING_MARGIN))) return 'building';
   return null;
 }
 
@@ -146,9 +157,17 @@ export function canRemoveRoad(key: string, roads: ReadonlySet<string>): boolean 
  */
 export function buildingSideOfTile(tx: number, ty: number, b: BuildingInstance): { dir: number; reach: number } | null {
   const t = tileRect(tx, ty);
-  const f = footprintRect(b.type, b.gridX, b.gridY, b.rotation);
-  const gap = rectGap(t, f);
-  if (gap > 1 || overlaps(t, f)) return null;
+  let f = footprintRect(b.type, b.gridX, b.gridY, b.rotation);
+  let gap: number;
+  if (overlaps(t, f)) {
+    // Tile sits on the building's outer margin: it touches the building directly.
+    f = inset(f, BUILDING_MARGIN);
+    if (overlaps(t, f) || rectGap(t, f) !== 0) return null;
+    gap = 0;
+  } else {
+    gap = rectGap(t, f);
+    if (gap > 1) return null;
+  }
   let dir: number;
   if (f.y0 >= t.y1) dir = 0;
   else if (f.x0 >= t.x1) dir = 1;
@@ -192,7 +211,7 @@ export function footprintHitsRoad(r: Rect, roads: ReadonlySet<string>): boolean 
   const ty0 = Math.floor((r.y0 - 1) / ROAD_TILE);
   const ty1 = Math.ceil((r.y1 + 1) / ROAD_TILE);
   for (let tx = tx0; tx <= tx1; tx++) {
-    for (let ty = ty0; ty <= ty1; ty++) if (roads.has(roadKey(tx, ty)) && overlaps(r, tileRect(tx, ty))) return true;
+    for (let ty = ty0; ty <= ty1; ty++) if (roads.has(roadKey(tx, ty)) && overlaps(inset(r, BUILDING_MARGIN), tileRect(tx, ty))) return true;
   }
   return false;
 }

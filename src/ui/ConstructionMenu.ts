@@ -107,7 +107,7 @@ export class ConstructionMenu implements Panel {
             class: 'card-desc',
             text: 'Rovers carry goods along roads. Lay pieces one by one from the Storage Depot to each building — without a road, its goods pile up and can’t reach the base.',
           }),
-          h('div', { class: 'card-effects', text: 'Click or drag to lay pieces · click a piece to remove it' }),
+          h('div', { class: 'card-effects', text: 'Drag a straight line to lay road · click a piece to remove it' }),
           h('div', { class: 'card-foot' }, [costRow, h('span', { class: 'build-time', text: '⏱ instant' })]),
           this.roadNote,
         ]),

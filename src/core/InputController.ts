@@ -9,6 +9,8 @@ export interface InputTarget {
   /** When true, a left-button drag paints (e.g. lays roads) instead of panning. */
   paintMode?(): boolean;
   onPaint?(clientX: number, clientY: number, start: boolean): void;
+  /** The paint stroke ended: `commit` is false when it was cancelled (e.g. a pinch). */
+  onPaintEnd?(commit: boolean): void;
 }
 
 interface PointerState {
@@ -60,7 +62,10 @@ export class InputController {
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, button: e.button, dragged: false, painting });
     if (painting) this.target.onPaint?.(e.clientX, e.clientY, true);
     if (this.pointers.size === 2) {
-      for (const q of this.pointers.values()) q.painting = false;
+      for (const q of this.pointers.values()) {
+        if (q.painting) this.target.onPaintEnd?.(false);
+        q.painting = false;
+      }
       this.startPinch();
     }
   };
@@ -94,6 +99,7 @@ export class InputController {
     const p = this.pointers.get(e.pointerId);
     this.pointers.delete(e.pointerId);
     if (this.el.hasPointerCapture(e.pointerId)) this.el.releasePointerCapture(e.pointerId);
+    if (p?.painting) this.target.onPaintEnd?.(true);
     if (!p || p.dragged || this.pointers.size > 0) {
       // End of a gesture: mark remaining pointers as dragging so lifting one finger doesn't click.
       for (const q of this.pointers.values()) q.dragged = true;
@@ -104,6 +110,7 @@ export class InputController {
   };
 
   private onCancel = (e: PointerEvent) => {
+    if (this.pointers.get(e.pointerId)?.painting) this.target.onPaintEnd?.(false);
     this.pointers.delete(e.pointerId);
   };
 

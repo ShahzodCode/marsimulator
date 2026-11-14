@@ -84,7 +84,7 @@ export class PlacementHint {
         rotate.style.display = mode === 'road' ? 'none' : '';
         if (mode === 'road') {
           setText(this.title, 'Laying roads');
-          setText(keys, 'Click or drag from the Storage Depot or a road end · click a piece to remove · WASD move · Esc done');
+          setText(keys, 'Drag a straight line from the Storage Depot or a road · let go to build · click a piece to remove · WASD move · Esc done');
           setText(this.feedback, 'Each piece must join the Storage Depot or another road.');
           setText(cancelLabel, 'Done');
           this.feedback.className = 'feedback';
