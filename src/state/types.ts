@@ -27,6 +27,8 @@ export interface BuildingInstance {
   connected: boolean;
   /** Output waiting at the building because no road can carry it away yet. */
   stored: Partial<Record<ResourceId, number>>;
+  /** Part of the base the colony started with: it can't be demolished. */
+  starter?: boolean;
 }
 
 export type MissionStatus = 'active' | 'complete';

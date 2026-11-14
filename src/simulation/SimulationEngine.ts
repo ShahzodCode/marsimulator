@@ -1,4 +1,4 @@
-import { BUILDINGS, storageCapacity } from '../data/buildings';
+import { BUILDINGS, DEPOT_SUPPLY, storageCapacity } from '../data/buildings';
 import { COLONIST_NEEDS_PER_SOL, RESOURCES, RESOURCE_IDS, type ResourceId } from '../data/resources';
 import { XP_REWARDS } from '../data/progression';
 import { ResourceManager, type ResourceBag } from './ResourceManager';
@@ -167,6 +167,11 @@ export class SimulationEngine {
     const colonists = store.colony.colonists;
     for (const id of RESOURCE_IDS) rates[id] -= COLONIST_NEEDS_PER_SOL[id] * colonists;
     for (const id of RESOURCE_IDS) resources[id] = Math.min(capacity[id], Math.max(0, resources[id] + rates[id] * dt));
+    // Depot safety net: a small drop of material every few sols.
+    const depotWorks = buildings.some((b) => b.type === 'storage_depot' && b.isOperational);
+    if (depotWorks && dt > 0 && Math.floor((store.timeSols + dt) / DEPOT_SUPPLY.everySols) > Math.floor(store.timeSols / DEPOT_SUPPLY.everySols)) {
+      for (const [id, v] of Object.entries(DEPOT_SUPPLY.amounts) as [ResourceId, number][]) resources[id] = Math.min(capacity[id], resources[id] + v);
+    }
 
     const finalBuildings = buildings.map((b) => {
       const e = effById.get(b.id);

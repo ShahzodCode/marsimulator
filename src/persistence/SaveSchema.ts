@@ -1,7 +1,8 @@
-import type { GameState } from '../state/types';
+import type { BuildingInstance, GameState } from '../state/types';
 import { createInitialState } from '../state/gameStore';
 import { starterRoads } from '../settlement/RoadRules';
 import { storageCapacity } from '../data/buildings';
+import { STARTING_BUILDINGS } from '../data/settlement';
 
 /**
  * Versioned save format. Only durable game data is stored — transient UI state
@@ -59,7 +60,14 @@ export function isSaveData(value: unknown): value is SaveData {
 
 export function fromSave(save: SaveData): GameState {
   const base = createInitialState();
-  const buildings = save.state.buildings.map((b) => ({ ...b, connected: b.connected ?? false, stored: { ...(b.stored ?? {}) } }));
+  const isStarter = (b: { type: string; gridX: number; gridY: number }) =>
+    STARTING_BUILDINGS.some((s) => s.type === b.type && s.gridX === b.gridX && s.gridY === b.gridY);
+  const buildings: BuildingInstance[] = save.state.buildings.map((b) => ({
+    ...b,
+    connected: b.connected ?? false,
+    stored: { ...(b.stored ?? {}) },
+    starter: b.starter ?? isStarter(b),
+  }));
   // Saves from before the storage depot: it takes over the empty central plaza.
   if (!buildings.some((b) => b.type === 'storage_depot')) {
     const depot = base.buildings.find((b) => b.type === 'storage_depot');

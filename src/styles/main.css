@@ -1837,3 +1837,7 @@ svg {
   vertical-align: middle;
   flex: none;
 }
+
+.bp-note {
+  font-size: 12px;
+}

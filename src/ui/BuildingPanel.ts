@@ -1,4 +1,4 @@
-import { BUILDINGS } from '../data/buildings';
+import { BUILDINGS, demolishRefund } from '../data/buildings';
 import { RESOURCES, formatAmount, type ResourceId } from '../data/resources';
 import type { EventBus } from '../core/EventBus';
 import { formatMarsTime } from '../core/GameClock';
@@ -93,7 +93,47 @@ export class BuildingPanel {
         ),
         h('span', { class: 'muted bp-coords', text: `${b.latitude.toFixed(3)}°N, ${b.longitude.toFixed(3)}°E` }),
       ]),
+      h('div', { class: 'bp-actions' }, [this.demolishControl(b)]),
     );
+  }
+
+  /** Demolish button (asks for a second click), or a note for the original base. */
+  private demolishControl(b: BuildingInstance): HTMLElement {
+    if (b.starter || b.type === 'storage_depot') {
+      return h('span', { class: 'muted bp-note', text: 'Part of the original base: it can’t be demolished.' });
+    }
+    const refund = (Object.entries(demolishRefund(b.type)) as [ResourceId, number][])
+      .map(([id, v]) => `${v} ${RESOURCES[id].name.toLowerCase()}`)
+      .join(', ');
+    let armed = false;
+    let timer = 0;
+    const label = h('span', { text: 'Demolish' });
+    const btn = h(
+      'button',
+      {
+        class: 'btn danger',
+        title: `Get back half of what it cost${refund ? ` (${refund})` : ''}. Energy is not refunded.`,
+        attrs: { type: 'button' },
+        on: {
+          click: () => {
+            if (!armed) {
+              armed = true;
+              setText(label, refund ? `Click again: get back ${refund}` : 'Click again to demolish');
+              timer = window.setTimeout(() => {
+                armed = false;
+                setText(label, 'Demolish');
+              }, 4000);
+              return;
+            }
+            window.clearTimeout(timer);
+            const res = gameStore.getState().demolishBuilding(b.id);
+            if (!res.ok) gameStore.getState().pushAlert({ key: 'demolish-error', level: 'warning', title: 'Can’t demolish', message: res.reason });
+          },
+        },
+      },
+      [label],
+    );
+    return btn;
   }
 
   private update(b: BuildingInstance): void {

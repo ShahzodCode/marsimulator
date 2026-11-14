@@ -181,7 +181,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     id: 'storage_depot',
     name: 'Central Storage Depot',
     shortName: 'Storage',
-    description: 'The heart of the base. Every road starts here, and everything the colony makes is stored here — but only up to its limit, so watch the bars!',
+    description: 'The heart of the base. Every road starts here, and everything the colony makes is stored here — but only up to its limit, so watch the bars! Its maintenance robots also sweep up a little regolith and iron every few sols, so you can always build again.',
     funFact: 'Water and oxygen are kept in pressurised tanks, because in Mars’s thin, cold air water would boil away or freeze.',
     icon: '📦',
     model: 'storage_depot',
@@ -200,6 +200,29 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
 };
 
 export const BUILDING_TYPES = Object.keys(BUILDINGS) as BuildingType[];
+
+/**
+ * Safety net (gameplay, not science): the depot's maintenance robots scavenge a small
+ * amount of material on a fixed schedule, so a colony that has spent everything can
+ * still save up for a new building.
+ */
+export const DEPOT_SUPPLY = {
+  everySols: 2,
+  amounts: { regolith: 10, iron: 5 } as Partial<Record<ResourceId, number>>,
+};
+
+/** Share of the construction cost returned when a building is demolished (energy is never refunded). */
+export const DEMOLISH_REFUND = 0.5;
+
+/** Resources returned for demolishing a building of this type. */
+export function demolishRefund(type: BuildingType): Partial<Record<ResourceId, number>> {
+  const out: Partial<Record<ResourceId, number>> = {};
+  for (const [id, v] of Object.entries(BUILDINGS[type].constructionCost) as [ResourceId, number][]) {
+    const r = Math.floor(v * DEMOLISH_REFUND);
+    if (r > 0) out[id] = r;
+  }
+  return out;
+}
 
 /** Footprint after applying a 90° rotation step (0..3). */
 export function rotatedFootprint(type: BuildingType, rotation: number): { width: number; height: number } {

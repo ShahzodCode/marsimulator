@@ -1,5 +1,5 @@
 import { createStore } from 'zustand/vanilla';
-import { BUILDINGS, storageCapacity, type BuildingType } from '../data/buildings';
+import { BUILDINGS, demolishRefund, storageCapacity, type BuildingType } from '../data/buildings';
 import { REGIONS, HOME_REGION_ID } from '../data/regions';
 import { STARTING_COLONISTS, STARTING_RESOURCES, type ResourceId } from '../data/resources';
 import { SETTLEMENT, STARTING_BUILDINGS } from '../data/settlement';
@@ -57,7 +57,7 @@ export function roadSet(roads: string[]): Set<string> {
 export function createInitialState(): GameState {
   const discovered: Record<string, boolean> = {};
   for (const r of REGIONS) discovered[r.id] = r.id === HOME_REGION_ID;
-  const buildings = STARTING_BUILDINGS.map((b) => makeBuilding(b.type, b.gridX, b.gridY, b.rotation, true, 0));
+  const buildings = STARTING_BUILDINGS.map((b) => ({ ...makeBuilding(b.type, b.gridX, b.gridY, b.rotation, true, 0), starter: true }));
   return {
     timeSols: 0,
     paused: true,
@@ -107,6 +107,8 @@ export interface GameActions {
   stopRoadMode(): void;
   placeRoad(tx: number, ty: number): ActionResult;
   removeRoad(tx: number, ty: number): ActionResult;
+  /** Removes a player-built building and returns half its construction cost (never energy). */
+  demolishBuilding(id: string): ActionResult;
   selectBuilding(id: string | null): void;
   selectRegion(id: string | null): void;
   launchSurvey(regionId: string): ActionResult;
@@ -234,6 +236,30 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     const resources = { ...s.resources };
     for (const [id, v] of Object.entries(ROAD_COST) as [ResourceId, number][]) resources[id] = Math.min(s.storage[id], resources[id] + v);
     set({ resources, roads: s.roads.filter((k) => k !== key) });
+    return { ok: true };
+  },
+
+  demolishBuilding(id) {
+    const s = get();
+    const b = s.buildings.find((x) => x.id === id);
+    if (!b) return { ok: false, reason: 'That building is already gone.' };
+    if (b.starter || b.type === 'storage_depot') return { ok: false, reason: 'This is part of the original base and can’t be demolished.' };
+    const def = BUILDINGS[b.type];
+    const refund = demolishRefund(b.type);
+    const resources = { ...s.resources };
+    for (const [rid, v] of Object.entries(refund) as [ResourceId, number][]) resources[rid] = Math.min(s.storage[rid], resources[rid] + v);
+    set({
+      resources,
+      buildings: s.buildings.filter((x) => x.id !== id),
+      selectedBuildingId: s.selectedBuildingId === id ? null : s.selectedBuildingId,
+    });
+    const got = (Object.entries(refund) as [ResourceId, number][]).map(([rid, v]) => `${v} ${rid}`).join(', ');
+    get().pushAlert({
+      key: `demolished-${id}`,
+      level: 'info',
+      title: `${def.name} demolished`,
+      message: got ? `Recovered ${got} (half of what it cost). Anything over the depot's limit is lost.` : 'Nothing to recover.',
+    });
     return { ok: true };
   },
 
