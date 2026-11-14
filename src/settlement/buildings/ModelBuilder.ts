@@ -137,6 +137,7 @@ function indexed(g: THREE.BufferGeometry): THREE.BufferGeometry {
 export function disposeGeometries(root: THREE.Object3D): void {
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
-    if (mesh.isMesh) mesh.geometry.dispose();
+    // Geometry of Blender models is shared by every instance, so it is never disposed here.
+    if (mesh.isMesh && !mesh.userData.sharedGeometry) mesh.geometry.dispose();
   });
 }

@@ -25,7 +25,7 @@ const DRAG_THRESHOLD = 6;
 
 /**
  * Mouse, touch and keyboard input for the map: drag to pan, wheel / pinch to zoom,
- * right-drag or Q/E to rotate, click / tap to interact.
+ * right-drag to rotate (horizontal) and tilt (vertical), Q/E to rotate, click / tap to interact.
  */
 export class InputController {
   private pointers = new Map<number, PointerState>();
@@ -83,8 +83,11 @@ export class InputController {
       return;
     }
     if (!p.dragged) return;
-    if (p.button === 2 || (p.button === 0 && e.shiftKey)) this.camera.rotate(dx * 0.006);
-    else this.camera.panPixels(dx, dy);
+    if (p.button === 2 || (p.button === 0 && e.shiftKey)) {
+      // Horizontal drag spins the view; vertical drag raises / lowers the camera.
+      this.camera.rotate(dx * 0.006);
+      this.camera.pitch(-dy * 0.005);
+    } else this.camera.panPixels(dx, dy);
   };
 
   private onUp = (e: PointerEvent) => {

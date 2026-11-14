@@ -1,4 +1,4 @@
-import { BUILDINGS } from '../data/buildings';
+import { BUILDINGS, storageCapacity } from '../data/buildings';
 import { COLONIST_NEEDS_PER_SOL, RESOURCES, RESOURCE_IDS, type ResourceId } from '../data/resources';
 import { XP_REWARDS } from '../data/progression';
 import { ResourceManager, type ResourceBag } from './ResourceManager';
@@ -93,7 +93,9 @@ export class SimulationEngine {
     }
     const satisfaction = consumption > 0 ? Math.min(1, generation / consumption) : 1;
 
-    // 3. Production and consumption.
+    // 3. Production and consumption. Everything goes into the storage depot, which only
+    // holds so much — extra output is lost once a resource is full.
+    const capacity = storageCapacity(buildings);
     const resources: ResourceBag = { ...store.resources };
     const rates = ResourceManager.empty();
     const connected = this.connectedIds(buildings, store.roads);
@@ -119,7 +121,7 @@ export class SimulationEngine {
             eff = 0;
             note = 'Storage full — build a road to carry goods away';
           } else {
-            note = note ?? 'No road — goods are piling up here';
+            note = eff < 0.999 ? `No road — goods piling up here (low power, ${Math.round(eff * 100)}%)` : 'No road — goods are piling up here';
             if (dt > 0 && eff > 0) {
               stored = { ...stored };
               for (const id of outputs) {
@@ -146,21 +148,25 @@ export class SimulationEngine {
       if (waiting.length && dt > 0) {
         stored = { ...stored };
         for (const id of waiting) {
-          const amount = Math.min(stored[id] ?? 0, DELIVERY_PER_SOL * dt);
+          const room = Math.max(0, capacity[id] - resources[id]);
+          const amount = Math.min(stored[id] ?? 0, DELIVERY_PER_SOL * dt, room);
           resources[id] += amount;
           const left = (stored[id] ?? 0) - amount;
           if (left > 1e-6) stored[id] = left;
           else delete stored[id];
         }
       }
-      if (Object.keys(stored).length) note = note ?? 'Delivering stored goods by road';
+      if (Object.keys(stored).length) {
+        const blocked = (Object.keys(stored) as ResourceId[]).every((id) => resources[id] >= capacity[id] - 1e-6);
+        note = note ?? (blocked ? 'Storage depot is full — goods wait here' : 'Delivering stored goods by road');
+      }
       effById.set(b.id, { eff, note, stored });
       for (const id of outputs) rates[id] += (def.production[id] ?? 0) * eff;
       for (const id of inputs) rates[id] -= (def.consumption[id] ?? 0) * eff;
     }
     const colonists = store.colony.colonists;
     for (const id of RESOURCE_IDS) rates[id] -= COLONIST_NEEDS_PER_SOL[id] * colonists;
-    for (const id of RESOURCE_IDS) resources[id] = Math.max(0, resources[id] + rates[id] * dt);
+    for (const id of RESOURCE_IDS) resources[id] = Math.min(capacity[id], Math.max(0, resources[id] + rates[id] * dt));
 
     const finalBuildings = buildings.map((b) => {
       const e = effById.get(b.id);
@@ -198,6 +204,7 @@ export class SimulationEngine {
     gameStore.setState({
       timeSols: store.timeSols + dt,
       resources,
+      storage: capacity,
       rates,
       energy: { generation, consumption, satisfaction },
       colony: { colonists, housing },
@@ -224,12 +231,13 @@ export class SimulationEngine {
       store.addXp(XP_REWARDS.regionDiscovered, `discovered-${id}`);
       this.events.emit('region:discovered', { id });
     }
-    store.setPersistentAlerts(this.computeWarnings(resources, rates, generation, consumption, colonists, housing, finalBuildings));
+    store.setPersistentAlerts(this.computeWarnings(resources, rates, capacity, generation, consumption, colonists, housing, finalBuildings));
   }
 
   private computeWarnings(
     resources: ResourceBag,
     rates: ResourceBag,
+    capacity: ResourceBag,
     generation: number,
     consumption: number,
     colonists: number,
@@ -247,7 +255,16 @@ export class SimulationEngine {
         key: 'roads',
         level: 'warning',
         title: roadless.length === 1 ? 'A building has no road' : `${roadless.length} buildings have no road`,
-        message: `${names}: goods can’t reach the base. Open Build → Road and pave a path from the plaza to it.`,
+        message: `${names}: goods can’t reach the base. Open Build → Road and pave a path from the Storage Depot to it.`,
+      });
+    }
+    const full = RESOURCE_IDS.filter((id) => rates[id] > 0.05 && resources[id] >= capacity[id] - 0.5);
+    if (full.length) {
+      out.push({
+        key: 'storage',
+        level: 'warning',
+        title: 'Storage depot is full',
+        message: `No room for more ${listNames(full)} — anything extra is lost.`,
       });
     }
     if (consumption > generation + 1e-6) {

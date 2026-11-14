@@ -19,12 +19,16 @@ interface Flight {
   duration: number;
 }
 
+/** Default tilt away from straight down (a lower, more cinematic angle). */
+const DEFAULT_TILT = 50 * DEG;
+
 /**
- * Top-down orbital camera for a spherical planet.
+ * Orbital camera for a spherical planet.
  *
- * The camera is described by the surface point it hovers over (lat / lon), its altitude
- * above the local terrain and a heading. It ALWAYS looks straight down at the planet
- * centre (nadir), so it can never tilt toward the horizon or become first-person.
+ * The camera is described by the surface point it looks at (lat / lon), its distance
+ * from that point (`alt`), a heading and a tilt (angle away from straight down). The
+ * tilt is clamped well short of the horizon so it never becomes first-person, and it
+ * fades out at planetary zoom so the globe view stays top-down.
  * All motion is smoothed with exponential damping or eased flights.
  */
 export class CameraController {
@@ -34,11 +38,17 @@ export class CameraController {
   lon = SETTLEMENT.lon;
   alt = 240;
   heading = 0;
+  /** Tilt away from straight down, radians (0 = top-down). */
+  tilt = DEFAULT_TILT;
+
+  readonly minTilt = 0;
+  readonly maxTilt = 72 * DEG;
 
   private tLat = this.lat;
   private tLon = this.lon;
   private tAlt = this.alt;
   private tHeading = 0;
+  private tTilt = this.tilt;
   private ground = 0;
   private flight: Flight | null = null;
 
@@ -96,6 +106,7 @@ export class CameraController {
     }
     const kh = 1 - Math.exp(-dt * 8);
     this.heading += angleDelta(this.heading, this.tHeading) * kh;
+    this.tilt += (this.tTilt - this.tilt) * kh;
     const g = this.terrain.heightUnits(this.lat, this.lon);
     this.ground += (g - this.ground) * (1 - Math.exp(-dt * 5));
     this.apply();
@@ -103,12 +114,24 @@ export class CameraController {
 
   private apply(): void {
     tangentFrame(this.lat, this.lon, this.up, this.east, this.north);
-    const r = R + this.ground + this.alt;
-    this.camera.position.copy(this.up).multiplyScalar(r);
     const c = Math.cos(this.heading);
     const s = Math.sin(this.heading);
-    this.camera.up.copy(this.north).multiplyScalar(c).addScaledVector(this.east, s);
-    this.camera.lookAt(0, 0, 0);
+    // Screen-up direction on the ground (heading-rotated north).
+    const fwd = this.tmp2.copy(this.north).multiplyScalar(c).addScaledVector(this.east, s);
+    // Focus point on the ground; the camera sits behind and above it.
+    const focus = this.tmp.copy(this.up).multiplyScalar(R + this.ground);
+    const tilt = this.effectiveTilt;
+    this.camera.position
+      .copy(focus)
+      .addScaledVector(this.up, this.alt * Math.cos(tilt))
+      .addScaledVector(fwd, -this.alt * Math.sin(tilt));
+    // Never dip below the terrain under the camera (hills behind the focus point).
+    dirToLatLon(this.camera.position, this.ll);
+    const minR = this.terrain.radiusAt(this.ll.lat, this.ll.lon) + Math.max(0.03, this.alt * 0.05);
+    if (this.camera.position.length() < minR) this.camera.position.setLength(minR);
+    // fwd stays a valid screen-up vector for any tilt short of the horizon.
+    this.camera.up.copy(fwd);
+    this.camera.lookAt(focus);
     const near = THREE.MathUtils.clamp(this.alt * 0.05, 0.004, 40);
     if (Math.abs(near - this.camera.near) / this.camera.near > 0.02) {
       this.camera.near = near;
@@ -157,6 +180,16 @@ export class CameraController {
 
   rotate(delta: number): void {
     this.tHeading += delta;
+  }
+
+  /** Change the tilt: positive lowers the camera toward the horizon. */
+  pitch(delta: number): void {
+    this.tTilt = THREE.MathUtils.clamp(this.tTilt + delta, this.minTilt, this.maxTilt);
+  }
+
+  /** Tilt actually applied: fades to top-down when zoomed out to planet scale. */
+  get effectiveTilt(): number {
+    return this.tilt * (1 - THREE.MathUtils.smoothstep(this.alt, 25, 110));
   }
 
   resetHeading(): void {

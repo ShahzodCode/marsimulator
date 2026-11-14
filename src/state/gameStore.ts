@@ -1,5 +1,5 @@
 import { createStore } from 'zustand/vanilla';
-import { BUILDINGS, type BuildingType } from '../data/buildings';
+import { BUILDINGS, storageCapacity, type BuildingType } from '../data/buildings';
 import { REGIONS, HOME_REGION_ID } from '../data/regions';
 import { STARTING_COLONISTS, STARTING_RESOURCES, type ResourceId } from '../data/resources';
 import { SETTLEMENT, STARTING_BUILDINGS } from '../data/settlement';
@@ -64,6 +64,7 @@ export function createInitialState(): GameState {
     speed: 1,
     started: false,
     resources: { ...STARTING_RESOURCES },
+    storage: storageCapacity(buildings),
     rates: ResourceManager.empty(),
     energy: { generation: 0, consumption: 0, satisfaction: 1 },
     colony: { colonists: STARTING_COLONISTS, housing: 0 },
@@ -231,7 +232,7 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     if (!roads.has(key)) return { ok: false, reason: 'There is no road here.' };
     if (!canRemoveRoad(key, roads)) return { ok: false, reason: 'Other roads are joined through this piece — remove the end pieces first.' };
     const resources = { ...s.resources };
-    for (const [id, v] of Object.entries(ROAD_COST) as [ResourceId, number][]) resources[id] += v;
+    for (const [id, v] of Object.entries(ROAD_COST) as [ResourceId, number][]) resources[id] = Math.min(s.storage[id], resources[id] + v);
     set({ resources, roads: s.roads.filter((k) => k !== key) });
     return { ok: true };
   },

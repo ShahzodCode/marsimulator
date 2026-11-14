@@ -1,6 +1,7 @@
 import type { GameState } from '../state/types';
 import { createInitialState } from '../state/gameStore';
 import { starterRoads } from '../settlement/RoadRules';
+import { storageCapacity } from '../data/buildings';
 
 /**
  * Versioned save format. Only durable game data is stored — transient UI state
@@ -59,6 +60,11 @@ export function isSaveData(value: unknown): value is SaveData {
 export function fromSave(save: SaveData): GameState {
   const base = createInitialState();
   const buildings = save.state.buildings.map((b) => ({ ...b, connected: b.connected ?? false, stored: { ...(b.stored ?? {}) } }));
+  // Saves from before the storage depot: it takes over the empty central plaza.
+  if (!buildings.some((b) => b.type === 'storage_depot')) {
+    const depot = base.buildings.find((b) => b.type === 'storage_depot');
+    if (depot) buildings.unshift({ ...depot });
+  }
   // Saves from before player-built roads: pave access roads for the existing buildings.
   const roads = Array.isArray(save.state.roads) ? [...save.state.roads] : starterRoads(buildings);
   return {
@@ -67,6 +73,7 @@ export function fromSave(save: SaveData): GameState {
     buildings,
     roads,
     resources: { ...base.resources, ...save.state.resources },
+    storage: storageCapacity(buildings),
     discoveredRegions: { ...base.discoveredRegions, ...save.state.discoveredRegions },
     started: true,
     paused: true,

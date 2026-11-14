@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { BuildingInstance } from '../state/types';
 import { DIRS, ROAD_TILE, buildingSideOfTile, isPlazaTile, parseRoadKey, reachableRoads, roadKey } from './RoadRules';
 import type { SettlementGrid } from './SettlementGrid';
-import { materials } from './buildings/materials';
 
 /**
  * Renders the player-built road tiles. Each tile looks at its four neighbours and picks
@@ -80,31 +79,13 @@ export class Roads {
     centre: decal('#f2b630', -4),
     dirt: decal('#7c6a5e', -2),
   };
-  private lamps: THREE.InstancedMesh;
-  private lampHeads: THREE.InstancedMesh;
   private meshes: THREE.Mesh[] = [];
   private signature = '';
   private readonly p = new THREE.Vector2();
   private readonly t = new THREE.Vector2();
   private readonly v = new THREE.Vector3();
 
-  constructor(private grid: SettlementGrid) {
-    const post = new THREE.CylinderGeometry(0.035, 0.05, 1.25, 8);
-    post.translate(0, 0.62, 0);
-    const arm = new THREE.BoxGeometry(0.42, 0.04, 0.05);
-    arm.translate(-0.19, 1.24, 0);
-    const base = new THREE.CylinderGeometry(0.09, 0.11, 0.12, 8);
-    base.translate(0, 0.06, 0);
-    const lampGeo = mergeSimple([post, arm, base]);
-    const head = new THREE.BoxGeometry(0.2, 0.05, 0.1);
-    head.translate(-0.38, 1.21, 0);
-    const M = materials();
-    this.lamps = new THREE.InstancedMesh(lampGeo, M.darkMetal, 256);
-    this.lampHeads = new THREE.InstancedMesh(head, M.glowWhite, 256);
-    this.lamps.count = this.lampHeads.count = 0;
-    this.lamps.castShadow = true;
-    this.group.add(this.lamps, this.lampHeads);
-  }
+  constructor(private grid: SettlementGrid) {}
 
   rebuild(roads: string[], buildings: BuildingInstance[]): void {
     const sig = roads.join(';') + '#' + buildings.map((b) => `${b.id}:${b.gridX},${b.gridY},${b.rotation}`).join('|');
@@ -128,7 +109,6 @@ export class Roads {
       centre: { from: -0.035, to: 0.035, lift: 0.0009, out: [] as number[], dash: [1, 0.5] as [number, number] },
     };
     const dirt: number[] = [];
-    const lampSpots: [number, number, number][] = [];
 
     for (const key of roads) {
       const [tx, ty] = parseRoadKey(key);
@@ -157,12 +137,6 @@ export class Roads {
         const [a, b] = dirs;
         const path = line(DIRS[a][0] * arms.get(a)!, DIRS[a][1] * arms.get(a)!, DIRS[b][0] * arms.get(b)!, DIRS[b][1] * arms.get(b)!);
         for (const l of Object.values(L)) if (markings || l === L.shoulder || l === L.asphalt) tile(l, path);
-        if (hash(tx, ty) % 3 === 0) {
-          const side = hash(ty, tx) % 2 ? 1 : -1;
-          const nx = -DIRS[b][1] * side;
-          const ny = DIRS[b][0] * side;
-          lampSpots.push([cx + nx * 1.05, cy + ny * 1.05, Math.atan2(ny, nx)]);
-        }
       } else if (dirs.length === 2) {
         // Curved turn — plus straight extensions when a building door is further away.
         const [a, b] = dirs;
@@ -199,21 +173,6 @@ export class Roads {
     add([...L.edgeL.out, ...L.edgeR.out], this.mats.edge);
     add(L.centre.out, this.mats.centre);
     add(dirt, this.mats.dirt);
-
-    const dummy = new THREE.Object3D();
-    const n = Math.min(256, lampSpots.length);
-    for (let i = 0; i < n; i++) {
-      const [x, y, a] = lampSpots[i];
-      this.grid.place(dummy, x, y, -a);
-      dummy.updateMatrix();
-      this.lamps.setMatrixAt(i, dummy.matrix);
-      this.lampHeads.setMatrixAt(i, dummy.matrix);
-    }
-    this.lamps.count = this.lampHeads.count = n;
-    this.lamps.instanceMatrix.needsUpdate = true;
-    this.lampHeads.instanceMatrix.needsUpdate = true;
-    this.lamps.computeBoundingSphere();
-    this.lampHeads.computeBoundingSphere();
   }
 
   /** Straight arm from `start` to `end` cells along direction d. */
@@ -353,24 +312,4 @@ function decal(color: string, order: number): THREE.MeshStandardMaterial {
     polygonOffsetFactor: order - 1,
     polygonOffsetUnits: order * 4 - 4,
   });
-}
-
-function hash(a: number, b: number): number {
-  let h = (a * 374761393 + b * 668265263) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return (h ^ (h >>> 16)) >>> 0;
-}
-
-function mergeSimple(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const pos: number[] = [];
-  const nor: number[] = [];
-  for (const g0 of parts) {
-    const g = g0.index ? g0.toNonIndexed() : g0;
-    pos.push(...(g.attributes.position.array as Float32Array));
-    nor.push(...(g.attributes.normal.array as Float32Array));
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  return out;
 }

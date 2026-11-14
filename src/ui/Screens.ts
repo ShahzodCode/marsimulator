@@ -58,7 +58,7 @@ export class WelcomeScreen {
           h('li', { text: '⚡ Keep enough power, water, oxygen and food' }),
           h('li', { text: '🛰️ Send survey rovers to explore all 30 regions of Mars' }),
         ]),
-        h('p', { class: 'controls-help', text: 'Drag to move · Scroll or pinch to zoom · Q/E rotate · Space pause' }),
+        h('p', { class: 'controls-help', text: 'Drag to move · Scroll or pinch to zoom · Right-drag to rotate & tilt · Space pause' }),
         h('div', { class: 'welcome-actions' }, [
           h('button', { class: 'btn primary big', text: 'Start mission 🚀', attrs: { type: 'button' }, on: { click: () => this.close(onStart) } }),
           loadBtn,

@@ -1,5 +1,5 @@
 import { rotatedFootprint, type BuildingType } from '../data/buildings';
-import { DECORATIONS, SETTLEMENT } from '../data/settlement';
+import { SETTLEMENT } from '../data/settlement';
 import type { BuildingInstance } from '../state/types';
 import { footprintHitsRoad } from './RoadRules';
 
@@ -12,7 +12,7 @@ export interface Rect {
   y1: number;
 }
 
-export type PlacementProblem = 'outside' | 'overlap' | 'reserved' | 'road' | null;
+export type PlacementProblem = 'outside' | 'overlap' | 'road' | null;
 
 export function footprintRect(type: BuildingType, gridX: number, gridY: number, rotation: number): Rect {
   const fp = rotatedFootprint(type, rotation);
@@ -26,13 +26,6 @@ export function rectCenter(r: Rect): { x: number; y: number } {
 function overlaps(a: Rect, b: Rect, gap: number): boolean {
   return a.x0 < b.x1 + gap && b.x0 < a.x1 + gap && a.y0 < b.y1 + gap && b.y0 < a.y1 + gap;
 }
-
-const RESERVED: Rect[] = DECORATIONS.map((d) => ({
-  x0: d.x - d.width / 2,
-  y0: d.y - d.height / 2,
-  x1: d.x + d.width / 2,
-  y1: d.y + d.height / 2,
-}));
 
 /** Snaps a pointer position (grid coords) to the footprint's south-west corner. */
 export function snapToGrid(type: BuildingType, rotation: number, x: number, y: number): { gridX: number; gridY: number } {
@@ -56,7 +49,6 @@ export function checkPlacement(
     [r.x1, r.y1],
   ];
   if (corners.some(([x, y]) => Math.hypot(x, y) > SETTLEMENT.buildRadius)) return 'outside';
-  if (RESERVED.some((res) => overlaps(r, res, 0.5))) return 'reserved';
   for (const b of buildings) {
     if (overlaps(r, footprintRect(b.type, b.gridX, b.gridY, b.rotation), 1)) return 'overlap';
   }
@@ -67,6 +59,5 @@ export function checkPlacement(
 export const PROBLEM_TEXT: Record<Exclude<PlacementProblem, null>, string> = {
   outside: 'Too far from the base — build inside the bright circle.',
   overlap: 'Too close to another building.',
-  reserved: 'This spot is reserved (landing pad, plaza or equipment).',
   road: 'A road is in the way — build next to it instead.',
 };

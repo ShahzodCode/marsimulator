@@ -9,8 +9,10 @@ import { CameraController } from '../planet/CameraController';
 import { FogOfWar } from '../planet/FogOfWar';
 import { SETTLEMENT } from '../data/settlement';
 import { SettlementManager } from '../settlement/SettlementManager';
+import { loadBuildingModels } from '../settlement/buildings/glbModels';
 import { SimulationEngine } from '../simulation/SimulationEngine';
 import { SaveManager } from '../persistence/SaveManager';
+import { LocalPrefs } from '../persistence/LocalPrefs';
 import { gameStore, regionManager, watch } from '../state/gameStore';
 import type { PanelId } from '../state/types';
 import { HUD } from '../ui/HUD';
@@ -27,6 +29,9 @@ import { LoadingScreen, WelcomeScreen } from '../ui/Screens';
 
 const GLOBE_ALTITUDE = 235;
 const BASE_ALTITUDE = 0.75;
+
+/** Real-time seconds between autosaves (local + cloud). */
+const AUTOSAVE_SECONDS = 60;
 
 const PANEL_KEYS: Record<string, PanelId> = { b: 'construction', x: 'exploration', m: 'missions', t: 'research', i: 'settlement' };
 
@@ -52,6 +57,7 @@ export class Game {
   private width = 1;
   private height = 1;
   private lastRegionHover = -2;
+  private saving = false;
   private readonly tmp = new THREE.Vector3();
   private readonly lightDir = new THREE.Vector3();
 
@@ -98,6 +104,9 @@ export class Game {
     this.sun.shadow.normalBias = 0.0012;
     this.scene.add(this.sun, this.sun.target);
 
+    loading.progress(0.96, 'Unpacking building models');
+    await loadBuildingModels(this.renderer, (f) => loading.progress(0.96 + f * 0.03, 'Unpacking building models'));
+
     this.mars = new Mars(terrain);
     this.scene.add(this.mars.group);
     this.fog = new FogOfWar(this.mars.uniforms);
@@ -115,6 +124,7 @@ export class Game {
 
     this.buildUI(terrain);
     this.wireState();
+    this.wirePersistence();
     this.sim.refresh();
 
     window.addEventListener('resize', () => this.resize());
@@ -175,12 +185,57 @@ export class Game {
     });
   }
 
+  /** Autosave to IndexedDB + Supabase, and remember small view prefs in localStorage. */
+  private wirePersistence(): void {
+    watch(
+      (s) => s.activePanel,
+      (panel) => {
+        if (gameStore.getState().started) LocalPrefs.set('lastPanel', panel);
+      },
+    );
+    window.setInterval(() => this.autosave(), AUTOSAVE_SECONDS * 1000);
+    const flush = () => {
+      this.rememberCamera();
+      this.autosave();
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flush();
+    });
+    window.addEventListener('pagehide', flush);
+  }
+
+  private rememberCamera(): void {
+    if (!gameStore.getState().started) return;
+    LocalPrefs.set('camera', { lat: this.camera.lat, lon: this.camera.lon, alt: this.camera.alt });
+  }
+
+  private async autosave(): Promise<void> {
+    const s = gameStore.getState();
+    if (!s.started || this.saving || LocalPrefs.get('autosave') === false) return;
+    this.saving = true;
+    try {
+      this.rememberCamera();
+      await this.saves.save(s);
+    } catch (e) {
+      console.warn('Autosave failed', e);
+    } finally {
+      this.saving = false;
+    }
+  }
+
   private async loadSaved(): Promise<void> {
     try {
       const state = await this.saves.load();
       if (state) {
         gameStore.getState().replaceState({ ...state, paused: false });
         this.afterLoad();
+        const cam = LocalPrefs.get('camera');
+        const panel = LocalPrefs.get('lastPanel');
+        if (panel) gameStore.getState().openPanel(panel);
+        if (cam && Number.isFinite(cam.lat) && Number.isFinite(cam.lon) && Number.isFinite(cam.alt)) {
+          this.camera.flyTo(cam.lat, cam.lon, cam.alt);
+          return;
+        }
       } else {
         gameStore.getState().start();
       }

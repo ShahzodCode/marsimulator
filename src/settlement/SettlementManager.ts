@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Terrain } from '../planet/Terrain';
 import type { EventBus } from '../core/EventBus';
-import { DECORATIONS, SETTLEMENT } from '../data/settlement';
+import { SETTLEMENT } from '../data/settlement';
 import { gameStore, watch } from '../state/gameStore';
 import { mulberry32 } from '../planet/noise';
 import { SettlementGrid } from './SettlementGrid';
@@ -10,7 +10,6 @@ import { BuildingManager } from './BuildingManager';
 import { BuildingPlacement } from './BuildingPlacement';
 import { Roads } from './Roads';
 import { RoadPlacement } from './RoadPlacement';
-import { buildDecorationModel } from './buildings/models';
 import { materials } from './buildings/materials';
 import { R } from '../planet/geo';
 
@@ -43,7 +42,6 @@ export class SettlementManager {
     this.placement = new BuildingPlacement(this.grid, events);
     this.roadPlacement = new RoadPlacement(this.grid, events);
     this.details.add(this.roads.group);
-    this.buildDecorations();
     this.buildRocks();
     this.group.add(this.details, this.buildings.group, this.placement.group, this.roadPlacement.group);
 
@@ -84,14 +82,6 @@ export class SettlementManager {
         },
       ),
     );
-  }
-
-  private buildDecorations(): void {
-    for (const d of DECORATIONS) {
-      const model = buildDecorationModel(d.kind);
-      this.grid.place(model, d.x, d.y, d.rotation);
-      this.details.add(model);
-    }
   }
 
   private buildRocks(): void {

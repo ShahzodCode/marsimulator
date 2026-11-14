@@ -1,5 +1,5 @@
 import { BUILDINGS } from '../data/buildings';
-import { RESOURCES, type ResourceId } from '../data/resources';
+import { RESOURCES, formatAmount, type ResourceId } from '../data/resources';
 import type { EventBus } from '../core/EventBus';
 import { formatMarsTime } from '../core/GameClock';
 import { gameStore } from '../state/gameStore';
@@ -54,11 +54,13 @@ export class BuildingPanel {
       this.live.set(key, v);
       stats.append(h('div', { class: 'stat' }, [h('span', { class: 'stat-label', text: label }), v]));
     };
-    stat('energy', def.energy >= 0 ? 'Makes power' : 'Uses power');
+    const isDepot = Object.keys(def.storage).length > 0;
+    if (def.energy !== 0) stat('energy', def.energy > 0 ? 'Makes power' : 'Uses power');
+    for (const id of Object.keys(def.storage) as ResourceId[]) stat(`s-${id}`, `${RESOURCES[id].name} stored`);
     for (const id of Object.keys(def.production) as ResourceId[]) stat(`p-${id}`, `Makes ${RESOURCES[id].name.toLowerCase()} /sol`);
     for (const id of Object.keys(def.consumption) as ResourceId[]) stat(`c-${id}`, `Uses ${RESOURCES[id].name.toLowerCase()} /sol`);
     if (def.housing) stat('housing', 'Beds');
-    stat('road', 'Road');
+    if (!isDepot) stat('road', 'Road');
     if (Object.keys(def.production).length) stat('stored', 'Waiting for pickup');
     stat('built', 'Started');
 
@@ -127,6 +129,14 @@ export class BuildingPanel {
     for (const id of Object.keys(def.consumption) as ResourceId[]) {
       const el = this.live.get(`c-${id}`);
       if (el) setText(el, `${((def.consumption[id] ?? 0) * eff).toFixed(1)}`);
+    }
+    for (const id of Object.keys(def.storage) as ResourceId[]) {
+      const el = this.live.get(`s-${id}`);
+      if (!el) continue;
+      const s = gameStore.getState();
+      const full = s.resources[id] >= s.storage[id] - 0.5;
+      setText(el, `${formatAmount(s.resources[id])} / ${formatAmount(s.storage[id])} ${RESOURCES[id].unit}`);
+      el.style.color = full ? '#ffc24a' : '';
     }
     const rEl = this.live.get('road');
     if (rEl) {

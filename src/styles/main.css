@@ -315,6 +315,36 @@ svg {
   background: var(--bad);
 }
 
+/* How full the storage depot is for a resource. */
+.store-bar {
+  display: block;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  margin-top: 3px;
+  overflow: hidden;
+}
+
+.store-fill {
+  display: block;
+  height: 100%;
+  background: var(--chip-color);
+  opacity: 0.75;
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 0.3s;
+}
+
+.chip.full .store-fill {
+  opacity: 1;
+  background: #ffc24a;
+}
+
+.chip.full .chip-value {
+  color: #ffc24a;
+}
+
 .timebox {
   display: flex;
   align-items: center;

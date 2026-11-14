@@ -13,7 +13,7 @@ const REMOVE = new THREE.Color('#ffb347');
 /**
  * The road tool: highlights the tile under the pointer (green = can build, red = can't,
  * amber = existing road that a click would remove) and lays tiles one piece at a time.
- * Dragging paints a line of pieces; each one must join the plaza or a previous piece.
+ * Dragging paints a line of pieces; each one must join the Storage Depot or a previous piece.
  */
 export class RoadPlacement {
   readonly group = new THREE.Group();
@@ -44,7 +44,7 @@ export class RoadPlacement {
     this.active = active;
     this.tile = null;
     this.group.visible = false;
-    if (active) this.events.emit('placement:feedback', { valid: false, message: 'Point at the plaza edge or the end of a road.' });
+    if (active) this.events.emit('placement:feedback', { valid: false, message: 'Point at the Storage Depot edge or the end of a road.' });
   }
 
   hover(hit: SurfaceHit | null): void {
@@ -73,7 +73,7 @@ export class RoadPlacement {
     if (roads.has(roadKey(tx, ty))) {
       color = REMOVE;
       valid = false;
-      message = canRemoveRoad(roadKey(tx, ty), roads) ? 'Click to remove this road piece.' : 'This piece joins other roads to the plaza.';
+      message = canRemoveRoad(roadKey(tx, ty), roads) ? 'Click to remove this road piece.' : 'This piece joins other roads to the Storage Depot.';
     } else {
       const problem = checkRoad(tx, ty, roads, s.buildings);
       const affordable = ResourceManager.canAfford(s.resources, ROAD_COST);

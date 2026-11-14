@@ -23,7 +23,7 @@ export interface BuildingInstance {
   /** Why the building is not running at full output (for the UI). */
   statusNote: string | null;
   placedAtSol: number;
-  /** A plaza-connected road runs along this building (computed by the simulation). */
+  /** A depot-connected road runs along this building (computed by the simulation). */
   connected: boolean;
   /** Output waiting at the building because no road can carry it away yet. */
   stored: Partial<Record<ResourceId, number>>;
@@ -88,6 +88,8 @@ export interface GameState {
   speed: SimSpeed;
   started: boolean;
   resources: Record<ResourceId, number>;
+  /** Most of each resource the colony can hold (from storage buildings; computed by the simulation). */
+  storage: Record<ResourceId, number>;
   /** Net change per sol (computed by the simulation). */
   rates: Record<ResourceId, number>;
   energy: EnergyState;

@@ -13,9 +13,10 @@ export type BuildingType =
   | 'greenhouse'
   | 'regolith_excavator'
   | 'iron_refinery'
-  | 'ice_drill';
+  | 'ice_drill'
+  | 'storage_depot';
 
-export type BuildingCategory = 'living' | 'energy' | 'life_support' | 'food' | 'industry';
+export type BuildingCategory = 'living' | 'energy' | 'life_support' | 'food' | 'industry' | 'storage';
 
 export interface BuildingDefinition {
   id: BuildingType;
@@ -36,6 +37,8 @@ export interface BuildingDefinition {
   production: Partial<Record<ResourceId, number>>;
   consumption: Partial<Record<ResourceId, number>>;
   housing: number;
+  /** How much of each resource this building can hold for the whole colony. */
+  storage: Partial<Record<ResourceId, number>>;
   /** Shown in the construction menu. */
   buildable: boolean;
 }
@@ -57,6 +60,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     production: {},
     consumption: {},
     housing: 6,
+    storage: {},
     buildable: true,
   },
   solar_farm: {
@@ -75,6 +79,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     production: {},
     consumption: {},
     housing: 0,
+    storage: {},
     buildable: true,
   },
   life_support: {
@@ -93,6 +98,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     production: { oxygen: 6, water: 9 },
     consumption: {},
     housing: 0,
+    storage: {},
     buildable: true,
   },
   greenhouse: {
@@ -111,6 +117,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     production: { food: 12, oxygen: 1.5 },
     consumption: { water: 3 },
     housing: 0,
+    storage: {},
     buildable: true,
   },
   regolith_excavator: {
@@ -129,6 +136,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     production: { regolith: 24 },
     consumption: {},
     housing: 0,
+    storage: {},
     buildable: true,
   },
   iron_refinery: {
@@ -147,6 +155,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     production: { iron: 6 },
     consumption: { regolith: 16 },
     housing: 0,
+    storage: {},
     buildable: true,
   },
   ice_drill: {
@@ -165,7 +174,28 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     production: { water: 14 },
     consumption: {},
     housing: 0,
+    storage: {},
     buildable: true,
+  },
+  storage_depot: {
+    id: 'storage_depot',
+    name: 'Central Storage Depot',
+    shortName: 'Storage',
+    description: 'The heart of the base. Every road starts here, and everything the colony makes is stored here — but only up to its limit, so watch the bars!',
+    funFact: 'Water and oxygen are kept in pressurised tanks, because in Mars’s thin, cold air water would boil away or freeze.',
+    icon: '📦',
+    model: 'storage_depot',
+    category: 'storage',
+    constructionCost: {},
+    buildTimeSols: 0,
+    footprint: { width: 6, height: 6 },
+    energy: 0,
+    production: {},
+    consumption: {},
+    housing: 0,
+    storage: { regolith: 1500, iron: 800, water: 4000, oxygen: 2000, food: 1500 },
+    // There is one depot, at the centre of the base: it cannot be built again.
+    buildable: false,
   },
 };
 
@@ -175,4 +205,14 @@ export const BUILDING_TYPES = Object.keys(BUILDINGS) as BuildingType[];
 export function rotatedFootprint(type: BuildingType, rotation: number): { width: number; height: number } {
   const fp = BUILDINGS[type].footprint;
   return rotation % 2 === 1 ? { width: fp.height, height: fp.width } : { ...fp };
+}
+
+/** Total amount of each resource the colony can hold (sum over working storage buildings). */
+export function storageCapacity(buildings: readonly { type: BuildingType; isOperational: boolean }[]): Record<ResourceId, number> {
+  const cap: Record<ResourceId, number> = { regolith: 0, iron: 0, water: 0, oxygen: 0, food: 0 };
+  for (const b of buildings) {
+    if (!b.isOperational) continue;
+    for (const [id, v] of Object.entries(BUILDINGS[b.type].storage) as [ResourceId, number][]) cap[id] += v;
+  }
+  return cap;
 }

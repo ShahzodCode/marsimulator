@@ -196,9 +196,10 @@ export class SettlementPanel implements Panel {
 
   private async save(): Promise<void> {
     try {
-      const d = await this.saves.save(gameStore.getState());
-      setText(this.saveStatus, `Saved at ${new Date(d.savedAt).toLocaleTimeString()}.`);
-      this.events.emit('game:saved', { ok: true, message: 'Game saved' });
+      const r = await this.saves.save(gameStore.getState());
+      const time = new Date(r.data.savedAt).toLocaleTimeString();
+      setText(this.saveStatus, r.cloud ? `Saved to the cloud at ${time}.` : `Saved on this device at ${time} (cloud unavailable).`);
+      this.events.emit('game:saved', { ok: true, message: r.cloud ? 'Game saved to the cloud' : 'Game saved on this device' });
     } catch (e) {
       setText(this.saveStatus, `Could not save: ${(e as Error).message}`);
     }
@@ -223,8 +224,11 @@ export class SettlementPanel implements Panel {
     this.lastBuildingsKey = '';
     this.render();
     this.unsub = gameStore.subscribe(() => this.render());
+    const cached = this.saves.cachedInfo();
+    if (cached && !this.saveStatus.textContent)
+      setText(this.saveStatus, `Last save: Sol ${cached.sol}, ${new Date(cached.savedAt).toLocaleString()}${cached.cloud ? ' ☁️' : ''}`);
     this.saves.info().then((i) => {
-      if (i && !this.saveStatus.textContent) setText(this.saveStatus, `Last save: Sol ${i.sol}, ${new Date(i.savedAt).toLocaleString()}`);
+      if (i && (!this.saveStatus.textContent || this.saveStatus.textContent.startsWith('Last save'))) setText(this.saveStatus, `Last save: Sol ${i.sol}, ${new Date(i.savedAt).toLocaleString()}`);
     });
   }
 
@@ -249,7 +253,7 @@ export class SettlementPanel implements Panel {
     );
     for (const id of RESOURCE_IDS) {
       const r = this.rows.get(id)!;
-      setText(r.amount, `${formatAmount(s.resources[id])} ${RESOURCES[id].unit}`);
+      setText(r.amount, `${formatAmount(s.resources[id])} / ${formatAmount(s.storage[id])} ${RESOURCES[id].unit}`);
       setText(r.rate, formatRate(s.rates[id]));
       r.rate.className = s.rates[id] > 0.05 ? 'up' : s.rates[id] < -0.05 ? 'down' : '';
       const left = ResourceManager.solsRemaining(s.resources[id], s.rates[id]);

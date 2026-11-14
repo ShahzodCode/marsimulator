@@ -1,4 +1,4 @@
-import { DECORATIONS, SETTLEMENT } from '../data/settlement';
+import { SETTLEMENT } from '../data/settlement';
 import type { BuildingInstance } from '../state/types';
 import { footprintRect, type Rect } from './PlacementRules';
 
@@ -7,12 +7,12 @@ import { footprintRect, type Rect } from './PlacementRules';
  *
  * Roads are laid by the player one square "tile" at a time. A tile is ROAD_TILE × ROAD_TILE
  * grid cells, centred on (ROAD_TILE·tx, ROAD_TILE·ty) — this offset makes the 6×6 central
- * plaza exactly 3×3 tiles, so the plaza is the hub every road network grows from.
+ * storage depot exactly 3×3 tiles, so the depot is the hub every road network grows from.
  *
  * Rules:
- *  - a new tile must touch (share an edge with) the plaza or an existing road tile,
- *  - tiles can't overlap buildings or reserved decorations,
- *  - a building is "connected" when a road tile reachable from the plaza runs along it.
+ *  - a new tile must touch (share an edge with) the depot or an existing road tile,
+ *  - tiles can't overlap buildings or the depot,
+ *  - a building is "connected" when a road tile reachable from the depot runs along it.
  */
 
 export const ROAD_TILE = 2;
@@ -31,9 +31,9 @@ export type RoadProblem = 'exists' | 'outside' | 'reserved' | 'building' | 'disc
 export const ROAD_PROBLEM_TEXT: Record<Exclude<RoadProblem, null>, string> = {
   exists: 'There is already a road here.',
   outside: 'Too far from the base — stay inside the bright circle.',
-  reserved: 'Roads can’t go over the plaza, landing pad or equipment.',
+  reserved: 'Roads can’t go over the Storage Depot.',
   building: 'A building is in the way.',
-  disconnected: 'Roads must join the plaza or another road piece.',
+  disconnected: 'Roads must join the Storage Depot or another road piece.',
 };
 
 export const roadKey = (tx: number, ty: number): string => `${tx},${ty}`;
@@ -53,7 +53,7 @@ export function pointToTile(x: number, y: number): { tx: number; ty: number } {
   return { tx: Math.round(x / ROAD_TILE), ty: Math.round(y / ROAD_TILE) };
 }
 
-/** The central plaza covers tiles -1..1 on both axes. */
+/** The central storage depot (the road hub) covers tiles -1..1 on both axes. */
 export function isPlazaTile(tx: number, ty: number): boolean {
   return Math.abs(tx) <= 1 && Math.abs(ty) <= 1;
 }
@@ -73,13 +73,6 @@ function rectGap(a: Rect, b: Rect): number {
   return sideOverlap > 0 ? dx + dy : Infinity;
 }
 
-const RESERVED: Rect[] = DECORATIONS.filter((d) => d.kind !== 'plaza').map((d) => ({
-  x0: d.x - d.width / 2,
-  y0: d.y - d.height / 2,
-  x1: d.x + d.width / 2,
-  y1: d.y + d.height / 2,
-}));
-
 /** Can a road tile be built here, ignoring connectivity? */
 function siteProblem(tx: number, ty: number, buildings: BuildingInstance[]): RoadProblem {
   if (isPlazaTile(tx, ty)) return 'reserved';
@@ -91,7 +84,6 @@ function siteProblem(tx: number, ty: number, buildings: BuildingInstance[]): Roa
     [r.x1, r.y1],
   ];
   if (corners.some(([x, y]) => Math.hypot(x, y) > SETTLEMENT.buildRadius)) return 'outside';
-  if (RESERVED.some((res) => overlaps(r, res))) return 'reserved';
   for (const b of buildings) if (overlaps(r, footprintRect(b.type, b.gridX, b.gridY, b.rotation))) return 'building';
   return null;
 }
@@ -170,6 +162,11 @@ export function connectedBuildingIds(buildings: BuildingInstance[], roads: Reado
   const reach = reachableRoads(roads);
   const out = new Set<string>();
   for (const b of buildings) {
+    // The depot is the hub every road starts from, so it always counts as connected.
+    if (b.type === 'storage_depot') {
+      out.add(b.id);
+      continue;
+    }
     const f = footprintRect(b.type, b.gridX, b.gridY, b.rotation);
     // Only test tiles in the ring around the footprint.
     const tx0 = Math.floor((f.x0 - 2) / ROAD_TILE);
@@ -207,7 +204,8 @@ export function footprintHitsRoad(r: Rect, roads: ReadonlySet<string>): boolean 
 export function starterRoads(buildings: BuildingInstance[], existing: string[] = []): string[] {
   const roads = new Set(existing);
   for (const b of buildings) {
-    if (connectedBuildingIds([b], roads).size) continue;
+    // The depot is the hub itself — roads start from it, they don't lead to it.
+    if (b.type === 'storage_depot' || connectedBuildingIds([b], roads).size) continue;
     // Multi-source BFS from every buildable tile that already touches the network.
     const prev = new Map<string, string | null>();
     const queue: [number, number][] = [];

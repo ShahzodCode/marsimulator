@@ -111,6 +111,8 @@ export class BuildingManager {
     marker.renderOrder = 10;
     marker.position.y = (Number.isFinite(top) ? top : 2) + 1.4;
     marker.visible = false;
+    // Signs are not clickable (sprites also need a camera to raycast, which pick() lacks).
+    marker.raycast = () => {};
     root.add(marker);
     const entry: Entry = { data: b, root, model, scaffold: null, pop: 0, marker };
     this.group.add(root);

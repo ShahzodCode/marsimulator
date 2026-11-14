@@ -12,6 +12,8 @@ interface ResourceChip {
   root: HTMLElement;
   amount: HTMLElement;
   rate: HTMLElement;
+  /** How full the storage depot is for this resource. */
+  fill: HTMLElement;
 }
 
 /**
@@ -57,15 +59,16 @@ export class HUD {
       const def = RESOURCES[id];
       const amount = h('span', { class: 'chip-value' });
       const rate = h('span', { class: 'chip-rate' });
+      const fill = h('span', { class: 'store-fill' });
       const root = h(
         'div',
         { class: 'chip', title: `${def.name}: ${def.description}`, attrs: { role: 'listitem' }, style: { ['--chip-color' as never]: def.color } },
         [
           h('span', { class: 'chip-icon', html: RESOURCE_ICONS[id] }),
-          h('span', { class: 'chip-body' }, [h('span', { class: 'chip-label', text: def.name }), h('span', { class: 'chip-row' }, [amount, rate])]),
+          h('span', { class: 'chip-body' }, [h('span', { class: 'chip-label', text: def.name }), h('span', { class: 'chip-row' }, [amount, rate]), h('span', { class: 'store-bar' }, [fill])]),
         ],
       );
-      this.chips[id] = { root, amount, rate };
+      this.chips[id] = { root, amount, rate, fill };
       wrap.append(root);
     }
     this.energyValue = h('span', { class: 'chip-value' });
@@ -137,6 +140,13 @@ export class HUD {
       const left = ResourceManager.solsRemaining(amt, rate);
       toggleClass(c.root, 'critical', def.vital && amt <= 0.01 && rate < 0);
       toggleClass(c.root, 'low', def.vital && amt > 0.01 && left < def.warnSols);
+      const cap = s.storage[id];
+      const frac = cap > 0 ? Math.min(1, amt / cap) : 0;
+      c.fill.style.transform = `scaleX(${frac.toFixed(3)})`;
+      toggleClass(c.root, 'full', cap > 0 && amt >= cap - 0.5);
+      const title = `${def.name}: ${def.description}
+Storage depot: ${formatAmount(amt)} / ${formatAmount(cap)} ${def.unit}`;
+      if (c.root.title !== title) c.root.title = title;
     }
     const e = s.energy;
     setText(this.energyValue, `${e.generation.toFixed(0)} / ${e.consumption.toFixed(0)}`);

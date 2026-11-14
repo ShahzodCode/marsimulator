@@ -27,30 +27,14 @@ export interface StartingBuilding {
   rotation: number;
 }
 
+/** The central storage depot fills the 6×6 hub at the centre; every road grows from it. */
+export const DEPOT = { gridX: -3, gridY: -3 } as const;
+
 export const STARTING_BUILDINGS: StartingBuilding[] = [
-  { type: 'habitat', gridX: -4, gridY: 6, rotation: 0 },
-  { type: 'greenhouse', gridX: 8, gridY: -3, rotation: 0 },
-  { type: 'life_support', gridX: -15, gridY: -2, rotation: 0 },
-  { type: 'solar_farm', gridX: -5, gridY: -17, rotation: 0 },
-];
-
-export type DecorationKind = 'plaza' | 'landing_pad' | 'comm_tower' | 'rover' | 'crates';
-
-export interface Decoration {
-  kind: DecorationKind;
-  /** Centre in cells. */
-  x: number;
-  y: number;
-  /** Reserved footprint (cells) — buildings cannot overlap it. */
-  width: number;
-  height: number;
-  rotation: number;
-}
-
-export const DECORATIONS: Decoration[] = [
-  { kind: 'plaza', x: 0, y: 0, width: 6, height: 6, rotation: 0 },
-  { kind: 'landing_pad', x: -20, y: -18, width: 10, height: 10, rotation: 0 },
-  { kind: 'comm_tower', x: -10, y: 10, width: 3, height: 3, rotation: 0 },
-  { kind: 'rover', x: 6, y: -7, width: 3, height: 2, rotation: 0.4 },
-  { kind: 'crates', x: 9, y: 7, width: 3, height: 2, rotation: 0 },
+  { type: 'storage_depot', gridX: DEPOT.gridX, gridY: DEPOT.gridY, rotation: 0 },
+  // The rest of the starting base sits a short drive out from the depot.
+  { type: 'habitat', gridX: -4, gridY: 11, rotation: 0 },
+  { type: 'greenhouse', gridX: 13, gridY: -3, rotation: 0 },
+  { type: 'life_support', gridX: -20, gridY: -3, rotation: 0 },
+  { type: 'solar_farm', gridX: -5, gridY: -22, rotation: 0 },
 ];

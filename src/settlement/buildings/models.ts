@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import type { BuildingType } from '../../data/buildings';
-import type { DecorationKind } from '../../data/settlement';
 import { ModelBuilder } from './ModelBuilder';
 import { materials } from './materials';
 import { ChickenFlock } from './Chickens';
+import { instantiateBuildingModel } from './glbModels';
 
 /**
- * Procedural low-poly models for every building and decoration.
+ * Procedural low-poly models for every building.
  * Units: 1 = one grid cell; models are centred on their footprint; +Z = south.
  */
 
@@ -291,6 +291,57 @@ const iceDrill: Factory = (b) => {
   b.hcyl(M.metal, 0.07, 2.1, 1.3, 0.4, 0.0, Math.PI / 2, 8);
 };
 
+/**
+ * Round hub at the centre of the base. A small warehouse sits in the middle and one
+ * store for each kind of resource stands on the diagonals, leaving the four sides
+ * free for roads.
+ */
+const storageDepot: Factory = (b) => {
+  const M = materials();
+  b.cyl(M.pad, 3.0, 3.1, 0.72, 0, -0.62, 0, 48);
+  b.ring(M.orange, 2.55, 2.8, 0, 0.11, 0, 56);
+  // Central warehouse.
+  b.cyl(M.white, 1.1, 1.15, 1.0, 0, 0.1, 0, 24);
+  b.torus(M.orange, 1.13, 0.08, 0, 0.62, 0);
+  b.cyl(M.darkMetal, 1.0, 1.1, 0.16, 0, 1.1, 0, 24);
+  b.cyl(M.panel, 0.45, 0.5, 0.12, 0, 1.26, 0, 16);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU;
+    // Loading doors facing each road.
+    b.add(new THREE.BoxGeometry(0.6, 0.72, 0.06), M.darkMetal, { x: Math.cos(a) * 1.13, y: 0.1, z: Math.sin(a) * 1.13, ry: -a + Math.PI / 2 });
+    b.add(new THREE.BoxGeometry(0.6, 0.06, 0.07), M.glowWhite, { x: Math.cos(a) * 1.14, y: 0.88, z: Math.sin(a) * 1.14, ry: -a + Math.PI / 2 });
+  }
+  const r = 1.95;
+  const at = (k: number) => ({ x: Math.cos(Math.PI / 4 + (k * Math.PI) / 2) * r, z: Math.sin(Math.PI / 4 + (k * Math.PI) / 2) * r });
+  // Water tank (north-east).
+  {
+    const { x, z } = at(3);
+    b.cyl(M.waterTank, 0.5, 0.5, 1.1, x, 0.1, z, 20);
+    b.dome(M.white, 0.5, x, 1.2, z, 0.45, 18);
+    b.torus(M.white, 0.51, 0.04, x, 0.65, z);
+  }
+  // Oxygen spheres on legs (north-west).
+  {
+    const { x, z } = at(2);
+    for (const [dx, dz] of [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]) b.cyl(M.metal, 0.04, 0.04, 0.55, x + dx, 0.1, z + dz, 6);
+    b.sphere(M.oxygenTank, 0.45, x, 1.05, z, {}, 18, 12);
+    b.torus(M.teal, 0.46, 0.04, x, 1.05, z);
+  }
+  // Food containers (south-west).
+  {
+    const { x, z } = at(1);
+    b.box(M.white, 0.9, 0.6, 0.62, x, 0.1, z, Math.PI / 4);
+    b.box(M.teal, 0.92, 0.1, 0.64, x, 0.62, z, Math.PI / 4);
+    b.box(M.white, 0.7, 0.45, 0.5, x, 0.72, z, Math.PI / 4);
+  }
+  // Regolith heap and iron ingots (south-east).
+  {
+    const { x, z } = at(0);
+    b.cone(M.ore, 0.55, 0.6, x - 0.12, 0.1, z - 0.12, 9);
+    for (let i = 0; i < 3; i++) b.box(M.ingot, 0.42, 0.16, 0.2, x + 0.25, 0.1 + i * 0.17, z + 0.25 + (i % 2) * 0.04, Math.PI / 4);
+  }
+};
+
 const FACTORIES: Record<BuildingType, Factory> = {
   habitat,
   solar_farm: solarFarm,
@@ -299,89 +350,37 @@ const FACTORIES: Record<BuildingType, Factory> = {
   regolith_excavator: excavator,
   iron_refinery: refinery,
   ice_drill: iceDrill,
+  storage_depot: storageDepot,
 };
 
+/** Floor height of the chicken run inside the Blender greenhouse model. */
+const GLB_COOP_FLOOR = 0.36;
+
 export function buildBuildingModel(type: BuildingType, ghostMaterial: THREE.Material | null = null): BuiltModel {
+  // Prefer the detailed Blender model; fall back to the procedural one if it failed to load.
+  const glb = instantiateBuildingModel(type, ghostMaterial);
+  if (glb) {
+    const updates: ((dt: number, time: number) => void)[] = [];
+    if (glb.spinners.length) {
+      updates.push((dt) => {
+        for (const s of glb.spinners) s.node.rotateY(s.speed * dt);
+      });
+    }
+    if (type === 'greenhouse' && !ghostMaterial) {
+      const flock = new ChickenFlock(6, { minX: 1.8, maxX: 4.5, minZ: -0.75, maxZ: 2.2 }, GLB_COOP_FLOOR);
+      flock.mesh.userData.sharedGeometry = true;
+      glb.group.add(flock.mesh);
+      updates.push((dt, time) => flock.update(dt, time));
+    }
+    return {
+      group: glb.group,
+      update: updates.length ? (dt, time) => updates.forEach((u) => u(dt, time)) : undefined,
+    };
+  }
   const b = new ModelBuilder(ghostMaterial);
   const extras = new THREE.Group();
   const update = FACTORIES[type](b, extras, ghostMaterial !== null) ?? undefined;
   const group = b.build(ghostMaterial === null);
   group.add(extras);
   return { group, update };
-}
-
-// ---------------------------------------------------------------------------
-// Decorations
-// ---------------------------------------------------------------------------
-
-export function buildDecorationModel(kind: DecorationKind): THREE.Group {
-  const M = materials();
-  const b = new ModelBuilder();
-  switch (kind) {
-    case 'plaza': {
-      b.cyl(M.pad, 3.0, 3.1, 0.7, 0, -0.62, 0, 40);
-      b.ring(M.orange, 2.5, 2.75, 0, 0.09, 0, 48);
-      b.ring(M.asphalt, 0.0, 1.1, 0, 0.085, 0, 32);
-      b.cyl(M.metal, 0.05, 0.05, 2.4, 0, 0.08, 0, 8);
-      b.add(new THREE.BoxGeometry(0.9, 0.55, 0.03), M.orange, { x: 0.47, y: 2.15 });
-      b.sphere(M.glowWhite, 0.07, 0, 2.52, 0);
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * TAU + Math.PI / 4;
-        b.box(M.panel, 0.9, 0.25, 0.3, Math.cos(a) * 1.9, 0.08, Math.sin(a) * 1.9, -a + Math.PI / 2);
-      }
-      break;
-    }
-    case 'landing_pad': {
-      b.cyl(M.asphalt, 4.6, 4.8, 0.72, 0, -0.62, 0, 48);
-      b.ring(M.orange, 3.7, 4.0, 0, 0.11, 0, 56);
-      b.ring(M.white, 2.2, 2.35, 0, 0.11, 0, 48);
-      b.box(M.white, 0.35, 0.02, 2.2, -0.75, 0.1, 0);
-      b.box(M.white, 0.35, 0.02, 2.2, 0.75, 0.1, 0);
-      b.box(M.white, 1.2, 0.02, 0.35, 0, 0.1, 0);
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * TAU;
-        b.sphere(M.glowOrange, 0.12, Math.cos(a) * 4.3, 0.16, Math.sin(a) * 4.3, {}, 6, 4);
-      }
-      // Parked cargo lander.
-      b.cyl(M.white, 0.85, 0.95, 1.6, 2.1, 0.55, -2.1, 18);
-      b.cone(M.white, 0.85, 1.0, 2.1, 2.15, -2.1, 18);
-      b.torus(M.orange, 0.88, 0.07, 2.1, 1.2, -2.1);
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * TAU + Math.PI / 4;
-        b.add(new THREE.BoxGeometry(0.1, 0.9, 0.1), M.metal, { x: 2.1 + Math.cos(a) * 0.95, y: 0.5, z: -2.1 + Math.sin(a) * 0.95, rx: Math.sin(a) * 0.4, rz: -Math.cos(a) * 0.4 });
-      }
-      b.sphere(M.glowRed, 0.08, 2.1, 3.18, -2.1);
-      break;
-    }
-    case 'comm_tower': {
-      b.box(M.pad, 3, 0.7, 3, 0, -0.62, 0);
-      b.box(M.metal, 0.16, 3.6, 0.16, 0, 0.08, 0);
-      for (const y of [0.9, 1.8, 2.7]) b.box(M.metal, 0.6, 0.06, 0.06, 0, y, 0);
-      b.add(new THREE.SphereGeometry(0.9, 18, 8, 0, TAU, 0, Math.PI / 3.2), M.white, { x: 0.4, y: 2.0, z: 0.5, rx: Math.PI - 0.8, ry: 0.6 });
-      b.cyl(M.darkMetal, 0.05, 0.05, 0.6, 0.25, 1.75, 0.3, 6);
-      b.sphere(M.glowRed, 0.1, 0, 3.75, 0);
-      b.box(M.white, 0.9, 0.6, 0.7, -0.7, 0.08, 0.7);
-      break;
-    }
-    case 'rover': {
-      b.box(M.white, 1.7, 0.45, 1.05, 0, 0.42, 0);
-      b.box(M.solar, 1.5, 0.05, 0.95, 0, 0.88, 0);
-      b.box(M.orange, 1.72, 0.1, 1.07, 0, 0.42, 0);
-      for (const x of [-0.6, 0, 0.6]) {
-        for (const z of [-0.6, 0.6]) b.add(new THREE.CylinderGeometry(0.22, 0.22, 0.16, 12), M.rubber, { x, y: 0.22, z, rx: Math.PI / 2 });
-      }
-      b.cyl(M.metal, 0.04, 0.04, 0.6, 0.55, 0.9, 0.2, 6);
-      b.box(M.darkMetal, 0.25, 0.14, 0.18, 0.55, 1.5, 0.2);
-      b.sphere(M.glowCyan, 0.05, 0.68, 1.57, 0.2);
-      break;
-    }
-    case 'crates': {
-      b.box(M.orange, 0.9, 0.7, 0.8, -0.6, 0.06, 0.2);
-      b.box(M.white, 0.9, 0.7, 0.8, 0.45, 0.06, 0.1, 0.2);
-      b.box(M.teal, 0.8, 0.55, 0.7, -0.5, 0.76, 0.2, -0.15);
-      b.box(M.panel, 0.6, 0.45, 0.6, 1.1, 0.06, -0.5, 0.4);
-      break;
-    }
-  }
-  return b.build(true);
 }
