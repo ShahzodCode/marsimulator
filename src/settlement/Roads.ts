@@ -71,23 +71,37 @@ function turn(a: number, b: number): Path {
 
 export class Roads {
   readonly group = new THREE.Group();
-  private mats = {
-    shoulder: decal('#b48a66', -1),
-    asphalt: decal('#4b4440', -2),
-    worn: decal('#5a514b', -3),
-    edge: decal('#e9e2d6', -4),
-    centre: decal('#f2b630', -4),
-  };
+  private mats: Record<'shoulder' | 'asphalt' | 'worn' | 'edge' | 'centre', THREE.MeshStandardMaterial>;
   private meshes: THREE.Mesh[] = [];
   private signature = '';
   private readonly p = new THREE.Vector2();
   private readonly t = new THREE.Vector2();
   private readonly v = new THREE.Vector3();
 
-  constructor(private grid: SettlementGrid) {}
+  /**
+   * @param ghost Translucent preview look (road tool): no depth writes or shadows,
+   *   layers drawn in a fixed order beneath the placement squares.
+   */
+  constructor(
+    private grid: SettlementGrid,
+    private ghost = false,
+  ) {
+    const mk = (color: string, order: number) => decal(color, order, ghost ? GHOST_OPACITY : 1);
+    this.mats = {
+      shoulder: mk('#b48a66', -1),
+      asphalt: mk('#4b4440', -2),
+      worn: mk('#5a514b', -3),
+      edge: mk('#e9e2d6', -4),
+      centre: mk('#f2b630', -4),
+    };
+  }
 
-  rebuild(roads: string[], buildings: BuildingInstance[]): void {
-    const sig = roads.join(';') + '#' + buildings.map((b) => `${b.id}:${b.gridX},${b.gridY},${b.rotation}`).join('|');
+  /**
+   * @param only When given, just these tiles are drawn — shaped against the whole `roads`
+   *   network (used by the ghost preview to show planned pieces joining existing roads).
+   */
+  rebuild(roads: string[], buildings: BuildingInstance[], only?: string[]): void {
+    const sig = roads.join(';') + '#' + buildings.map((b) => `${b.id}:${b.gridX},${b.gridY},${b.rotation}`).join('|') + '@' + (only?.join(';') ?? '*');
     if (sig === this.signature) return;
     this.signature = sig;
     for (const m of this.meshes) {
@@ -107,7 +121,7 @@ export class Roads {
       centre: { from: -0.035, to: 0.035, lift: 0.0009, out: [] as number[], dash: [1, 0.5] as [number, number] },
     };
 
-    for (const key of roads) {
+    for (const key of only ?? roads) {
       const [tx, ty] = parseRoadKey(key);
       const cx = tx * ROAD_TILE;
       const cy = ty * ROAD_TILE;
@@ -158,6 +172,11 @@ export class Roads {
     const add = (arr: number[], m: THREE.Material) => {
       if (!arr.length) return;
       const mesh = this.mesh(arr, m);
+      if (this.ghost) {
+        mesh.receiveShadow = false;
+        mesh.renderOrder = 1 + this.meshes.length * 0.1;
+        mesh.raycast = () => {};
+      }
       this.meshes.push(mesh);
       this.group.add(mesh);
     };
@@ -296,10 +315,16 @@ export class Roads {
   }
 }
 
-function decal(color: string, order: number): THREE.MeshStandardMaterial {
+const GHOST_OPACITY = 0.45;
+
+function decal(color: string, order: number, opacity = 1): THREE.MeshStandardMaterial {
+  const ghost = opacity < 1;
   return new THREE.MeshStandardMaterial({
     color,
     roughness: 0.95,
+    transparent: ghost,
+    opacity,
+    depthWrite: !ghost,
     polygonOffset: true,
     polygonOffsetFactor: order - 1,
     polygonOffsetUnits: order * 4 - 4,

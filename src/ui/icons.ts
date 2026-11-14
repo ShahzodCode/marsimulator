@@ -15,6 +15,31 @@ export const RESOURCE_ICONS: Record<ResourceId, string> = {
   hydrogen: svg('<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 8v8M15 8v8M9 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
 };
 
+const HUD_STROKE = 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
+
+/**
+ * Line-art glyphs for the top resource bar: one weight, one ink colour, so the
+ * bar reads as a single quiet strip rather than a row of coloured badges.
+ */
+export const HUD_ICONS: Record<ResourceId | 'energy' | 'crew', string> = {
+  // Boulder with a fracture line and a pebble.
+  regolith: svg(`<g ${HUD_STROKE}><path d="M3.5 18.5l2.2-7 4.6-3.8 5.4 1.6 3.3 4.9-.9 4.3z"/><path d="M10.3 7.7l1.4 4.6-3.2 2.4M11.7 12.3l4.1 1"/><circle cx="20" cy="6" r="1.2"/></g>`),
+  // A stacked pair of ingots.
+  iron: svg(`<g ${HUD_STROKE}><path d="M3 19l2-4h9l2 4z"/><path d="M8 15l2-4h9l2 4-2 4"/></g>`),
+  // Droplet with a ripple inside.
+  water: svg(`<g ${HUD_STROKE}><path d="M12 3c3.8 4.7 6.2 8.1 6.2 11.2a6.2 6.2 0 0 1-12.4 0C5.8 11.1 8.2 7.7 12 3z"/><path d="M8.8 15.2c1-.8 2.1-.8 3.2 0s2.2.8 3.2 0"/></g>`),
+  // A rising stream of bubbles (O₂).
+  oxygen: svg(`<g ${HUD_STROKE}><circle cx="9" cy="15" r="5"/><circle cx="17" cy="8.5" r="2.8"/><circle cx="19" cy="15.5" r="1.2"/><path d="M7 14.3a2 2 0 0 1 2-1.9"/></g>`),
+  // A two-leaf sprout growing from soil.
+  food: svg(`<g ${HUD_STROKE}><path d="M4 20h16"/><path d="M12 20v-8"/><path d="M12 12C12 8 9.5 6 5.5 6c0 4 2.5 6 6.5 6z"/><path d="M12 13.5c0-3.3 2.2-5.5 6.5-5.5 0 3.6-2.4 5.5-6.5 5.5z"/></g>`),
+  // An atom: nucleus and two orbits.
+  hydrogen: svg(`<g ${HUD_STROKE}><ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(30 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.8" transform="rotate(-30 12 12)"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></g>`),
+  // A lightning bolt inside a ring, like a power gauge.
+  energy: svg(`<g ${HUD_STROKE}><circle cx="12" cy="12" r="9"/><path d="M13 6.5l-4.2 6.2h3.6l-1.4 4.8 4.2-6.2h-3.6z"/></g>`),
+  // An astronaut helmet with visor.
+  crew: svg(`<g ${HUD_STROKE}><path d="M5 17.5V12a7 7 0 0 1 14 0v5.5"/><path d="M3.5 20.5h17l-1.5-3h-14z"/><path d="M8 12.5a4 3 0 0 1 8 0v1a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 8 13.5z"/></g>`),
+};
+
 export const ICONS = {
   energy: svg('<path d="M13 2L4 14h7l-1 8 9-12h-7z" fill="currentColor"/>'),
   pause: svg('<rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/>'),

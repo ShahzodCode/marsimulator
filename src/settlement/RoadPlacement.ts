@@ -3,6 +3,7 @@ import type { EventBus } from '../core/EventBus';
 import type { SurfaceHit } from '../planet/CameraController';
 import { gameStore, roadSet } from '../state/gameStore';
 import { ResourceManager } from '../simulation/ResourceManager';
+import { Roads } from './Roads';
 import { ROAD_COST, ROAD_PROBLEM_TEXT, ROAD_TILE, canRemoveRoad, checkRoad, pointToTile, roadKey } from './RoadRules';
 import type { SettlementGrid } from './SettlementGrid';
 
@@ -59,6 +60,8 @@ interface Overlay {
 export class RoadPlacement {
   readonly group = new THREE.Group();
   private overlays: Record<OverlayKind, Overlay>;
+  /** Faded road models on the tiles that would be built (under the green squares). */
+  private ghost: Roads;
   private active = false;
   private tile: { tx: number; ty: number } | null = null;
   /** Current drag: the tile it started on and the road from there to the pointer. */
@@ -82,6 +85,9 @@ export class RoadPlacement {
       return { fill, mesh, lines };
     };
     this.overlays = { ok: mk(VALID), bad: mk(INVALID), remove: mk(REMOVE) };
+    this.ghost = new Roads(grid, true);
+    this.ghost.group.name = 'road-ghost';
+    this.group.add(this.ghost.group);
     this.group.visible = false;
   }
 
@@ -247,6 +253,10 @@ export class RoadPlacement {
       if (tiles.length) any = true;
       this.buildTiles(this.overlays[key], tiles);
     }
+    // Ghost road models for the buildable tiles, shaped as they'd join the real network.
+    const s = gameStore.getState();
+    const planned = (sets.ok ?? []).map(([x, y]) => roadKey(x, y));
+    this.ghost.rebuild(planned.length ? [...s.roads, ...planned] : [], s.buildings, planned);
     this.group.visible = any;
   }
 

@@ -41,16 +41,7 @@ export class LoadingScreen {
 export class WelcomeScreen {
   readonly el: HTMLElement;
 
-  private loadBtn: HTMLButtonElement;
-
-  constructor(
-    parent: HTMLElement,
-    onStart: () => void,
-    private hasSave: () => Promise<boolean>,
-    onLoad: () => void,
-  ) {
-    const loadBtn = (this.loadBtn = h('button', { class: 'btn', text: 'Continue saved game', attrs: { type: 'button' }, on: { click: () => this.close(onLoad) } }));
-    this.refreshSave();
+  constructor(parent: HTMLElement, onStart: () => void) {
     this.el = h('div', { class: 'welcome', attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'welcome-title' } }, [
       h('div', { class: 'welcome-card' }, [
         h('span', { class: 'eyebrow', text: 'Mission briefing · Sol 1' }),
@@ -66,20 +57,11 @@ export class WelcomeScreen {
         h('p', { class: 'controls-help', text: 'Drag to move · Scroll or pinch to zoom · Right-drag to rotate & tilt · Space pause' }),
         h('div', { class: 'welcome-actions' }, [
           h('button', { class: 'btn primary big', text: 'Start mission 🚀', attrs: { type: 'button' }, on: { click: () => this.close(onStart) } }),
-          loadBtn,
         ]),
         h('div', { class: 'welcome-account' }, [h('span', { class: 'muted', text: 'Save your colony to an account:' }), accountButton(parent)]),
       ]),
     ]);
     parent.append(this.el);
-  }
-
-  /** Re-checks for a saved game (e.g. after logging in to a different account). */
-  refreshSave(): void {
-    this.loadBtn.style.display = 'none';
-    this.hasSave().then((yes) => {
-      if (yes) this.loadBtn.style.display = '';
-    });
   }
 
   get open(): boolean {

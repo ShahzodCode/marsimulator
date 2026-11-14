@@ -1,7 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { supabase, resetCloudUser } from './supabase';
 
-/** A signed-in player with a real (email + password) account. Anonymous players have no Account. */
+/** A signed-in player with a real (email + password) account. Guests have no Account. */
 export interface Account {
   id: string;
   email: string;
@@ -58,8 +58,8 @@ export function validateUsername(name: string): string | null {
 type Listener = (account: Account | null, change: AuthChange) => void;
 
 /**
- * Email + password accounts (Supabase Auth). Players without an account keep
- * playing as an anonymous Supabase user; logging in swaps the session so cloud
+ * Email + password accounts (Supabase Auth). Players without an account play as a
+ * guest with no Supabase session (nothing saved to the cloud); logging in lets cloud
  * saves follow the account to any device. The username lives in user metadata.
  */
 class AuthService {
@@ -71,8 +71,10 @@ class AuthService {
     this.ready = supabase
       ? supabase.auth
           .getSession()
-          .then(({ data }) => {
+          .then(async ({ data }) => {
             this.account = toAccount(data.session);
+            // Anonymous sessions from older versions of the game are no longer used.
+            if (data.session?.user.is_anonymous) await supabase!.auth.signOut().catch(() => {});
           })
           .catch(() => {})
       : Promise.resolve();

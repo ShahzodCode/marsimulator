@@ -18,7 +18,7 @@ const DEFAULT_SLOT = 'slot-1';
 
 /**
  * Saves go to IndexedDB on this device first, then to Supabase (cloud) for the
- * signed-in player (an email account, or an anonymous guest). Each account gets its
+ * signed-in account (guests save on this device only). Each account gets its
  * own local copy, so logging in on a shared device never mixes up two players' colonies. Loading picks whichever copy is newer, so progress
  * survives cleared browser data and an offline session still syncs on the next save.
  * Every call fails gracefully — e.g. offline, or in private browsing.
@@ -135,18 +135,6 @@ export class SaveManager {
    */
   async saveLocalFor(state: GameState, owner: string | null, slot = DEFAULT_SLOT): Promise<void> {
     await this.putLocal(toSave(state), slot, owner);
-  }
-
-  /**
-   * After signing up, carry the guest colony on this device over to the new account
-   * (unless the account already has a save). Returns true when a save was copied.
-   */
-  async adoptGuestSave(slot = DEFAULT_SLOT): Promise<boolean> {
-    const guest = await this.getLocal(slot, null);
-    if (!guest || (await this.newest(slot))) return false;
-    await this.putLocal(guest, slot).catch(() => {});
-    await CloudSaves.put(guest, slot).catch((e) => console.warn('Cloud save failed', e));
-    return true;
   }
 
   /** Quick summary from localStorage — no network or database needed. */

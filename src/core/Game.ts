@@ -55,7 +55,7 @@ export class Game {
   private input!: InputController;
   private sim = new SimulationRunner(this.events);
   private saves = new SaveManager();
-  private welcome: WelcomeScreen | null = null;
+
   /** Whose colony is on screen: the account id, or null for a guest. */
   private owner: string | null = null;
   private labels!: MapLabels;
@@ -148,15 +148,15 @@ export class Game {
     loading.progress(1, 'Ready');
     loading.hide();
 
-    this.welcome = new WelcomeScreen(
-      this.ui,
-      () => {
-        gameStore.getState().start();
-        this.events.emit('camera:home');
-      },
-      () => this.saves.info().then((i) => !!i),
-      () => this.loadSaved(),
-    );
+    // Signed-in players pick up their account's colony; guests always start a new one.
+    new WelcomeScreen(this.ui, () => {
+      if (Auth.current) {
+        this.loadSaved();
+        return;
+      }
+      gameStore.getState().start();
+      this.events.emit('camera:home');
+    });
   }
 
   private buildUI(terrain: Terrain): void {
@@ -267,38 +267,43 @@ export class Game {
   }
 
   /**
-   * Signing up keeps the colony you're playing. Logging in switches to that
-   * account's colony (or moves the current one into the account if it has none);
-   * logging out switches back to the guest colony on this device.
+   * A guest who signs up or logs in mid-game keeps the colony they're playing: it is
+   * saved to the account (unless logging in to an account that already has a colony,
+   * which is loaded instead so it never gets overwritten). Logging out starts a new
+   * guest colony. On the welcome screen nothing happens until "Start mission".
    */
   private async onAccountChange(owner: string | null, change: AuthChange): Promise<void> {
     if (change === 'update') return;
     const prev = this.owner;
     this.owner = owner;
     const s = gameStore.getState();
-    if (s.started && prev !== owner) await this.saves.saveLocalFor(s, prev).catch(() => {});
+    if (!s.started) return;
+    // Keep a local copy of the colony for whoever was playing before the switch.
+    if (prev !== owner) await this.saves.saveLocalFor(s, prev).catch(() => {});
 
-    if (change === 'signup') await this.saves.adoptGuestSave();
-    if (!s.started) {
-      if (this.welcome?.open) this.welcome.refreshSave();
+    if (change === 'logout') {
+      gameStore.getState().replaceState({ ...createInitialState(), started: true });
+      this.afterLoad();
+      this.events.emit('camera:home');
+      gameStore.getState().pushAlert({ key: 'account', level: 'info', title: 'Logged out', message: 'You are playing as a guest. Log in to save your colony.' });
       return;
     }
-    if (change !== 'signup') {
-      const saved = await this.saves.load();
-      if (saved) gameStore.getState().replaceState({ ...saved, started: true, paused: false });
-      else if (change === 'logout') gameStore.getState().replaceState({ ...createInitialState(), started: true });
-      if (saved || change === 'logout') {
-        this.afterLoad();
-        this.events.emit('camera:home');
-      }
+
+    const carryOver = prev === null && change === 'signup';
+    const saved = carryOver ? null : await this.saves.load();
+    if (saved) {
+      gameStore.getState().replaceState({ ...saved, started: true, paused: false });
+      this.afterLoad();
+      this.events.emit('camera:home');
     }
     await this.autosave();
     const name = Auth.current?.username ?? 'your account';
-    gameStore.getState().pushAlert(
-      change === 'logout'
-        ? { key: 'account', level: 'info', title: 'Logged out', message: 'You are playing as a guest on this device.' }
-        : { key: 'account', level: 'success', title: change === 'signup' ? 'Account created' : `Welcome back, ${name}!`, message: `Your colony now saves to ${name}.` },
-    );
+    gameStore.getState().pushAlert({
+      key: 'account',
+      level: 'success',
+      title: change === 'signup' ? 'Account created' : `Welcome back, ${name}!`,
+      message: saved ? `Loaded the colony saved to ${name}.` : `Your colony now saves to ${name}.`,
+    });
   }
 
   private afterLoad(): void {

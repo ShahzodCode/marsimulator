@@ -7,17 +7,20 @@ import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore, type GameStore } from '../state/gameStore';
 import type { SimSpeed } from '../state/types';
 import { h, setText, toggleClass } from './dom';
-import { ICONS, RESOURCE_ICONS } from './icons';
+import { HUD_ICONS, ICONS } from './icons';
 import { ProfileDialog } from './ProfileDialog';
 import { rankBadgeSvg } from './RankBadge';
 import { Auth } from '../persistence/Auth';
 
+/** Speeds the speed button steps through, in order. */
+const SPEEDS: SimSpeed[] = [1, 2, 4];
+
 interface ResourceChip {
   root: HTMLElement;
-  amount: HTMLElement;
-  rate: HTMLElement;
-  /** How full the storage depot is for this resource. */
-  fill: HTMLElement;
+  /** Storage capacity — shown first, in the bright ink. */
+  max: HTMLElement;
+  /** Amount in stock — shown second, in the accent ink. */
+  current: HTMLElement;
 }
 
 /**
@@ -27,21 +30,26 @@ interface ResourceChip {
 export class HUD {
   readonly el: HTMLElement;
   private chips: Partial<Record<ResourceId, ResourceChip>> = {};
-  private energyValue!: HTMLElement;
-  private energyLabel!: HTMLElement;
-  private energyFill!: HTMLElement;
+  private energyMax!: HTMLElement;
+  private energyCur!: HTMLElement;
   private energyChip!: HTMLElement;
-  private popValue!: HTMLElement;
+  private popMax!: HTMLElement;
+  private popCur!: HTMLElement;
   private popChip!: HTMLElement;
   private solEl!: HTMLElement;
   private clockEl!: HTMLElement;
   private levelEl!: HTMLElement;
   private xpFill!: HTMLElement;
   private badge!: HTMLButtonElement;
-  private speedButtons = new Map<SimSpeed | 0, HTMLButtonElement>();
+  private pauseBtn!: HTMLButtonElement;
+  private speedBtn!: HTMLButtonElement;
 
   constructor(parent: HTMLElement, events: EventBus) {
-    this.el = h('header', { class: 'topbar', attrs: { role: 'banner' } }, [this.brand(parent), this.resources(), this.time()]);
+    this.el = h('header', { class: 'topbar', attrs: { role: 'banner' } }, [
+      this.brand(parent),
+      // Resources on the right edge, with the clock and speed controls tucked under them.
+      h('div', { class: 'hud-right' }, [this.resources(), this.time()]),
+    ]);
     parent.append(this.el);
     // A soft glow on a resource chip whenever a production cycle delivers to it.
     events.on('production:delivered', ({ delivered }) => {
@@ -60,12 +68,15 @@ export class HUD {
   private brand(parent: HTMLElement): HTMLElement {
     this.levelEl = h('span', { class: 'level-title' });
     this.xpFill = h('span', { class: 'xp-fill' });
+    // The player's name once they're signed in; the base name for guests.
+    const name = h('strong', { text: SETTLEMENT.name });
     // The player's profile button: a rank emblem that changes as they rank up.
     this.badge = h('button', { class: 'brand-mark rank-badge', attrs: { type: 'button' }, on: { click: () => ProfileDialog.toggle(parent) } });
     const label = () => {
       const a = Auth.current;
       this.badge.setAttribute('aria-label', `Open your profile${a?.username ? ` (${a.username})` : ''}`);
       this.badge.title = a ? `${a.username ?? 'Commander'} — open profile` : 'Open your commander profile';
+      setText(name, a ? (a.username ?? a.email.split('@')[0]) : SETTLEMENT.name);
     };
     Auth.onChange(label);
     Auth.ready.then(label);
@@ -73,10 +84,22 @@ export class HUD {
     return h('div', { class: 'brand' }, [
       this.badge,
       h('div', { class: 'brand-text' }, [
-        h('strong', { text: SETTLEMENT.name }),
+        name,
         h('div', { class: 'level' }, [this.levelEl, h('span', { class: 'xp-bar' }, [this.xpFill])]),
       ]),
     ]);
+  }
+
+  /** One resource readout: icon, max, then current — like `🜨 500  320`. */
+  private chip(icon: string, color: string, title: string, extraClass = ''): { root: HTMLElement; max: HTMLElement; current: HTMLElement } {
+    const max = h('span', { class: 'chip-max' });
+    const current = h('span', { class: 'chip-cur' });
+    const root = h(
+      'div',
+      { class: `chip ${extraClass}`.trim(), title, attrs: { role: 'listitem' }, style: { ['--chip-color' as never]: color } },
+      [h('span', { class: 'chip-icon', html: icon }), max, current],
+    );
+    return { root, max, current };
   }
 
   private resources(): HTMLElement {
@@ -84,45 +107,18 @@ export class HUD {
     for (const id of RESOURCE_IDS) {
       const def = RESOURCES[id];
       if (!def.hud) continue;
-      const amount = h('span', { class: 'chip-value' });
-      const rate = h('span', { class: 'chip-rate' });
-      const fill = h('span', { class: 'store-fill' });
-      const root = h(
-        'div',
-        { class: 'chip', title: `${def.name}: ${def.description}`, attrs: { role: 'listitem' }, style: { ['--chip-color' as never]: def.color } },
-        [
-          h('span', { class: 'chip-icon', html: RESOURCE_ICONS[id] }),
-          h('span', { class: 'chip-body' }, [h('span', { class: 'chip-label', text: def.name }), h('span', { class: 'chip-row' }, [amount, rate]), h('span', { class: 'store-bar' }, [fill])]),
-        ],
-      );
-      this.chips[id] = { root, amount, rate, fill };
-      wrap.append(root);
+      const c = this.chip(HUD_ICONS[id], def.color, `${def.name}: ${def.description}`);
+      this.chips[id] = c;
+      wrap.append(c.root);
     }
-    this.energyValue = h('span', { class: 'chip-value' });
-    this.energyLabel = h('span', { class: 'chip-label', text: 'Power' });
-    this.energyFill = h('span', { class: 'energy-fill' });
-    this.energyChip = h(
-      'div',
-      {
-        class: 'chip energy',
-        title: '',
-        style: { ['--chip-color' as never]: '#ffd34d' },
-      },
-      [
-        h('span', { class: 'chip-icon', html: ICONS.energy }),
-        h('span', { class: 'chip-body' }, [
-          this.energyLabel,
-          this.energyValue,
-          h('span', { class: 'energy-bar' }, [this.energyFill]),
-        ]),
-      ],
-    );
-    this.popValue = h('span', { class: 'chip-value' });
-    this.popChip = h(
-      'div',
-      { class: 'chip', title: 'Colonists living in the base / beds available in habitats.', style: { ['--chip-color' as never]: '#f4a6ff' } },
-      [h('span', { class: 'chip-icon', html: ICONS.people }), h('span', { class: 'chip-body' }, [h('span', { class: 'chip-label', text: 'Crew' }), this.popValue])],
-    );
+    const energy = this.chip(HUD_ICONS.energy, '#ffd34d', '', 'energy');
+    this.energyChip = energy.root;
+    this.energyMax = energy.max;
+    this.energyCur = energy.current;
+    const pop = this.chip(HUD_ICONS.crew, '#f4a6ff', '');
+    this.popChip = pop.root;
+    this.popMax = pop.max;
+    this.popCur = pop.current;
     wrap.append(this.energyChip, this.popChip);
     return wrap;
   }
@@ -131,27 +127,27 @@ export class HUD {
     this.solEl = h('span', { class: 'sol' });
     this.clockEl = h('span', { class: 'clock' });
     const group = h('div', { class: 'speed-group', attrs: { role: 'group', 'aria-label': 'Simulation speed' } });
-    const mk = (speed: SimSpeed | 0, label: string, title: string) => {
-      const b = h('button', {
-        class: 'speed-btn',
-        html: label,
-        title,
-        attrs: { 'aria-label': title },
-        on: {
-          click: () => {
-            const st = gameStore.getState();
-            if (speed === 0) st.togglePause();
-            else st.setSpeed(speed);
-          },
+    this.pauseBtn = h('button', {
+      class: 'speed-btn',
+      html: ICONS.pause,
+      title: 'Pause / resume (Space)',
+      attrs: { type: 'button', 'aria-label': 'Pause / resume (Space)' },
+      on: { click: () => gameStore.getState().togglePause() },
+    });
+    // One button that steps through the speeds: 1× → 2× → 4× → 1×.
+    this.speedBtn = h('button', {
+      class: 'speed-btn speed-cycle',
+      title: 'Change speed: 1× → 2× → 4× (keys 1, 2, 3)',
+      attrs: { type: 'button' },
+      on: {
+        click: () => {
+          const st = gameStore.getState();
+          const i = SPEEDS.indexOf(st.speed);
+          st.setSpeed(SPEEDS[(i + 1) % SPEEDS.length]);
         },
-      });
-      this.speedButtons.set(speed, b);
-      group.append(b);
-    };
-    mk(0, ICONS.pause, 'Pause / resume (Space)');
-    mk(1, '1×', 'Normal speed (key 1)');
-    mk(2, '2×', 'Double speed (key 2)');
-    mk(4, '4×', 'Fast (key 3)');
+      },
+    });
+    group.append(this.pauseBtn, this.speedBtn);
     return h('div', { class: 'timebox' }, [h('div', { class: 'time-readout', title: 'A sol is one Martian day — 24 hours and 39 minutes long.' }, [this.solEl, this.clockEl]), group]);
   }
 
@@ -161,54 +157,58 @@ export class HUD {
       if (!c) continue;
       const amt = s.resources[id];
       const rate = s.rates[id];
-      setText(c.amount, formatAmount(amt));
-      setText(c.rate, formatRate(rate));
-      toggleClass(c.rate, 'up', rate > 0.05);
-      toggleClass(c.rate, 'down', rate < -0.05);
+      const cap = s.storage[id];
+      setText(c.max, formatAmount(cap));
+      setText(c.current, formatAmount(amt));
+      toggleClass(c.current, 'up', rate > 0.05);
+      toggleClass(c.current, 'down', rate < -0.05);
       const def = RESOURCES[id];
       const left = ResourceManager.solsRemaining(amt, rate);
       toggleClass(c.root, 'critical', def.vital && amt <= 0.01 && rate < 0);
       toggleClass(c.root, 'low', def.vital && amt > 0.01 && left < def.warnSols);
-      const cap = s.storage[id];
-      const frac = cap > 0 ? Math.min(1, amt / cap) : 0;
-      c.fill.style.transform = `scaleX(${frac.toFixed(3)})`;
       toggleClass(c.root, 'full', cap > 0 && amt >= cap - 0.5);
       const title = `${def.name}: ${def.description}
-Storage depot: ${formatAmount(amt)} / ${formatAmount(cap)} ${def.unit}`;
+Max storage: ${formatAmount(cap)} ${def.unit}
+In stock: ${formatAmount(amt)} ${def.unit} (${formatRate(rate)})`;
       if (c.root.title !== title) c.root.title = title;
     }
     const p = s.power;
     const day = p.sun > 0;
-    setText(this.energyLabel, day ? 'Power ☀ day' : 'Power ☾ night');
-    setText(this.energyValue, `${p.generationKw.toFixed(0)} / ${p.demandKw.toFixed(0)} kW`);
+    setText(this.energyMax, `${p.generationKw.toFixed(0)} kW`);
+    setText(this.energyCur, `${p.demandKw.toFixed(0)} kW`);
     const charge = p.batteryCapacityKwh > 0 ? p.batteryKwh / p.batteryCapacityKwh : 0;
-    this.energyFill.style.transform = `scaleX(${charge.toFixed(3)})`;
     toggleClass(this.energyChip, 'critical', p.unpowered > 0);
     toggleClass(this.energyChip, 'low', p.unpowered === 0 && (charge < 0.2 || p.plannedDemandKw > p.avgGenerationKw));
     toggleClass(this.energyChip, 'charging', p.generationKw > p.suppliedKw + 0.05 && charge < 0.999);
-    const tip = `Electricity
-Solar panels now: ${p.generationKw.toFixed(1)} kW (about ${p.avgGenerationKw.toFixed(0)} kW averaged over day and night)
+    const tip = `Electricity (${day ? 'day' : 'night'})
+Max — solar panels now: ${p.generationKw.toFixed(1)} kW
+Current — buildings asking for: ${p.demandKw.toFixed(1)} kW
+Solar averaged over day and night: about ${p.avgGenerationKw.toFixed(0)} kW
 Buildings using: ${p.suppliedKw.toFixed(1)} kW${p.unpowered ? ` — ${p.unpowered} waiting for power` : ''}
 Batteries (bar): ${p.batteryKwh.toFixed(0)} / ${p.batteryCapacityKwh.toFixed(0)} kWh
 Spare for new buildings: ${Math.max(0, p.avgGenerationKw - p.plannedDemandKw).toFixed(1)} kW`;
     if (this.energyChip.title !== tip) this.energyChip.title = tip;
 
-    setText(this.popValue, `${s.colony.colonists} / ${s.colony.housing}`);
+    setText(this.popMax, String(s.colony.housing));
+    setText(this.popCur, String(s.colony.colonists));
+    const popTip = `Crew
+Max — beds in habitats: ${s.colony.housing}
+Current — colonists living in the base: ${s.colony.colonists}`;
+    if (this.popChip.title !== popTip) this.popChip.title = popTip;
     toggleClass(this.popChip, 'low', s.colony.housing < s.colony.colonists);
 
     const t = formatMarsTime(s.timeSols);
     setText(this.solEl, `Sol ${t.sol}`);
     setText(this.clockEl, t.clock);
-    for (const [speed, b] of this.speedButtons) {
-      if (speed === 0) {
-        toggleClass(b, 'active', s.paused);
-        const html = s.paused ? ICONS.play : ICONS.pause;
-        if (b.dataset.icon !== (s.paused ? 'play' : 'pause')) {
-          b.innerHTML = html;
-          b.dataset.icon = s.paused ? 'play' : 'pause';
-        }
-      } else toggleClass(b, 'active', !s.paused && s.speed === speed);
+    toggleClass(this.pauseBtn, 'active', s.paused);
+    const icon = s.paused ? 'play' : 'pause';
+    if (this.pauseBtn.dataset.icon !== icon) {
+      this.pauseBtn.innerHTML = s.paused ? ICONS.play : ICONS.pause;
+      this.pauseBtn.dataset.icon = icon;
     }
+    setText(this.speedBtn, `${s.speed}×`);
+    this.speedBtn.setAttribute('aria-label', `Speed ${s.speed}×, click for ${SPEEDS[(SPEEDS.indexOf(s.speed) + 1) % SPEEDS.length]}×`);
+    toggleClass(this.speedBtn, 'active', !s.paused);
 
     const rank = rankForXp(s.progression.xp);
     const next = nextLevel(rank.level);
