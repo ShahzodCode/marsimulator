@@ -10,6 +10,7 @@ import { FogOfWar } from '../planet/FogOfWar';
 import { SETTLEMENT } from '../data/settlement';
 import { SettlementManager } from '../settlement/SettlementManager';
 import { loadBuildingModels } from '../settlement/buildings/glbModels';
+import { renderBuildingThumbnails } from '../settlement/buildings/thumbnails';
 import { SimulationEngine } from '../simulation/SimulationEngine';
 import { SaveManager } from '../persistence/SaveManager';
 import { LocalPrefs } from '../persistence/LocalPrefs';
@@ -106,6 +107,7 @@ export class Game {
 
     loading.progress(0.96, 'Unpacking building models');
     await loadBuildingModels(this.renderer, (f) => loading.progress(0.96 + f * 0.03, 'Unpacking building models'));
+    renderBuildingThumbnails(this.renderer);
 
     this.mars = new Mars(terrain);
     this.scene.add(this.mars.group);

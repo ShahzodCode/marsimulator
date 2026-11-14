@@ -7,7 +7,8 @@ import type { EventBus } from '../core/EventBus';
 import type { SaveManager } from '../persistence/SaveManager';
 import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore } from '../state/gameStore';
-import { clear, h, setText } from './dom';
+import { buildingIcon, clear, h, setText } from './dom';
+import { buildingThumbnail } from '../settlement/buildings/thumbnails';
 import { ICONS, RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
 
@@ -283,7 +284,7 @@ export class SettlementPanel implements Panel {
                 },
               },
             },
-            [h('span', { class: 'row-icon', text: def.icon }), h('span', { class: 'row-name', text: def.name }), h('span', { class: 'row-status', text: `×${list.length}${building ? ` (${building} building)` : ''}` })],
+            [buildingIcon('row-icon', buildingThumbnail(def.id), def.icon), h('span', { class: 'row-name', text: def.name }), h('span', { class: 'row-status', text: `×${list.length}${building ? ` (${building} building)` : ''}` })],
           ),
         );
       }

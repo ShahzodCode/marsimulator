@@ -2,7 +2,8 @@ import { BUILDINGS, BUILDING_TYPES, type BuildingType } from '../data/buildings'
 import { RESOURCES, type ResourceId } from '../data/resources';
 import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore } from '../state/gameStore';
-import { h, setText, toggleClass } from './dom';
+import { buildingIcon, h, setText, toggleClass } from './dom';
+import { buildingThumbnail } from '../settlement/buildings/thumbnails';
 import { RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
 import { ROAD_COST } from '../settlement/RoadRules';
@@ -60,7 +61,7 @@ export class ConstructionMenu implements Panel {
           on: { click: () => this.choose(type) },
         },
         [
-          h('div', { class: 'card-icon', text: def.icon }),
+          buildingIcon('card-icon', buildingThumbnail(type), def.icon),
           h('div', { class: 'card-main' }, [
             h('div', { class: 'card-title', text: def.name }),
             h('div', { class: 'card-desc', text: def.description }),
@@ -99,7 +100,7 @@ export class ConstructionMenu implements Panel {
         },
       },
       [
-        h('div', { class: 'card-icon', text: '🛣️' }),
+        buildingIcon('card-icon', buildingThumbnail('road'), '🛣️'),
         h('div', { class: 'card-main' }, [
           h('div', { class: 'card-title', text: 'Road (N)' }),
           h('div', {

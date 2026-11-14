@@ -42,3 +42,11 @@ export function toggleClass(el: HTMLElement, cls: string, on: boolean): void {
 export function clear(el: HTMLElement): void {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
+
+/**
+ * A building's picture: its rendered thumbnail when available, otherwise the emoji.
+ */
+export function buildingIcon(cls: string, src: string | undefined, fallback: string): HTMLElement {
+  if (!src) return h('span', { class: cls, text: fallback });
+  return h('span', { class: `${cls} has-thumb` }, [h('img', { attrs: { src, alt: '', draggable: 'false' } })]);
+}

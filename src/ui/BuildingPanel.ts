@@ -4,7 +4,8 @@ import type { EventBus } from '../core/EventBus';
 import { formatMarsTime } from '../core/GameClock';
 import { gameStore } from '../state/gameStore';
 import type { BuildingInstance } from '../state/types';
-import { clear, h, setText } from './dom';
+import { buildingIcon, clear, h, setText } from './dom';
+import { buildingThumbnail } from '../settlement/buildings/thumbnails';
 import { ICONS } from './icons';
 
 /** Floating card describing the selected building. */
@@ -66,7 +67,7 @@ export class BuildingPanel {
 
     this.body.append(
       h('div', { class: 'bp-head' }, [
-        h('span', { class: 'bp-icon', text: def.icon }),
+        buildingIcon('bp-icon', buildingThumbnail(def.id), def.icon),
         h('div', { class: 'bp-title' }, [h('h3', { text: def.name }), this.status]),
         h('button', {
           class: 'icon-btn',

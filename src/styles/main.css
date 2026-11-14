@@ -194,10 +194,11 @@ svg {
 }
 
 .resources {
-  flex: 1;
+  flex: 0 1 auto;
+  margin-left: auto;
   display: flex;
-  gap: 6px;
-  padding: 6px;
+  gap: 4px;
+  padding: 4px;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -216,8 +217,7 @@ svg {
   border-radius: 10px;
   background: var(--bg-raised);
   border: 1px solid transparent;
-  min-width: 104px;
-  flex: 1 0 auto;
+  flex: none;
   transition: border-color 0.2s, background 0.2s;
 }
 
@@ -1813,4 +1813,27 @@ svg {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* Rendered building thumbnails in place of emoji. */
+.has-thumb {
+  padding: 0;
+  overflow: hidden;
+  font-size: 0;
+}
+
+.has-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.row-icon.has-thumb {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  vertical-align: middle;
+  flex: none;
 }
