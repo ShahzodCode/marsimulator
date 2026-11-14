@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { BuildingInstance } from '../state/types';
-import { DIRS, ROAD_TILE, buildingSideOfTile, isPlazaTile, parseRoadKey, reachableRoads, roadKey } from './RoadRules';
+import { DIRS, ROAD_TILE, buildingSideOfTile, isPlazaTile, parseRoadKey, roadKey } from './RoadRules';
 import type { SettlementGrid } from './SettlementGrid';
 
 /**
@@ -77,7 +77,6 @@ export class Roads {
     worn: decal('#5a514b', -3),
     edge: decal('#e9e2d6', -4),
     centre: decal('#f2b630', -4),
-    dirt: decal('#7c6a5e', -2),
   };
   private meshes: THREE.Mesh[] = [];
   private signature = '';
@@ -98,7 +97,6 @@ export class Roads {
     this.meshes = [];
 
     const set = new Set(roads);
-    const live = reachableRoads(set);
     const L = {
       shoulder: { from: -HALF_SHOULDER, to: HALF_SHOULDER, lift: 0.0006, out: [] as number[] },
       asphalt: { from: -HALF_ROAD, to: HALF_ROAD, lift: 0.0008, out: [] as number[] },
@@ -108,7 +106,6 @@ export class Roads {
       edgeR: { from: LINE_IN, to: LINE_OUT, lift: 0.0009, out: [] as number[], trimStart: 0 },
       centre: { from: -0.035, to: 0.035, lift: 0.0009, out: [] as number[], dash: [1, 0.5] as [number, number] },
     };
-    const dirt: number[] = [];
 
     for (const key of roads) {
       const [tx, ty] = parseRoadKey(key);
@@ -131,23 +128,22 @@ export class Roads {
       }
       const tile = (layer: Layer, path: Path) => this.band(layer, path, cx, cy, 0);
       const dirs = [...arms.keys()].sort();
-      const markings = live.has(key);
       if (dirs.length === 2 && (dirs[1] - dirs[0]) % 2 === 0) {
         // Straight.
         const [a, b] = dirs;
         const path = line(DIRS[a][0] * arms.get(a)!, DIRS[a][1] * arms.get(a)!, DIRS[b][0] * arms.get(b)!, DIRS[b][1] * arms.get(b)!);
-        for (const l of Object.values(L)) if (markings || l === L.shoulder || l === L.asphalt) tile(l, path);
+        for (const l of Object.values(L)) tile(l, path);
       } else if (dirs.length === 2) {
         // Curved turn — plus straight extensions when a building door is further away.
         const [a, b] = dirs;
         const path = turn(a, b);
-        for (const l of Object.values(L)) if (markings || l === L.shoulder || l === L.asphalt) tile(l, path);
-        for (const d of dirs) if (arms.get(d)! > 1) this.armBand(L, d, 1, arms.get(d)!, cx, cy, markings);
+        for (const l of Object.values(L)) tile(l, path);
+        for (const d of dirs) if (arms.get(d)! > 1) this.armBand(L, d, 1, arms.get(d)!, cx, cy);
       } else if (dirs.length === 1) {
         // Dead end: rounded turning pad + one arm.
         this.disc(L.shoulder.out, cx, cy, HALF_SHOULDER, L.shoulder.lift);
         this.disc(L.asphalt.out, cx, cy, HALF_ROAD, L.asphalt.lift);
-        this.armBand(L, dirs[0], 0, arms.get(dirs[0])!, cx, cy, markings);
+        this.armBand(L, dirs[0], 0, arms.get(dirs[0])!, cx, cy);
       } else if (dirs.length === 0) {
         this.square(L.shoulder.out, cx, cy, HALF_SHOULDER, L.shoulder.lift);
         this.square(L.asphalt.out, cx, cy, HALF_ROAD, L.asphalt.lift);
@@ -155,10 +151,8 @@ export class Roads {
         // Junction box + arms.
         this.square(L.shoulder.out, cx, cy, HALF_SHOULDER, L.shoulder.lift);
         this.square(L.asphalt.out, cx, cy, HALF_ROAD, L.asphalt.lift);
-        for (const d of dirs) this.armBand(L, d, HALF_ROAD, arms.get(d)!, cx, cy, markings, true);
+        for (const d of dirs) this.armBand(L, d, HALF_ROAD, arms.get(d)!, cx, cy, true);
       }
-      // Dusty patch under unfinished (not yet joined) roads.
-      if (!markings) this.square(dirt, cx, cy, 0.5, 0.00085);
     }
 
     const add = (arr: number[], m: THREE.Material) => {
@@ -172,15 +166,13 @@ export class Roads {
     add([...L.worn.out, ...L.worn2.out], this.mats.worn);
     add([...L.edgeL.out, ...L.edgeR.out], this.mats.edge);
     add(L.centre.out, this.mats.centre);
-    add(dirt, this.mats.dirt);
   }
 
   /** Straight arm from `start` to `end` cells along direction d. */
-  private armBand(L: Record<string, Layer>, d: number, start: number, end: number, cx: number, cy: number, markings: boolean, junction = false) {
+  private armBand(L: Record<string, Layer>, d: number, start: number, end: number, cx: number, cy: number, junction = false) {
     const [dx, dy] = DIRS[d];
     const path = line(dx * start, dy * start, dx * end, dy * end);
     for (const [name, l] of Object.entries(L)) {
-      if (!markings && name !== 'shoulder' && name !== 'asphalt') continue;
       // In a junction, the arm's shoulder/asphalt must reach into the box; the lines stop at it.
       if (junction && name === 'centre') this.band(l, path, cx, cy, 0.25);
       else this.band(l, path, cx, cy, 0);
