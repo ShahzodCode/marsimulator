@@ -112,8 +112,9 @@ export function sampleGrid(g: HeightGrid, lat: number, lon: number): number {
 const JEZERO_RADIUS_KM = 22.5; // ~45 km diameter
 const HOLE_KM = PATCH.hole / KM_TO_UNITS;
 const CELL_KM = SETTLEMENT.cellSize / KM_TO_UNITS;
-const FLAT_INNER_KM = SETTLEMENT.flattenRadius * CELL_KM * 0.9;
-const FLAT_OUTER_KM = SETTLEMENT.flattenRadius * CELL_KM * 1.25;
+/** Building pads are graded flat inside FLAT_INNER_KM and blend into the land by FLAT_OUTER_KM. */
+export const FLAT_INNER_KM = SETTLEMENT.flattenRadius * CELL_KM * 0.9;
+export const FLAT_OUTER_KM = SETTLEMENT.flattenRadius * CELL_KM * 1.25;
 
 interface SmallCrater {
   x: number;

@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { SETTLEMENT } from '../data/settlement';
+import { HOME_BASE_ID } from '../simulation/MissionManager';
 import { OUTPOST } from '../data/missions';
 import { MissionManager } from '../simulation/MissionManager';
 import { gameStore, regionManager } from '../state/gameStore';
-import type { Expedition, OrbitalScan, Outpost } from '../state/types';
+import type { Expedition, OrbitalScan, Outpost, Shipment } from '../state/types';
+import { Logistics } from '../simulation/Logistics';
 import type { Terrain } from './Terrain';
 import { greatCirclePoint, latLonToDir, R, type LatLon } from './geo';
 import { instantiateVehicleModel } from '../settlement/buildings/glbModels';
@@ -14,6 +16,8 @@ const MIN_SIZE = 0.012;
 const MAX_SIZE = 6;
 const ROUTE_POINTS = 128;
 const ROUTE_LIFT = 0.25;
+/** Scene units per km on the surface (planet radius R = 3389.5 km). */
+const KM_UNITS = R / 3389.5;
 /** Visual orbit (not to scale): MRO really flies about 250–320 km up. */
 const ORBIT_RADIUS = R + 16;
 /** Visual orbits per real second. */
@@ -98,6 +102,14 @@ interface RouteViz {
   route: THREE.Line;
   trail: THREE.Line;
   rover: THREE.Group;
+  /** Cargo rovers following a founding convoy. */
+  convoy: THREE.Group[];
+}
+
+/** Rovers a founding convoy needs for its kit (SEV payload each, see MissionManager.foundingKit). */
+function convoySize(m: Expedition): number {
+  const kg = Object.values(m.supplies).reduce((a, b) => a + (b ?? 0), 0);
+  return Math.min(4, Math.max(1, Math.ceil(kg / OUTPOST.cargoPayloadKg)));
 }
 
 /**
@@ -109,6 +121,7 @@ export class RoverFleet {
   readonly group = new THREE.Group();
   private expeditions = new Map<string, RouteViz>();
   private outposts = new Map<string, { site: THREE.Group; cargo: THREE.Group; route: THREE.Line }>();
+  private shipments = new Map<string, { haulers: THREE.Group[]; route: THREE.Line }>();
   private orbiter = buildOrbiter();
   private orbitRing: THREE.LineLoop;
   private beam: THREE.Line;
@@ -145,6 +158,33 @@ export class RoverFleet {
     this.updateExpeditions(s.missions.filter((m): m is Expedition => m.type === 'expedition' && m.status === 'active'));
     this.updateOrbiter(s.missions.find((m): m is OrbitalScan => m.type === 'orbital' && m.status === 'active'), dt, s.paused ? 0 : s.speed);
     this.updateOutposts(s.outposts, s.timeSols);
+    this.updateShipments(s.shipments);
+  }
+
+  // ---------------------------------------------------------------- cargo haulers
+
+  /** Hauler convoys between bases, one behind the other, facing the way they drive. */
+  private updateShipments(list: Shipment[]): void {
+    const seen = new Set<string>();
+    for (const sh of list) {
+      seen.add(sh.id);
+      let v = this.shipments.get(sh.id);
+      if (!v) {
+        v = { haulers: Array.from({ length: sh.haulers }, () => rover(true)), route: this.routeLine(sh.from, sh.to, '#f0a443', true) };
+        (v.route.material as THREE.LineDashedMaterial).opacity = 0.5;
+        this.group.add(v.route, ...v.haulers);
+        this.shipments.set(sh.id, v);
+      }
+      const f = Logistics.routeFraction(sh);
+      const dir = sh.delivered ? -1 : 1;
+      const gap = (this.size * 1.6) / Math.max(1, sh.routeKm * KM_UNITS);
+      v.haulers.forEach((h, i) => this.place(h, sh.from, sh.to, THREE.MathUtils.clamp(f - dir * gap * i, 0, 1), dir));
+    }
+    for (const [id, v] of this.shipments) {
+      if (seen.has(id)) continue;
+      this.dispose(v.route, ...v.haulers);
+      this.shipments.delete(id);
+    }
   }
 
   // ---------------------------------------------------------------- crew rovers
@@ -155,33 +195,39 @@ export class RoverFleet {
       seen.add(m.id);
       let v = this.expeditions.get(m.id);
       if (!v) {
+        const e = MissionManager.ends(m, regionManager);
+        const color = m.found ? '#6dff8a' : '#5fe3ff';
         v = {
-          route: this.routeLine(m.regionId, '#5fe3ff', true),
-          trail: this.routeLine(m.regionId, '#ffb03d', false),
+          route: this.routeLine(e.from, e.to, color, true),
+          trail: this.routeLine(e.from, e.to, '#ffb03d', false),
           rover: rover(false),
+          convoy: m.found ? Array.from({ length: convoySize(m) }, () => rover(true)) : [],
         };
-        this.group.add(v.route, v.trail, v.rover);
+        this.group.add(v.route, v.trail, v.rover, ...v.convoy);
         this.expeditions.set(m.id, v);
       }
+      const e = MissionManager.ends(m, regionManager);
       const f = MissionManager.routeFraction(m);
       const reached = m.arrived ? 1 : f;
       v.trail.geometry.setDrawRange(0, Math.max(0, Math.round(reached * (ROUTE_POINTS - 1)) + 1));
       // Facing the way it drives: towards the site, then back home.
-      this.place(v.rover, m.regionId, f, m.arrived ? -1 : 1);
+      this.place(v.rover, e.from, e.to, f, m.arrived ? -1 : 1);
+      // Cargo rovers follow the crew rover, a few rover-lengths apart.
+      const gap = (this.size * 1.6) / Math.max(1, m.routeKm * KM_UNITS);
+      v.convoy.forEach((c, i) => this.place(c, e.from, e.to, Math.max(0, f - gap * (i + 1)), 1));
     }
     for (const [id, v] of this.expeditions) {
       if (seen.has(id)) continue;
-      this.dispose(v.route, v.trail, v.rover);
+      this.dispose(v.route, v.trail, v.rover, ...v.convoy);
       this.expeditions.delete(id);
     }
   }
 
-  /** A line from the base to a region's site, draped over the terrain. */
-  private routeLine(regionId: string, color: string, dashed: boolean): THREE.Line {
-    const site = MissionManager.site(regionManager, regionId);
+  /** A line from a base to a site, draped over the terrain. */
+  private routeLine(from: LatLon, site: LatLon, color: string, dashed: boolean): THREE.Line {
     const pts: THREE.Vector3[] = [];
     for (let i = 0; i < ROUTE_POINTS; i++) {
-      greatCirclePoint(SETTLEMENT.lat, SETTLEMENT.lon, site.lat, site.lon, i / (ROUTE_POINTS - 1), this.ll);
+      greatCirclePoint(from.lat, from.lon, site.lat, site.lon, i / (ROUTE_POINTS - 1), this.ll);
       pts.push(this.terrain.surfacePoint(this.ll.lat, this.ll.lon, ROUTE_LIFT));
     }
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
@@ -194,13 +240,13 @@ export class RoverFleet {
   }
 
   /** Puts a model on the surface at route fraction `f`, facing along the route (`dir` = +1 out, −1 back). */
-  private place(obj: THREE.Object3D, regionId: string, f: number, dir: number): void {
-    const p = MissionManager.pointOnRoute(regionManager, regionId, f, this.ll);
+  private place(obj: THREE.Object3D, from: LatLon, to: LatLon, f: number, dir: number): void {
+    const p = MissionManager.pointBetween(from, to, f, this.ll);
     this.terrain.surfacePoint(p.lat, p.lon, 0, this.pos);
     latLonToDir(p.lat, p.lon, this.up);
     // Look a little ahead; at the end of the route, look behind instead and flip.
     const step = THREE.MathUtils.clamp(f + dir * 0.01, 0, 1) === f ? -dir * 0.01 : dir * 0.01;
-    const q = MissionManager.pointOnRoute(regionManager, regionId, f + step, this.ll2);
+    const q = MissionManager.pointBetween(from, to, f + step, this.ll2);
     this.terrain.surfacePoint(q.lat, q.lon, 0, this.ahead);
     this.fwd.subVectors(this.ahead, this.pos);
     if (Math.sign(step) !== Math.sign(dir)) this.fwd.negate();
@@ -256,16 +302,21 @@ export class RoverFleet {
 
   private updateOutposts(list: Outpost[], timeSols: number): void {
     const seen = new Set<string>();
+    const st = gameStore.getState();
     for (const o of list) {
       seen.add(o.id);
+      const id = o.baseId ?? HOME_BASE_ID;
+      const b = st.base.id === id ? st.base : (st.otherBases.find((x) => x.id === id) ?? { lat: SETTLEMENT.lat, lon: SETTLEMENT.lon });
+      const from: LatLon = { lat: b.lat, lon: b.lon };
+      const to = MissionManager.site(regionManager, o.regionId);
       let v = this.outposts.get(o.id);
       if (!v) {
-        v = { site: buildOutpost(), cargo: rover(true), route: this.routeLine(o.regionId, '#f0a443', true) };
+        v = { site: buildOutpost(), cargo: rover(true), route: this.routeLine(from, to, '#f0a443', true) };
         (v.route.material as THREE.LineDashedMaterial).opacity = 0.4;
         this.group.add(v.site, v.cargo, v.route);
         this.outposts.set(o.id, v);
       }
-      this.place(v.site, o.regionId, 1, 1);
+      this.place(v.site, from, to, 1, 1);
       v.site.visible = timeSols >= o.readySol - OUTPOST.setupSols;
       const oneWay = o.tripSols / 2;
       let f: number;
@@ -281,7 +332,7 @@ export class RoverFleet {
         dir = p < 0.5 ? 1 : -1;
       }
       v.cargo.visible = o.reserveLeft > 0 || timeSols < o.readySol;
-      this.place(v.cargo, o.regionId, THREE.MathUtils.clamp(f, 0, 1), dir);
+      this.place(v.cargo, from, to, THREE.MathUtils.clamp(f, 0, 1), dir);
     }
     for (const [id, v] of this.outposts) {
       if (seen.has(id)) continue;

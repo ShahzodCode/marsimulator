@@ -8,7 +8,14 @@ import { Mars } from '../planet/Mars';
 import { CameraController } from '../planet/CameraController';
 import { FogOfWar } from '../planet/FogOfWar';
 import { RoverFleet } from '../planet/RoverFleet';
-import { SETTLEMENT } from '../data/settlement';
+import { LogisticsView } from '../planet/LogisticsView';
+import { LinkTools } from './LinkTools';
+import { GarageArrow } from '../ui/GarageArrow';
+import { footprintRect, rectCenter } from '../settlement/PlacementRules';
+import { BASE_SITES, SITE_BY_ID, type TraitId } from '../data/baseSites';
+import { DEPOSIT_KIND } from '../planet/Mars';
+import { XrayControl } from '../ui/XrayControl';
+import { BaseSwitcher } from '../ui/BaseSwitcher';
 import { SettlementManager } from '../settlement/SettlementManager';
 import { loadBuildingModels } from '../settlement/buildings/glbModels';
 import { renderBuildingThumbnails } from '../settlement/buildings/thumbnails';
@@ -51,7 +58,12 @@ export class Game {
   private mars!: Mars;
   private fog!: FogOfWar;
   private fleet!: RoverFleet;
-  private settlement!: SettlementManager;
+  private logistics!: LogisticsView;
+  private links!: LinkTools;
+  private garageArrow!: GarageArrow;
+  /** One scene per base; the active base follows the store. */
+  private settlements = new Map<string, SettlementManager>();
+  private terrain!: Terrain;
   private input!: InputController;
   private sim = new SimulationRunner(this.events);
   private saves = new SaveManager();
@@ -61,6 +73,7 @@ export class Game {
   private labels!: MapLabels;
   private popups!: WorldPopups;
   private mapControls!: MapControls;
+  private xray!: XrayControl;
   private loop = new GameLoop((dt, t) => this.frame(dt, t));
   private width = 1;
   private height = 1;
@@ -122,18 +135,28 @@ export class Game {
     setRouteHeight((lat, lon) => terrain.heightKm(lat, lon));
     this.fleet = new RoverFleet(terrain);
     this.scene.add(this.fleet.group);
-    this.settlement = new SettlementManager(terrain, this.events);
-    this.scene.add(this.settlement.group);
+    this.logistics = new LogisticsView(terrain);
+    this.scene.add(this.logistics.group);
+    this.terrain = terrain;
+    this.syncBases();
 
     this.camera = new CameraController(terrain, this.canvas);
     this.input = new InputController(this.canvas, this.camera, {
       onClick: (x, y) => this.handleClick(x, y),
       onSecondaryClick: () => this.handleCancel(),
       onKey: (k, e) => this.handleKey(k, e),
-      paintMode: () => gameStore.getState().roadMode,
-      onPaint: (x, y, start) => this.settlement.roadPlacement.paint(this.camera.pickSurface(x, y), start),
-      onPaintEnd: (commit) => this.settlement.roadPlacement.endStroke(commit),
+      paintMode: () => gameStore.getState().roadMode || gameStore.getState().pipelineMode,
+      onPaint: (x, y, start) => {
+        const hit = this.camera.pickSurface(x, y);
+        if (gameStore.getState().pipelineMode) this.links.pipelinePaint(hit, start);
+        else this.settlement.roadPlacement.paint(hit, start);
+      },
+      onPaintEnd: (commit) => {
+        if (gameStore.getState().pipelineMode) this.links.pipelineEnd(commit);
+        else this.settlement.roadPlacement.endStroke(commit);
+      },
     });
+    this.links = new LinkTools(this.camera, this.logistics, this.events);
 
     this.buildUI(terrain);
     this.wireState();
@@ -172,8 +195,9 @@ export class Game {
   private buildUI(terrain: Terrain): void {
     const ui = this.ui;
     this.labels = new MapLabels(ui, terrain, this.events);
-    this.popups = new WorldPopups(ui, this.events, terrain, this.settlement.grid);
+    this.popups = new WorldPopups(ui, this.events, terrain, () => this.settlement.grid);
     new HUD(ui, this.events);
+    new BaseSwitcher(ui);
     new Alerts(ui);
     new SidePanel(ui, [
       new ConstructionMenu(),
@@ -186,6 +210,18 @@ export class Game {
     new PlacementHint(ui, this.events);
     new Toolbar(ui);
     this.mapControls = new MapControls(ui, this.events, this.camera);
+    this.xray = new XrayControl(ui, this.events);
+    this.garageArrow = new GarageArrow(ui, terrain, {
+      worldOf: (id) => {
+        const b = gameStore.getState().buildings.find((x) => x.id === id);
+        if (!b) return null;
+        const c = rectCenter(footprintRect(b.type, b.gridX, b.gridY, b.rotation));
+        return this.settlement.grid.surfacePoint(c.x, c.y, 0.02);
+      },
+      start: (id) => this.links.garageDragStart(id),
+      move: (x, y) => this.links.garageDrag(this.camera.pickSurface(x, y)),
+      end: () => this.links.garageDragEnd(),
+    });
   }
 
   private wireState(): void {
@@ -201,8 +237,45 @@ export class Game {
       (s) => s.selectedRegionId,
       (id) => this.fog.setSelected(id ? (regionManager.get(id)?.index ?? -1) : -1),
     );
+    this.events.on('xray:set', (v) => {
+      this.mars.setXray(v);
+      // The radar view is a map view: pull back from close-up base views.
+      if (v.on && this.camera.alt < 30) this.camera.flyTo(this.camera.lat, this.camera.lon, 140);
+    });
+    watch(
+      (s) => `${Object.keys(s.sitesSeen).length}|${Object.values(s.discoveredRegions).filter(Boolean).length}|${s.research.completed.includes('orbiter_mk3')}`,
+      () => this.mars.setDeposits(depositsFor(gameStore.getState())),
+    );
+    watch(
+      (s) => s.pipelineMode,
+      (on) => this.links.setPipelineMode(on),
+      Object.is,
+      false,
+    );
     this.events.on('camera:flyTo', ({ lat, lon, altitude }) => this.camera.flyTo(lat, lon, altitude));
-    this.events.on('camera:home', () => this.camera.flyTo(SETTLEMENT.lat, SETTLEMENT.lon, BASE_ALTITUDE));
+    this.events.on('camera:home', () => {
+      const b = gameStore.getState().base;
+      this.camera.flyTo(b.lat, b.lon, BASE_ALTITUDE);
+    });
+    // Switching bases flies the camera there.
+    watch(
+      (s) => s.base.id,
+      () => this.events.emit('camera:home'),
+      Object.is,
+      false,
+    );
+    watch(
+      (s) => `${s.base.id}|${s.otherBases.map((b) => b.id).join(',')}`,
+      () => this.syncBases(),
+      Object.is,
+      false,
+    );
+    watch(
+      (s) => s.otherBases,
+      (others) => {
+        for (const b of others) this.settlements.get(b.id)?.showSnapshot(b.buildings, b.roads);
+      },
+    );
     this.events.on('camera:globe', () => this.camera.flyTo(this.camera.lat, this.camera.lon, GLOBE_ALTITUDE));
     for (const ev of ['region:discovered', 'region:explored'] as const) {
       this.events.on(ev, ({ id }) => {
@@ -320,12 +393,46 @@ export class Game {
     this.sim.refresh();
   }
 
+  /** The base on screen. */
+  private get settlement(): SettlementManager {
+    return this.settlements.get(gameStore.getState().base.id) ?? this.settlements.values().next().value!;
+  }
+
+  /** Makes sure every base has a scene, the right one is active, and the globe has a hole under each. */
+  private syncBases(): void {
+    const s = gameStore.getState();
+    const all = [s.base, ...s.otherBases];
+    for (const b of all) {
+      if (this.settlements.has(b.id)) continue;
+      const home = SITE_BY_ID[b.siteId]?.home ?? false;
+      const m = new SettlementManager(this.terrain, this.events, { id: b.id, lat: b.lat, lon: b.lon, home });
+      this.settlements.set(b.id, m);
+      this.scene.add(m.group);
+    }
+    // Bases that no longer exist (a different save was loaded).
+    for (const [id, m] of this.settlements) {
+      if (all.some((b) => b.id === id)) continue;
+      m.dispose();
+      this.scene.remove(m.group);
+      this.settlements.delete(id);
+    }
+    for (const [id, m] of this.settlements) m.setActive(id === s.base.id);
+    for (const b of s.otherBases) this.settlements.get(b.id)?.showSnapshot(b.buildings, b.roads);
+    const sites = all.map((b) => ({ lat: b.lat, lon: b.lon }));
+    // Jezero first: its hole is the one baked into the crater patch.
+    sites.sort((a, b) => Number(SITE_BY_ID.jezero.lat !== a.lat) - Number(SITE_BY_ID.jezero.lat !== b.lat));
+    this.mars?.setHoles(sites);
+    this.camera?.setBases(sites);
+  }
+
   // -------------------------------------------------------------------------
   // Interaction
   // -------------------------------------------------------------------------
 
   private handleClick(x: number, y: number): void {
     const s = gameStore.getState();
+    // The pipeline tool builds when a drag is let go (LinkTools.pipelineEnd).
+    if (s.pipelineMode) return;
     if (s.roadMode) {
       this.settlement.roadPlacement.click(this.camera.pickSurface(x, y));
       return;
@@ -336,9 +443,19 @@ export class Game {
       return;
     }
     if (this.camera.alt < 8) {
-      const id = this.settlement.buildings.pick(this.camera.getRay(x, y));
+      const ray = this.camera.getRay(x, y);
+      const id = this.settlement.buildings.pick(ray);
       if (id) {
         s.selectBuilding(id);
+        return;
+      }
+      // Another base's Central Storage Depot: switch to that base and open its depot.
+      for (const b of s.otherBases) {
+        const hit = this.settlements.get(b.id)?.buildings.pick(ray);
+        const depot = hit ? b.buildings.find((x) => x.id === hit && x.type === 'storage_depot') : undefined;
+        if (!depot) continue;
+        s.switchBase(b.id);
+        gameStore.getState().selectBuilding(depot.id);
         return;
       }
     }
@@ -355,6 +472,10 @@ export class Game {
 
   private handleCancel(): boolean {
     const s = gameStore.getState();
+    if (s.pipelineMode) {
+      s.stopPipelineMode();
+      return true;
+    }
     if (s.roadMode) {
       s.stopRoadMode();
       return true;
@@ -403,11 +524,21 @@ export class Game {
           if (!res.ok) s.pushAlert({ key: 'cant-afford', level: 'warning', title: 'Not enough regolith for roads', message: res.reason });
         }
         return true;
+      case 'p':
+        if (s.pipelineMode) s.stopPipelineMode();
+        else {
+          const res = s.startPipelineMode();
+          if (!res.ok) s.pushAlert({ key: 'pipe-error', level: 'warning', title: 'Can’t lay a pipeline yet', message: res.reason });
+        }
+        return true;
       case 'h':
         this.events.emit('camera:home');
         return true;
       case 'g':
         this.events.emit('camera:globe');
+        return true;
+      case 'v':
+        this.xray.toggle();
         return true;
     }
     const panel = PANEL_KEYS[key];
@@ -440,12 +571,21 @@ export class Game {
     this.updateHover();
     this.fog.update(dt);
     this.fleet.update(dt, alt);
-    this.mars.update(cam.position, alt);
-    this.settlement.update(dt, time, alt, cam.position);
+    this.logistics.update(alt);
+    this.mars.update(cam.position, alt, dt);
+    // The radar view is for maps: zooming in to a base switches it off.
+    if (this.xray.isOn && alt < 10) this.xray.toggle();
+    // Under the radar view the surface sinks away: hide what sits on it.
+    const surface = this.mars.xrayAmount < 0.05;
+    this.fleet.group.visible = surface;
+    this.logistics.group.visible = surface;
+    for (const m of this.settlements.values()) m.group.visible = surface;
+    for (const m of this.settlements.values()) m.update(dt, time, alt, cam.position);
     this.updateLight(alt);
 
     this.labels.update(cam, alt, this.width, this.height);
     this.popups.update(cam, alt, this.width, this.height, dt);
+    this.garageArrow.update(cam, this.width, this.height);
     this.mapControls.update();
     this.renderer.render(this.scene, cam);
   }
@@ -481,6 +621,30 @@ export class Game {
     const nearBase = alt < 6 && this.settlement.distanceFrom(this.tmp.copy(this.camera.camera.position)) < 4;
     if (nearBase) this.renderer.shadowMap.needsUpdate = true;
   }
+}
+
+const TRAIT_DEPOSIT: Partial<Record<TraitId, number>> = {
+  buried_glacier: DEPOSIT_KIND.glacier,
+  hematite: DEPOSIT_KIND.hematite,
+  clays: DEPOSIT_KIND.clays,
+  lava_tube: DEPOSIT_KIND.lavaTube,
+  ground_ice: DEPOSIT_KIND.groundIce,
+  deep_water: DEPOSIT_KIND.deepWater,
+};
+
+/** What the radar can show: the deposits of every site the orbiter has spotted. */
+function depositsFor(s: ReturnType<typeof gameStore.getState>): { lat: number; lon: number; kind: number }[] {
+  const out: { lat: number; lon: number; kind: number }[] = [];
+  const mk3 = s.research.completed.includes('orbiter_mk3');
+  for (const site of BASE_SITES) {
+    if (!s.sitesSeen[site.id] || !s.discoveredRegions[site.regionId]) continue;
+    for (const t of site.traits) {
+      const kind = TRAIT_DEPOSIT[t];
+      if (!kind || (t === 'deep_water' && !mk3)) continue;
+      out.push({ lat: site.lat, lon: site.lon, kind });
+    }
+  }
+  return out;
 }
 
 /** Yields so the loading screen can repaint (setTimeout also works in background tabs). */

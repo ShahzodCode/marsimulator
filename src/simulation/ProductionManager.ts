@@ -1,10 +1,11 @@
-import { BUILDINGS } from '../data/buildings';
+import { BUILDINGS, basePowerKw } from '../data/buildings';
 import { RECIPES, type ProductionRecipe, type RecipeId } from '../data/recipes';
 import { RESOURCES, type ResourceId } from '../data/resources';
 import type { BuildingInstance, BuildingStatus, RecipeState } from '../state/types';
 import { LocalStore, ResourceManager, type ResourceBag } from './ResourceManager';
 import { StorageManager } from './StorageManager';
 import type { TransportNetwork } from './Transport';
+import { NEUTRAL_ENV, type BaseEnv } from './BaseEnv';
 
 /**
  * Recipe-based production. Each cycle of a recipe:
@@ -24,6 +25,8 @@ export interface ProductionContext {
   deposits: { ice: number };
   transport: TransportNetwork;
   dt: number;
+  /** Site and research effects for this base (defaults to none). */
+  env?: BaseEnv;
 }
 
 interface RecipePlan {
@@ -56,8 +59,13 @@ export interface ProductionResult {
 
 const RES_NAME = (id: ResourceId) => RESOURCES[id].name.toLowerCase();
 
-function needsStorageRoom(r: ProductionRecipe, reachable: boolean, inv: ResourceManager, local: LocalStore | null): ResourceId | null {
-  for (const [id, v] of Object.entries(r.outputs) as [ResourceId, number][]) {
+/** Recipe outputs at this base (site traits and research multiply them). */
+function outputsAt(r: ProductionRecipe, env: BaseEnv): [ResourceId, number][] {
+  return (Object.entries(r.outputs) as [ResourceId, number][]).map(([id, v]) => [id, v * (env.output[id] ?? 1)]);
+}
+
+function needsStorageRoom(r: ProductionRecipe, reachable: boolean, inv: ResourceManager, local: LocalStore | null, env: BaseEnv): ResourceId | null {
+  for (const [id, v] of outputsAt(r, env)) {
     if (RESOURCES[id].ventWhenFull) continue;
     const room = reachable ? inv.room(id) : (local?.room(id) ?? 0);
     if (room + 1e-9 < v) return id;
@@ -65,13 +73,18 @@ function needsStorageRoom(r: ProductionRecipe, reachable: boolean, inv: Resource
   return null;
 }
 
-function deliver(r: ProductionRecipe, reachable: boolean, inv: ResourceManager, local: LocalStore | null, delivered: Partial<Record<ResourceId, number>>): boolean {
-  if (needsStorageRoom(r, reachable, inv, local)) return false;
-  for (const [id, v] of Object.entries(r.outputs) as [ResourceId, number][]) {
+function deliver(r: ProductionRecipe, reachable: boolean, inv: ResourceManager, local: LocalStore | null, delivered: Partial<Record<ResourceId, number>>, env: BaseEnv): boolean {
+  if (needsStorageRoom(r, reachable, inv, local, env)) return false;
+  for (const [id, v] of outputsAt(r, env)) {
     const stored = reachable ? inv.put(id, v) : (local?.put(id, v) ?? 0);
     delivered[id] = (delivered[id] ?? 0) + stored; // vented hydrogen beyond the tanks is not counted
   }
   return true;
+}
+
+/** Ice taken from the deposit per cycle: more water out means more ice dug. */
+function depositUse(r: ProductionRecipe, env: BaseEnv): number {
+  return r.deposit ? r.deposit.amount * (env.output.water ?? 1) : 0;
 }
 
 export const ProductionManager = {
@@ -81,7 +94,8 @@ export const ProductionManager = {
     const reachable = ctx.transport.canReach(b.id);
     const local = def.recipes.length && !reachable ? StorageManager.localStore(b) : null;
     const recipes: RecipePlan[] = [];
-    let kw = def.basePowerKw;
+    const env = ctx.env ?? NEUTRAL_ENV;
+    let kw = basePowerKw(b.type, env.heating);
     for (const id of def.recipes) {
       const r = RECIPES[id];
       const state = b.recipes[id] ?? { progress: 0, loaded: false };
@@ -92,7 +106,7 @@ export const ProductionManager = {
         p.note = need.note;
       } else if (state.loaded && state.progress >= 1) {
         // Finished, waiting to unload.
-        const full = needsStorageRoom(r, reachable, ctx.inventory, local);
+        const full = needsStorageRoom(r, reachable, ctx.inventory, local, env);
         p.waitingToDeliver = true;
         if (full) {
           p.blocked = 'storage_full';
@@ -102,11 +116,11 @@ export const ProductionManager = {
         p.wantsPower = true;
       } else {
         const inputs = Object.keys(r.inputs) as ResourceId[];
-        const full = needsStorageRoom(r, reachable, ctx.inventory, local);
+        const full = needsStorageRoom(r, reachable, ctx.inventory, local, env);
         if (inputs.length && !reachable) {
           p.blocked = 'no_road';
           p.note = `No road — can’t receive ${inputs.map(RES_NAME).join(' and ')}`;
-        } else if (r.deposit && ctx.deposits[r.deposit.id] + 1e-9 < r.deposit.amount) {
+        } else if (r.deposit && ctx.deposits[r.deposit.id] + 1e-9 < depositUse(r, env)) {
           p.blocked = 'waiting_materials';
           p.note = 'The ice here is used up — explore icy regions to find more';
         } else if (!ctx.inventory.has(r.inputs)) {
@@ -130,6 +144,7 @@ export const ProductionManager = {
   run(plan: BuildingPlan, powered: boolean, ctx: ProductionContext): ProductionResult {
     const b = plan.building;
     const def = BUILDINGS[b.type];
+    const env = ctx.env ?? NEUTRAL_ENV;
     const inv = ctx.inventory;
     const delivered: Partial<Record<ResourceId, number>> = {};
     const flow: Partial<Record<ResourceId, number>> = {};
@@ -148,11 +163,11 @@ export const ProductionManager = {
       const r = RECIPES[p.id];
       let st = { ...p.state };
       if (p.waitingToDeliver) {
-        if (ctx.dt > 0 && deliver(r, plan.reachable, inv, plan.local, delivered)) st = { progress: 0, loaded: false };
+        if (ctx.dt > 0 && deliver(r, plan.reachable, inv, plan.local, delivered, env)) st = { progress: 0, loaded: false };
         else if (p.blocked) setStatus(p.blocked, p.note);
       } else if (p.wantsPower && powered) {
         running++;
-        for (const [id, v] of Object.entries(r.outputs) as [ResourceId, number][]) flow[id] = (flow[id] ?? 0) + v / r.durationSols;
+        for (const [id, v] of outputsAt(r, env)) flow[id] = (flow[id] ?? 0) + v / r.durationSols;
         for (const [id, v] of Object.entries(r.inputs) as [ResourceId, number][]) flow[id] = (flow[id] ?? 0) - v / r.durationSols;
         if (ctx.dt > 0) {
           if (!st.loaded) {
@@ -162,13 +177,13 @@ export const ProductionManager = {
               recipes[p.id] = st;
               continue;
             }
-            if (r.deposit) ctx.deposits[r.deposit.id] = Math.max(0, ctx.deposits[r.deposit.id] - r.deposit.amount);
+            if (r.deposit) ctx.deposits[r.deposit.id] = Math.max(0, ctx.deposits[r.deposit.id] - depositUse(r, env));
             st.loaded = true;
           }
           st.progress = Math.min(1, st.progress + ctx.dt / r.durationSols);
           if (st.progress >= 1 - 1e-9) {
             st.progress = 1;
-            if (deliver(r, plan.reachable, inv, plan.local, delivered)) st = { progress: 0, loaded: false };
+            if (deliver(r, plan.reachable, inv, plan.local, delivered, env)) st = { progress: 0, loaded: false };
           }
         }
       } else if (p.wantsPower) {
@@ -180,7 +195,7 @@ export const ProductionManager = {
     }
 
     // Buildings with no recipes (habitats, silos) only need their base power.
-    if (!def.recipes.length && def.basePowerKw > 0 && !powered) setStatus('insufficient_power', 'Not enough electricity for heating and air');
+    if (!def.recipes.length && basePowerKw(b.type, env.heating) > 0 && !powered) setStatus('insufficient_power', 'Not enough electricity for heating and air');
 
     let stored = plan.local ? plan.local.items : b.stored;
     if (plan.reachable && ctx.dt > 0) stored = StorageManager.haul({ ...b, stored }, inv, ctx.dt);

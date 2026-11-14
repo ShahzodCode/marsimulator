@@ -2,6 +2,7 @@ import { BUILDINGS, BUILDING_TYPES, maxPowerKw, type BuildingType } from '../dat
 import { RECIPES, recipeRatePerSol } from '../data/recipes';
 import { rankById } from '../data/progression';
 import { ConstructionManager } from '../simulation/ConstructionManager';
+import { buildCost, envOf } from '../simulation/BaseEnv';
 import { RESOURCES, RESOURCE_IDS, type ResourceId } from '../data/resources';
 import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore } from '../state/gameStore';
@@ -10,6 +11,7 @@ import { buildingThumbnail } from '../settlement/buildings/thumbnails';
 import { BUILDING_ICONS, RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
 import { ROAD_COST } from '../settlement/RoadRules';
+import { Logistics } from '../simulation/Logistics';
 
 interface Card {
   type: BuildingType;
@@ -47,7 +49,7 @@ export class ConstructionMenu implements Panel {
       for (const [id, amount] of Object.entries(def.constructionCost) as [ResourceId, number][]) {
         const el = h('span', { class: 'cost', title: RESOURCES[id].name, style: { ['--chip-color' as never]: RESOURCES[id].color } }, [
           h('span', { class: 'cost-icon', html: RESOURCE_ICONS[id] }),
-          `${amount}`,
+          h('span', { class: 'cost-n', text: `${amount}` }),
         ]);
         costs.set(id, el);
         costRow.append(el);
@@ -64,6 +66,9 @@ export class ConstructionMenu implements Panel {
       }
       if (flows.length) effects.push(`${flows.join(', ')} per sol`);
       if (def.housing) effects.push(`🛏 ${def.housing} beds`);
+      if (def.steadyKw) effects.push(`⚛ ${def.steadyKw} kW day and night`);
+      if (def.researchPerSol) effects.push(`🔬 ${def.researchPerSol} research points per sol`);
+      if (def.con) effects.push(`⚠ ${def.con}`);
       const stores = (Object.keys(def.storage) as ResourceId[]).length;
       if (stores && def.buildable) effects.push('📦 more storage for every resource');
       const badge = h('span', { class: 'lock-badge' });
@@ -153,16 +158,24 @@ export class ConstructionMenu implements Panel {
     const roadOk = ResourceManager.canAfford(s.resources, ROAD_COST);
     toggleClass(this.roadCard, 'disabled', !roadOk);
     setText(this.roadNote, roadOk ? '' : ResourceManager.describeMissing(s.resources, ROAD_COST));
+    // Bases joined by working pipelines pay for buildings together.
+    const stock = Logistics.pooledResources(s);
     for (const c of this.cards) {
       const def = BUILDINGS[c.type];
       const check = ConstructionManager.canBuild(s, c.type);
       const locked = !check.ok && check.code === 'locked';
+      const cost = buildCost(c.type, envOf(s));
       toggleClass(c.root, 'disabled', !check.ok);
       toggleClass(c.root, 'locked', locked);
       c.root.setAttribute('aria-disabled', String(!check.ok));
-      for (const [id, el] of c.costs) toggleClass(el, 'short', (def.constructionCost[id] ?? 0) > s.resources[id] + 1e-9);
-      setText(c.badge, locked && def.unlockRank ? `🔒 ${rankById(def.unlockRank).title}` : '');
-      setText(c.note, check.ok ? '' : check.code === 'power' ? `⚡ ${check.reason}` : check.code === 'locked' ? `Earn XP to reach ${rankById(def.unlockRank!).title} — finish buildings, goals and missions.` : check.reason);
+      for (const [id, el] of c.costs) {
+        toggleClass(el, 'short', (cost[id] ?? 0) > stock[id] + 1e-9);
+        setText(el.querySelector('.cost-n')!, `${cost[id] ?? 0}`);
+      }
+      const reason = !check.ok ? check.reason : '';
+      const rankLocked = locked && reason.startsWith('Unlocks at rank');
+      setText(c.badge, !locked ? '' : rankLocked ? `🔒 ${rankById(def.unlockRank!).title}` : reason.startsWith('Needs research') ? '🔬 Research' : '📍 Site');
+      setText(c.note, check.ok ? '' : check.code === 'power' ? `⚡ ${check.reason}` : rankLocked ? `Earn XP to reach ${rankById(def.unlockRank!).title} — finish buildings, goals and missions.` : check.reason);
       toggleClass(c.note, 'warn', !check.ok && check.code === 'power');
     }
   }

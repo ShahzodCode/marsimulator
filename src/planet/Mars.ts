@@ -1,19 +1,43 @@
 import * as THREE from 'three';
-import { R } from './geo';
+import { R, latLonToDir, type LatLon } from './geo';
 import { PATCH, SETTLEMENT_FRAME } from './terrainGen';
 import type { Terrain } from './Terrain';
 import { GLSL_NOISE, GLSL_REGIONS } from './shaders';
 import { REGIONS } from '../data/regions';
 
+/** Most bases that get a detailed ground patch (and a hole in the globe). */
+export const MAX_HOLES = 12;
+
 export interface GlobeUniforms {
   uDiscovered: { value: number[] };
   uHover: { value: number };
   uSelected: { value: number };
-  uHoleDir: { value: THREE.Vector3 };
+  uHoleDirs: { value: THREE.Vector3[] };
+  uHoleCount: { value: number };
   uHoleCos: { value: number };
   uDetail: { value: number };
   uAtmo: { value: number };
   uBorders: { value: number };
+  /** X-ray (radar) view: 0 = normal surface, 1 = full subsurface view. */
+  uXray: { value: number };
+  /** Depth being looked at (km) and how deep the orbiter's radar reaches (km). */
+  uDepthKm: { value: number };
+  uMaxDepthKm: { value: number };
+  /** Scene units the surface is lowered by in X-ray view. */
+  uSink: { value: number };
+  /** Known deposits: xyz = direction, w = kind (see DEPOSIT_KIND). */
+  uDeposits: { value: THREE.Vector4[] };
+  uDepositCount: { value: number };
+}
+
+/** Deposit kinds shown in the X-ray view. */
+export const DEPOSIT_KIND = { glacier: 1, hematite: 2, clays: 3, lavaTube: 4, deepWater: 5, groundIce: 6 } as const;
+const MAX_DEPOSITS = 64;
+
+export interface XrayView {
+  on: boolean;
+  depthKm: number;
+  maxDepthKm: number;
 }
 
 /**
@@ -33,11 +57,18 @@ export class Mars {
       uDiscovered: { value: REGIONS.map(() => 0) },
       uHover: { value: -1 },
       uSelected: { value: -1 },
-      uHoleDir: { value: new THREE.Vector3(...SETTLEMENT_FRAME.c) },
+      uHoleDirs: { value: Array.from({ length: MAX_HOLES }, (_, i) => (i === 0 ? new THREE.Vector3(...SETTLEMENT_FRAME.c) : new THREE.Vector3())) },
+      uHoleCount: { value: 1 },
       uHoleCos: { value: Math.cos(PATCH.hole / R) },
       uDetail: { value: 0 },
       uAtmo: { value: 1 },
       uBorders: { value: 1 },
+      uXray: { value: 0 },
+      uDepthKm: { value: 0 },
+      uMaxDepthKm: { value: 1 },
+      uSink: { value: 0 },
+      uDeposits: { value: Array.from({ length: MAX_DEPOSITS }, () => new THREE.Vector4()) },
+      uDepositCount: { value: 0 },
     };
 
     const geometry = buildGlobeGeometry(terrain, 512, 256);
@@ -88,12 +119,49 @@ export class Mars {
     this.group.add(this.stars);
   }
 
+  /** Cuts the globe away under every base's detailed ground (Jezero first). */
+  setHoles(sites: LatLon[]): void {
+    const n = Math.min(MAX_HOLES, sites.length);
+    for (let i = 0; i < n; i++) latLonToDir(sites[i].lat, sites[i].lon, this.uniforms.uHoleDirs.value[i]);
+    this.uniforms.uHoleCount.value = n;
+  }
+
+  private xrayTarget = 0;
+
+  /** Turns the radar view on/off and sets the depth being looked at. */
+  setXray(v: XrayView): void {
+    this.xrayTarget = v.on ? 1 : 0;
+    this.uniforms.uDepthKm.value = v.depthKm;
+    this.uniforms.uMaxDepthKm.value = Math.max(0.001, v.maxDepthKm);
+  }
+
+  get xrayAmount(): number {
+    return this.uniforms.uXray.value;
+  }
+
+  /** Deposits the radar can show (only where the orbiter has mapped). */
+  setDeposits(list: { lat: number; lon: number; kind: number }[]): void {
+    const n = Math.min(MAX_DEPOSITS, list.length);
+    const d = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      latLonToDir(list[i].lat, list[i].lon, d);
+      this.uniforms.uDeposits.value[i].set(d.x, d.y, d.z, list[i].kind);
+    }
+    this.uniforms.uDepositCount.value = n;
+  }
+
   /** Per-frame visual updates driven by the camera altitude. */
-  update(cameraPosition: THREE.Vector3, altitude: number): void {
+  update(cameraPosition: THREE.Vector3, altitude: number, dt = 0.016): void {
+    const u = this.uniforms;
+    u.uXray.value += (this.xrayTarget - u.uXray.value) * Math.min(1, dt * 5);
+    if (Math.abs(this.xrayTarget - u.uXray.value) < 1e-3) u.uXray.value = this.xrayTarget;
+    // The surface is lowered as you look deeper (exaggerated so it shows from orbit).
+    const frac = Math.min(1, u.uDepthKm.value / u.uMaxDepthKm.value);
+    u.uSink.value = u.uXray.value * (0.25 + 1.75 * frac);
     this.stars.position.copy(cameraPosition);
     this.uniforms.uDetail.value = 1 - THREE.MathUtils.smoothstep(altitude, 3, 25);
     this.uniforms.uAtmo.value = THREE.MathUtils.smoothstep(altitude, 4, 40);
-    this.atmoMaterial.uniforms.uOpacity.value = THREE.MathUtils.smoothstep(altitude, 6, 60);
+    this.atmoMaterial.uniforms.uOpacity.value = THREE.MathUtils.smoothstep(altitude, 6, 60) * (1 - u.uXray.value);
     this.uniforms.uBorders.value = THREE.MathUtils.smoothstep(altitude, 2.5, 12);
   }
 
@@ -103,7 +171,8 @@ export class Mars {
       Object.assign(shader.uniforms, u);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vObjPos;\nvarying vec2 vGeoUv;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position;\nvGeoUv = uv;');
+        .replace('#include <common>', '#include <common>\nuniform float uSink;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position;\nvGeoUv = uv;\ntransformed -= normalize(position) * uSink;');
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
@@ -113,12 +182,50 @@ export class Mars {
           uniform float uDiscovered[${REGIONS.length}];
           uniform float uHover;
           uniform float uSelected;
-          uniform vec3 uHoleDir;
+          uniform vec3 uHoleDirs[${MAX_HOLES}];
+          uniform int uHoleCount;
           uniform float uHoleCos;
           uniform float uDetail;
           uniform float uAtmo;
           uniform float uBorders;
+          uniform float uXray;
+          uniform float uDepthKm;
+          uniform float uMaxDepthKm;
+          uniform vec4 uDeposits[${MAX_DEPOSITS}];
+          uniform int uDepositCount;
           ${GLSL_NOISE}
+          // Radar signal (0..1) of each deposit kind at depth dk, for a direction.
+          // Depth ranges follow published measurements (docs/sources.md): ground ice in the top
+          // metres (SWIM, Phoenix), buried glaciers 80-170 m thick (Utopia, SHARAD), polar caps
+          // about 3 km thick, lava-tube roofs tens of metres down, InSight's water 11.5-20 km down.
+          float band(float dk, float top, float bottom) {
+            float soft = max(0.004, (bottom - top) * 0.15);
+            return smoothstep(top - soft, top, dk) * (1.0 - smoothstep(bottom, bottom + soft, dk));
+          }
+          vec4 depositAt(vec3 dir, float dk) {
+            vec3 col = vec3(0.0);
+            float a = 0.0;
+            for (int i = 0; i < ${MAX_DEPOSITS}; i++) {
+              if (i >= uDepositCount) break;
+              vec4 d = uDeposits[i];
+              float ang = acos(clamp(dot(dir, d.xyz), -1.0, 1.0)) * 3389.5;
+              int k = int(d.w + 0.5);
+              float r = k == 5 ? 1400.0 : (k == 1 ? 380.0 : (k == 4 ? 160.0 : 260.0));
+              float near = 1.0 - smoothstep(r * 0.55, r, ang);
+              if (near <= 0.0) continue;
+              float s = 0.0;
+              vec3 c = vec3(0.0);
+              if (k == 1) { s = band(dk, 0.01, 0.17); c = vec3(0.55, 0.9, 1.0); }
+              else if (k == 2) { s = band(dk, 0.0, 0.06); c = vec3(1.0, 0.35, 0.2); }
+              else if (k == 3) { s = band(dk, 0.0, 0.35); c = vec3(0.45, 1.0, 0.55); }
+              else if (k == 4) { s = band(dk, 0.02, 0.2); c = vec3(1.0, 0.5, 1.0); }
+              else if (k == 5) { s = band(dk, 11.5, 20.0); c = vec3(0.2, 0.55, 1.0); }
+              else if (k == 6) { s = band(dk, 0.0, 0.03); c = vec3(0.7, 0.95, 1.0); }
+              float v = s * near;
+              if (v > a) { a = v; col = c; }
+            }
+            return vec4(col, a);
+          }
           ${GLSL_REGIONS}
           float fogAt(float lat, float lonE) {
             return uDiscovered[int(regionIndex(lat, mod(lonE + 360.0, 360.0)))];
@@ -128,7 +235,10 @@ export class Mars {
           '#include <map_fragment>',
           `#include <map_fragment>
           vec3 gDir = normalize(vObjPos);
-          if (dot(gDir, uHoleDir) > uHoleCos) discard;
+          for (int hi = 0; hi < ${MAX_HOLES}; hi++) {
+            if (hi >= uHoleCount) break;
+            if (dot(gDir, uHoleDirs[hi]) > uHoleCos) discard;
+          }
           float gLat = 90.0 - vGeoUv.y * 180.0;
           float gLon = vGeoUv.x * 360.0 - 180.0;
           float lonE = mod(gLon + 360.0, 360.0);
@@ -148,6 +258,37 @@ export class Mars {
           float hov = 1.0 - step(0.5, abs(rIdx - uHover));
           float sel = 1.0 - step(0.5, abs(rIdx - uSelected));
           diffuseColor.rgb += vec3(0.04, 0.07, 0.09) * hov * uBorders + vec3(0.05, 0.09, 0.12) * sel * uBorders;
+          vec3 xrayGlow = vec3(0.0);
+          if (uXray > 0.001) {
+            // Deeper = blurrier: the radar's picture gets coarser (like MARSIS vs SHARAD).
+            float frac = clamp(uDepthKm / uMaxDepthKm, 0.0, 1.0);
+            float cell = mix(0.12, 3.5, pow(frac, 0.7));
+            float qLat = (floor(gLat / cell) + 0.5) * cell;
+            float qLon = (floor(gLon * cosl / cell) + 0.5) * cell / cosl;
+            vec2 quv = vec2((qLon + 180.0) / 360.0, (90.0 - qLat) / 180.0);
+            vec3 qDir = vec3(cos(radians(qLat)) * sin(radians(qLon)), sin(radians(qLat)), cos(radians(qLat)) * cos(radians(qLon)));
+            vec3 ghost = texture2D(map, quv).rgb;
+            float lum = dot(ghost, vec3(0.3, 0.59, 0.11));
+            // Rock strata: bands that drift with depth.
+            float strata = 0.5 + 0.5 * sin((qLat * 0.35 + qLon * 0.11) + uDepthKm * 6.0 + gNoise(qDir * 6.0 + uDepthKm) * 4.0);
+            vec3 rock = mix(vec3(0.16, 0.1, 0.09), vec3(0.32, 0.2, 0.15), strata) * (0.6 + 0.8 * lum);
+            vec3 xr = mix(mix(ghost, vec3(lum), 0.6) * 0.8, rock, smoothstep(0.0, 0.25, frac + 0.05));
+            // Dimmer the deeper you look.
+            xr *= mix(1.0, 0.28, frac);
+            vec4 dep = depositAt(qDir, uDepthKm);
+            float mapped = step(0.5, disc);
+            xr = mix(xr, dep.rgb * 0.5, dep.a * 0.6 * mapped);
+            xrayGlow = dep.rgb * dep.a * mapped * mix(1.1, 0.6, frac);
+            // No radar data outside mapped regions: static.
+            float noiseS = fract(sin(dot(floor(vec2(qLat, qLon) * 4.0), vec2(12.9898, 78.233))) * 43758.5453);
+            xr = mix(vec3(0.05 + 0.08 * noiseS), xr, mapped);
+            // Polar caps are ice down to about 3 km.
+            float cap = smoothstep(78.0, 82.0, abs(qLat)) * band(uDepthKm, 0.0, 3.0) * mapped;
+            xr = mix(xr, vec3(0.6, 0.85, 1.0) * mix(0.9, 0.4, frac), cap * 0.8);
+            xrayGlow += vec3(0.3, 0.5, 0.7) * cap * 0.4;
+            diffuseColor.rgb = mix(diffuseColor.rgb, xr, uXray);
+            xrayGlow *= uXray;
+          }
           `,
         )
         .replace(
@@ -167,12 +308,13 @@ export class Mars {
             // Atmospheric limb haze.
             vec3 vN = normalize((viewMatrix * vec4(gDir, 0.0)).xyz);
             float rim = pow(1.0 - clamp(dot(vN, normalize(vViewPosition)), 0.0, 1.0), 3.0);
-            totalEmissiveRadiance += vec3(0.9, 0.5, 0.32) * rim * 0.32 * uAtmo;
+            totalEmissiveRadiance += vec3(0.9, 0.5, 0.32) * rim * 0.32 * uAtmo * (1.0 - uXray);
+            totalEmissiveRadiance += xrayGlow;
           }
           `,
         );
     };
-    material.customProgramCacheKey = () => 'mars-globe-v1';
+    material.customProgramCacheKey = () => 'mars-globe-v2';
   }
 }
 

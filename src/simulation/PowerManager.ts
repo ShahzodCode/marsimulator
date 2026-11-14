@@ -2,6 +2,7 @@ import { BUILDINGS, maxPowerKw } from '../data/buildings';
 import { AVERAGE_SUN, sunFactor } from '../data/power';
 import { SOL_HOURS } from '../data/recipes';
 import type { BuildingInstance } from '../state/types';
+import { NEUTRAL_ENV, type BaseEnv } from './BaseEnv';
 
 /**
  * Electricity: solar generation, battery storage and who gets power when there is not
@@ -30,17 +31,17 @@ export const PowerManager = {
   sunFactor,
 
   /** Solar output right now (kW). */
-  generation(buildings: readonly BuildingInstance[], timeSols: number): number {
-    const sun = sunFactor(timeSols);
+  generation(buildings: readonly BuildingInstance[], timeSols: number, env: BaseEnv = NEUTRAL_ENV): number {
+    const sun = sunFactor(timeSols) * env.solar;
     let kw = 0;
-    for (const b of buildings) if (b.isOperational) kw += BUILDINGS[b.type].solarPeakKw * sun;
+    for (const b of buildings) if (b.isOperational) kw += BUILDINGS[b.type].solarPeakKw * sun + (BUILDINGS[b.type].steadyKw ?? 0);
     return kw;
   },
 
   /** Solar output averaged over a whole sol (kW). */
-  averageGeneration(buildings: readonly BuildingInstance[]): number {
+  averageGeneration(buildings: readonly BuildingInstance[], env: BaseEnv = NEUTRAL_ENV): number {
     let kw = 0;
-    for (const b of buildings) if (b.isOperational) kw += BUILDINGS[b.type].solarPeakKw * AVERAGE_SUN;
+    for (const b of buildings) if (b.isOperational) kw += BUILDINGS[b.type].solarPeakKw * AVERAGE_SUN * env.solar + (BUILDINGS[b.type].steadyKw ?? 0);
     return kw;
   },
 
@@ -54,9 +55,9 @@ export const PowerManager = {
    * Most power the settlement could draw if every switched-on building ran flat out —
    * buildings still under construction are counted too, since they will need it soon.
    */
-  plannedDemand(buildings: readonly BuildingInstance[]): number {
+  plannedDemand(buildings: readonly BuildingInstance[], env: BaseEnv = NEUTRAL_ENV): number {
     let kw = 0;
-    for (const b of buildings) if (b.enabled) kw += maxPowerKw(b.type);
+    for (const b of buildings) if (b.enabled) kw += maxPowerKw(b.type, env.heating);
     return kw;
   },
 
@@ -64,8 +65,8 @@ export const PowerManager = {
    * Can the settlement power `extraKw` more, on average over a sol? Used before building
    * or switching on a consumer, so the player never builds into a blackout by accident.
    */
-  canSupport(buildings: readonly BuildingInstance[], extraKw: number): { ok: boolean; spareKw: number } {
-    const spareKw = PowerManager.averageGeneration(buildings) - PowerManager.plannedDemand(buildings);
+  canSupport(buildings: readonly BuildingInstance[], extraKw: number, env: BaseEnv = NEUTRAL_ENV): { ok: boolean; spareKw: number } {
+    const spareKw = PowerManager.averageGeneration(buildings, env) - PowerManager.plannedDemand(buildings, env);
     return { ok: extraKw <= EPS || extraKw <= spareKw + EPS, spareKw };
   },
 

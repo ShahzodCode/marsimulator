@@ -71,18 +71,31 @@ export class PlacementHint {
       {
         class: 'btn danger',
         attrs: { type: 'button' },
-        on: { click: () => (gameStore.getState().roadMode ? gameStore.getState().stopRoadMode() : gameStore.getState().cancelPlacement()) },
+        on: {
+          click: () => {
+            const st = gameStore.getState();
+            if (st.pipelineMode) st.stopPipelineMode();
+            else if (st.roadMode) st.stopRoadMode();
+            else st.cancelPlacement();
+          },
+        },
       },
       [h('span', { class: 'btn-icon', html: ICONS.close }), cancelLabel],
     );
     this.el = h('div', { class: 'placement-hint', attrs: { role: 'status' } }, [h('div', { class: 'ph-text' }, [this.title, keys, this.feedback]), rotate, cancel]);
     parent.append(this.el);
     watch(
-      (s) => (s.roadMode ? 'road' : s.construction.active ? s.construction.buildingType : null),
+      (s) => (s.pipelineMode ? 'pipe' : s.roadMode ? 'road' : s.construction.active ? s.construction.buildingType : null),
       (mode) => {
         toggleClass(this.el, 'open', !!mode);
-        rotate.style.display = mode === 'road' ? 'none' : '';
-        if (mode === 'road') {
+        rotate.style.display = mode === 'road' || mode === 'pipe' ? 'none' : '';
+        if (mode === 'pipe') {
+          setText(this.title, 'Laying pipelines');
+          setText(keys, 'Press on a base with a Pump Station · drag onto another base · let go to build · scroll to zoom · Esc done');
+          setText(this.feedback, 'Both bases need a Pipeline Pump Station for goods to flow.');
+          setText(cancelLabel, 'Done');
+          this.feedback.className = 'feedback';
+        } else if (mode === 'road') {
           setText(this.title, 'Laying roads');
           setText(keys, 'Drag from a building, the Storage Depot or a road · let go to build · click a piece to remove · WASD move · Esc done');
           setText(this.feedback, 'Start in front of a building, the Storage Depot or a road — link it back to the depot to deliver goods.');

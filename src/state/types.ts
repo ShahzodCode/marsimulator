@@ -1,6 +1,7 @@
 import type { BuildingType } from '../data/buildings';
 import type { ResourceId } from '../data/resources';
 import type { RecipeId } from '../data/recipes';
+import type { TechId } from '../data/research';
 
 export type SimSpeed = 1 | 2 | 4;
 
@@ -55,6 +56,8 @@ export interface BuildingInstance {
   stored: Partial<Record<ResourceId, number>>;
   /** Part of the base the colony started with: it can't be demolished. */
   starter?: boolean;
+  /** Cargo Garage: the base its haulers drive to (set by dragging its arrow). */
+  target?: string;
 }
 
 export type MissionStatus = 'active' | 'complete';
@@ -102,6 +105,13 @@ export interface Expedition extends MissionBase {
   energyKwh: number;
   /** Collected when the crew is home again. */
   reward?: { resources: Partial<Record<ResourceId, number>>; xp: number; find: string };
+  /** Base the crew left from (missing in old saves = the home base). */
+  fromBaseId?: string;
+  /** Start and end of the route (missing in old saves = home base → region centre). */
+  from?: { lat: number; lon: number };
+  to?: { lat: number; lon: number };
+  /** A founding convoy: the crew stays and builds a new base at this site. */
+  found?: { siteId: string; crew: number; kit: Partial<Record<ResourceId, number>> };
 }
 
 export type Mission = OrbitalScan | Expedition;
@@ -120,6 +130,47 @@ export interface Outpost {
   tripSols: number;
   /** When the cargo rover last left the base (it delivers when it gets back). */
   lastTripSol: number;
+  /** Base the cargo goes to (missing in old saves = the home base). */
+  baseId?: string;
+}
+
+/** A pipeline between two bases' Pump Stations (see data/logistics.ts). */
+export interface Pipeline {
+  id: string;
+  /** The base that paid for it (where the drag started). */
+  fromBaseId: string;
+  toBaseId: string;
+  km: number;
+  /** 0..1 while the robots lay the pipe. */
+  progress: number;
+  buildSols: number;
+  placedAtSol: number;
+  /** Goods flowing right now, per sol (+ = from → to). Computed by the simulation. */
+  flow: Partial<Record<ResourceId, number>>;
+  /** Pumps on at both ends (computed by the simulation). */
+  working: boolean;
+}
+
+/** Cargo haulers driving goods from one base's Garage to another base and back. */
+export interface Shipment {
+  id: string;
+  garageId: string;
+  fromBaseId: string;
+  toBaseId: string;
+  from: { lat: number; lon: number };
+  to: { lat: number; lon: number };
+  routeKm: number;
+  /** One-way distance counted for driving time (route + climbing). */
+  legKm: number;
+  /** 0..2 × legKm (there and back). */
+  drivenKm: number;
+  haulers: number;
+  /** On the way there: what is loaded. On the way back: whatever didn't fit at the other base. */
+  cargo: Partial<Record<ResourceId, number>>;
+  delivered: boolean;
+  unloadSolsLeft: number;
+  startSol: number;
+  activity: 'driving' | 'night' | 'unloading';
 }
 
 export type AlertLevel = 'info' | 'success' | 'warning' | 'critical';
@@ -158,8 +209,36 @@ export interface PowerState {
 
 export interface ColonyStats {
   colonists: number;
+  /** Beds in powered habitats. */
   housing: number;
+  /** 0..1 progress towards the next baby (see PopulationManager). */
+  growth: number;
 }
+
+export interface ResearchState {
+  completed: TechId[];
+  /** Project the labs are working on. */
+  active: TechId | null;
+  /** Research points put into the active project. */
+  progress: number;
+}
+
+/** Who and where a base is. The active base's data lives at the top of GameState. */
+export interface BaseMeta {
+  id: string;
+  name: string;
+  siteId: string;
+  lat: number;
+  lon: number;
+  foundedSol: number;
+}
+
+/** GameState fields that belong to one base. */
+export const BASE_KEYS = ['resources', 'storage', 'rates', 'power', 'deposits', 'colony', 'buildings', 'roads'] as const;
+export type BaseKey = (typeof BASE_KEYS)[number];
+
+/** A base that is not on screen: its meta plus its own copy of the per-base fields. */
+export type BaseData = BaseMeta & Pick<GameState, BaseKey>;
 
 export interface Progression {
   /** Rank level (1 = Junior Pioneer). */
@@ -185,6 +264,13 @@ export interface ConstructionMode {
 export interface GameState {
   /** Total simulated time in sols (Martian days). */
   timeSols: number;
+  /** The base on screen; its data is the per-base fields below (BASE_KEYS). */
+  base: BaseMeta;
+  /** Every other base. */
+  otherBases: BaseData[];
+  /** Base sites the orbiter has spotted (1) or a crew / better orbiter has confirmed (2). */
+  sitesSeen: Record<string, 1 | 2>;
+  research: ResearchState;
   paused: boolean;
   speed: SimSpeed;
   started: boolean;
@@ -203,6 +289,10 @@ export interface GameState {
   roads: string[];
   /** Road-laying tool is active (transient UI state). */
   roadMode: boolean;
+  /** Pipeline tool is active (transient UI state). */
+  pipelineMode: boolean;
+  pipelines: Pipeline[];
+  shipments: Shipment[];
   /** Mapped from orbit (no fog). */
   discoveredRegions: Record<string, boolean>;
   /** Visited by a crew. */

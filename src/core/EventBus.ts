@@ -8,6 +8,8 @@ export interface GameEvents {
   'building:completed': { id: string };
   'region:discovered': { id: string };
   'region:explored': { id: string };
+  'site:spotted': { id: string };
+  'base:founded': { id: string };
   /** A production cycle finished and its goods were stored. */
   'production:delivered': { buildingId: string; delivered: Partial<Record<ResourceId, number>> };
   'camera:flyTo': { lat: number; lon: number; altitude?: number };
@@ -16,6 +18,8 @@ export interface GameEvents {
   'pointer:surface': { lat: number; lon: number; regionId: string } | null;
   'placement:feedback': { valid: boolean; message: string | null };
   'game:saved': { ok: boolean; message: string };
+  /** Orbiter radar view toggled or its depth changed. */
+  'xray:set': { on: boolean; depthKm: number; maxDepthKm: number };
 }
 
 type Handler<T> = (payload: T) => void;

@@ -8,8 +8,21 @@ import { PowerManager } from '../simulation/PowerManager';
 import { ProgressionManager } from '../simulation/ProgressionManager';
 import { ROAD_COST, ROAD_PROBLEM_TEXT, canRemoveRoad, checkRoad, roadKey } from '../settlement/RoadRules';
 import { RegionManager } from '../planet/RegionManager';
-import { createInitialState, gridToLatLon, makeId } from './factory';
+import { SITE_BY_ID } from '../data/baseSites';
+import { canResearch, TECH_BY_ID, type TechId } from '../data/research';
+import { envOf } from '../simulation/BaseEnv';
+import { createInitialState, gridToLatLon, makeId, switchBase } from './factory';
 import type { Alert, GameState, PanelId, SimSpeed } from './types';
+import { describeCost, Logistics } from '../simulation/Logistics';
+import { DEMOLISH_REFUND } from '../data/buildings';
+import { pipelineCost } from '../data/logistics';
+import type { Cost } from '../simulation/ResourceManager';
+
+/** Changes one base's stock (the active one or another), keeping storage limits when adding. */
+function updateBaseResources(s: GameState, baseId: string, f: (r: GameState['resources'], storage: GameState['storage']) => GameState['resources']): Partial<GameState> {
+  if (baseId === s.base.id) return { resources: f(s.resources, s.storage) };
+  return { otherBases: s.otherBases.map((b) => (b.id === baseId ? { ...b, resources: f(b.resources, b.storage) } : b)) };
+}
 
 export const regionManager = new RegionManager();
 
@@ -49,6 +62,17 @@ export interface GameActions {
   stopRoadMode(): void;
   placeRoad(tx: number, ty: number): ActionResult;
   removeRoad(tx: number, ty: number): ActionResult;
+  /** Pipeline tool: drag from a base with a Pump Station onto another base. */
+  startPipelineMode(): ActionResult;
+  stopPipelineMode(): void;
+  /** Lays a pipeline between two bases, paid by `fromId`. */
+  buildPipeline(fromId: string, toId: string): ActionResult;
+  /** Takes a pipeline up and returns half of what it cost to the base that paid. */
+  removePipeline(id: string): ActionResult;
+  /** Where a Cargo Garage sends its haulers (null = nowhere). */
+  setGarageTarget(buildingId: string, baseId: string | null): ActionResult;
+  /** Loads haulers at a Garage of the active base and sends them off. */
+  sendCargo(buildingId: string, cargo: Cost): ActionResult;
   /** Removes a player-built building and returns half its construction cost (never energy). */
   demolishBuilding(id: string): ActionResult;
   /** Switch a finished building off or on (switching on needs enough spare power). */
@@ -61,6 +85,13 @@ export interface GameActions {
   expeditionCheck(regionId: string): ActionResult;
   buildOutpost(regionId: string): ActionResult;
   outpostCheck(regionId: string): ActionResult;
+  /** Send a founding convoy from the active base to a base site. */
+  launchFounding(siteId: string): ActionResult;
+  foundingCheck(siteId: string): ActionResult;
+  /** Make another base the one on screen. */
+  switchBase(id: string): ActionResult;
+  /** Point the Research Labs at a project (progress on a switched-away project is lost). */
+  startResearch(id: TechId): ActionResult;
   pushAlert(alert: Omit<Alert, 'id' | 'sol' | 'persistent'>): void;
   dismissAlert(id: string): void;
   setPersistentAlerts(alerts: Omit<Alert, 'id' | 'sol' | 'persistent'>[]): void;
@@ -104,6 +135,7 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     set({
       construction: { active: true, buildingType: type, rotation: s.construction.rotation },
       roadMode: false,
+      pipelineMode: false,
       selectedBuildingId: null,
       activePanel: null,
     });
@@ -128,6 +160,7 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     const b = res.building;
     set({
       resources: res.resources,
+      ...(res.otherBases ? { otherBases: res.otherBases } : {}),
       buildings: [...s.buildings, b],
       construction: { ...s.construction, active: false, buildingType: null },
       selectedBuildingId: b.id,
@@ -137,6 +170,88 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
       level: 'info',
       title: `${def.name} under construction`,
       message: `Construction robots are building it now. Ready in about ${def.buildTimeSols.toFixed(1)} sols. Lay a road to it so its goods can reach the base!`,
+    });
+    for (const x of res.sent) {
+      get().pushAlert({ key: `piped-${b.id}-${x.name}`, level: 'info', title: `🛢️ ${x.name} sent materials`, message: `Pumped over ${describeCost(x.goods)} through the pipeline to help build the ${def.name}.` });
+    }
+    return { ok: true };
+  },
+
+  startPipelineMode() {
+    const s = get();
+    if (!Logistics.allBases(s).some((b) => Logistics.hasPump(b.buildings))) {
+      return { ok: false, reason: 'Build a Pipeline Pump Station first (Build menu). The base at the other end needs one too.' };
+    }
+    if (!s.otherBases.length) return { ok: false, reason: 'You need a second base first. Found one from the Exploration panel.' };
+    set({
+      pipelineMode: true,
+      roadMode: false,
+      construction: { ...s.construction, active: false, buildingType: null },
+      selectedBuildingId: null,
+      activePanel: null,
+    });
+    return { ok: true };
+  },
+
+  stopPipelineMode() {
+    if (get().pipelineMode) set({ pipelineMode: false });
+  },
+
+  buildPipeline(fromId, toId) {
+    const s = get();
+    const check = Logistics.checkPipeline(s, fromId, toId);
+    if (!check.ok) return check;
+    const pipe = Logistics.makePipeline(fromId, toId, check.km, s.timeSols);
+    set({ ...updateBaseResources(s, fromId, (r) => ResourceManager.deduct(r, check.cost)), pipelines: [...s.pipelines, pipe] });
+    const from = Logistics.baseById(s, fromId)!;
+    const to = Logistics.baseById(s, toId)!;
+    const pumps = Logistics.hasPump(to.buildings) ? '' : ` Build a Pipeline Pump Station at ${to.name} too, or nothing will flow.`;
+    get().pushAlert({
+      key: `pipe-${pipe.id}`,
+      level: 'info',
+      title: `🛢️ Pipeline to ${to.name} under construction`,
+      message: `${Math.round(check.km).toLocaleString()} km of pipe from ${from.name}. Robots finish it in about ${check.buildSols.toFixed(1)} sols.${pumps}`,
+    });
+    return { ok: true };
+  },
+
+  removePipeline(id) {
+    const s = get();
+    const p = s.pipelines.find((x) => x.id === id);
+    if (!p) return { ok: false, reason: 'That pipeline is already gone.' };
+    const refund: Cost = {};
+    for (const [rid, v] of Object.entries(pipelineCost(p.km)) as [ResourceId, number][]) refund[rid] = Math.floor(v * DEMOLISH_REFUND);
+    const payer = Logistics.baseById(s, p.fromBaseId) ? p.fromBaseId : s.base.id;
+    set({
+      ...updateBaseResources(s, payer, (r, cap) => {
+        const out = { ...r };
+        for (const [rid, v] of Object.entries(refund) as [ResourceId, number][]) out[rid] = Math.min(cap[rid], out[rid] + v);
+        return out;
+      }),
+      pipelines: s.pipelines.filter((x) => x.id !== id),
+    });
+    return { ok: true };
+  },
+
+  setGarageTarget(buildingId, baseId) {
+    const s = get();
+    const g = s.buildings.find((x) => x.id === buildingId);
+    if (!g || g.type !== 'cargo_garage') return { ok: false, reason: 'That garage is gone.' };
+    if (baseId !== null && !s.otherBases.some((b) => b.id === baseId)) return { ok: false, reason: 'Drag the arrow onto one of your other bases.' };
+    set({ buildings: s.buildings.map((x) => (x.id === buildingId ? { ...x, target: baseId ?? undefined } : x)) });
+    return { ok: true };
+  },
+
+  sendCargo(buildingId, cargo) {
+    const s = get();
+    const res = Logistics.launchCargo(s, buildingId, cargo, getRouteHeight());
+    if (!res.ok) return res;
+    set({ resources: res.resources, shipments: [...s.shipments, res.shipment] });
+    get().pushAlert({
+      key: `cargo-${res.shipment.id}`,
+      level: 'info',
+      title: `🚚 ${res.shipment.haulers} hauler${res.shipment.haulers > 1 ? 's' : ''} on the way to ${res.to.name}`,
+      message: `Carrying ${describeCost(res.shipment.cargo)} over ${Math.round(res.shipment.routeKm).toLocaleString()} km. They arrive in about ${Logistics.tripSols(res.shipment.legKm).toFixed(1)} sols, then drive home.`,
     });
     return { ok: true };
   },
@@ -148,6 +263,7 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     }
     set({
       roadMode: true,
+      pipelineMode: false,
       construction: { ...s.construction, active: false, buildingType: null },
       selectedBuildingId: null,
       activePanel: null,
@@ -187,6 +303,7 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     const b = s.buildings.find((x) => x.id === id);
     if (!b) return { ok: false, reason: 'That building is already gone.' };
     if (b.starter || b.type === 'storage_depot') return { ok: false, reason: 'This is part of the original base and can’t be demolished.' };
+    if (s.shipments.some((x) => x.garageId === id)) return { ok: false, reason: 'Its haulers are out on the road. Wait until they are back.' };
     const def = BUILDINGS[b.type];
     const refund = demolishRefund(b.type);
     const resources = { ...s.resources };
@@ -212,8 +329,9 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     if (!b) return { ok: false, reason: 'That building is gone.' };
     if (b.enabled === enabled) return { ok: true };
     if (enabled) {
-      const kw = maxPowerKw(b.type);
-      const power = PowerManager.canSupport(s.buildings, kw);
+      const env = envOf(s);
+      const kw = maxPowerKw(b.type, env.heating);
+      const power = PowerManager.canSupport(s.buildings, kw, env);
       if (!power.ok) return { ok: false, reason: `It needs ${kw.toFixed(1)} kW but only ${Math.max(0, power.spareKw).toFixed(1)} kW is spare. Build a Solar Farm or switch something else off.` };
     }
     set({ buildings: s.buildings.map((x) => (x.id === id ? { ...x, enabled } : x)) });
@@ -280,6 +398,53 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
       title: '🏗️ Outpost kit on its way',
       message: `A cargo rover is driving the kit to ${regionManager.get(regionId)?.name ?? regionId}. It starts working in ${(res.outpost.readySol - s.timeSols).toFixed(0)} sols.`,
     });
+    return { ok: true };
+  },
+
+  foundingCheck(siteId) {
+    return MissionManager.checkFounding(get(), siteId, getRouteHeight());
+  },
+
+  launchFounding(siteId) {
+    const s = get();
+    const res = MissionManager.launchFounding(s, siteId, getRouteHeight());
+    if (!res.ok) return res;
+    const m = res.mission;
+    set({
+      resources: res.resources,
+      power: { ...s.power, batteryKwh: res.batteryKwh },
+      colony: { ...s.colony, colonists: res.colonists },
+      missions: [...s.missions, m],
+    });
+    const site = SITE_BY_ID[siteId];
+    get().pushAlert({
+      key: `launch-${m.id}`,
+      level: 'info',
+      title: '🚙 Founding convoy is on its way',
+      message: `A woman and a man drive ${Math.round(m.routeKm).toLocaleString()} km to ${site.name} with a Central Storage Depot. They arrive in about ${m.durationSols.toFixed(0)} sols and stay there for good.`,
+    });
+    return { ok: true };
+  },
+
+  switchBase(id) {
+    const next = switchBase(get(), id);
+    if (!next) return { ok: false, reason: 'There is no such base.' };
+    set(next);
+    return { ok: true };
+  },
+
+  startResearch(id) {
+    const s = get();
+    if (!s.buildings.some((b) => b.type === 'research_lab') && !s.otherBases.some((b) => b.buildings.some((x) => x.type === 'research_lab'))) {
+      return { ok: false, reason: 'Build a Research Lab first.' };
+    }
+    if (s.research.completed.includes(id)) return { ok: false, reason: 'Already researched.' };
+    if (!canResearch(s.research.completed, id)) {
+      const need = TECH_BY_ID[id].requires.filter((r) => !s.research.completed.includes(r)).map((r) => TECH_BY_ID[r].name);
+      return { ok: false, reason: `Research ${need.join(' and ')} first.` };
+    }
+    if (s.research.active === id) return { ok: true };
+    set({ research: { ...s.research, active: id, progress: 0 } });
     return { ok: true };
   },
 

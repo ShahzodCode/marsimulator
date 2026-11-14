@@ -152,3 +152,18 @@ export function rewardFor(regionId: string): RegionReward {
 
 /** Ice the Ice Drills can mine at the start (buried ice and hydrated minerals near Jezero; game value). */
 export const STARTING_ICE_RESERVE = 30000;
+
+/**
+ * Founding a new base (game values): a crew rover plus cargo rovers carry a Central Storage
+ * Depot kit. One woman and one man stay for good and become the new base's first colonists.
+ * Each cargo rover carries up to the SEV payload (S8).
+ */
+export const FOUNDING = {
+  crew: 2,
+  kit: { iron: 300, regolith: 200 } as Partial<Record<ResourceId, number>>,
+  /** Food, water and oxygen packed for the first sols at the new base. */
+  settleSols: 10,
+  /** Farthest a convoy may drive (km); research makes it farther. */
+  rangeKm: 3500,
+  xp: 150,
+};

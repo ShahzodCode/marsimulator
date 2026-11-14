@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { TerrainRequest, TerrainResponse } from './terrain.worker';
-import { composeHeightKm, computePadKm, type HeightGrid } from './terrainGen';
-import { R, kmToUnitsHeight, latLonToDir } from './geo';
+import { composeHeightKm, computePadKm, FLAT_INNER_KM, FLAT_OUTER_KM, sampleGrid, type HeightGrid } from './terrainGen';
+import { R, angularDistance, kmToUnitsHeight, latLonToDir, MARS_RADIUS_KM } from './geo';
 import { readTerrain, terrainKey, writeTerrain, type CachedTerrain } from '../persistence/TerrainCache';
 
 const GLOBAL_W = 2048;
@@ -23,6 +23,8 @@ export class Terrain {
   readonly grid: HeightGrid;
   readonly padKm: number;
   readonly textures: TerrainTextures;
+  /** Flat building pads graded at bases founded later (Jezero's is built into the local terrain). */
+  private pads: { lat: number; lon: number; km: number }[] = [];
 
   private constructor(data: CachedTerrain) {
     this.grid = { width: data.width, height: data.height, heights: data.heights };
@@ -74,7 +76,22 @@ export class Terrain {
   }
 
   heightKm(lat: number, lon: number): number {
-    return composeHeightKm(this.grid, lat, lon, this.padKm);
+    let h = composeHeightKm(this.grid, lat, lon, this.padKm);
+    for (const p of this.pads) {
+      if (Math.abs(lat - p.lat) > 2) continue;
+      const d = angularDistance(lat, lon, p.lat, p.lon) * MARS_RADIUS_KM;
+      if (d >= FLAT_OUTER_KM) continue;
+      const t = Math.min(1, Math.max(0, (d - FLAT_INNER_KM) / (FLAT_OUTER_KM - FLAT_INNER_KM)));
+      const f = 1 - t * t * (3 - 2 * t);
+      h += (p.km - h) * f;
+    }
+    return h;
+  }
+
+  /** Grades a flat building pad at a new base (once per place). */
+  addPad(lat: number, lon: number): void {
+    if (this.pads.some((p) => Math.abs(p.lat - lat) < 1e-6 && Math.abs(p.lon - lon) < 1e-6)) return;
+    this.pads.push({ lat, lon, km: sampleGrid(this.grid, lat, lon) });
   }
 
   /** Surface height above the reference sphere, in scene units (exaggerated). */

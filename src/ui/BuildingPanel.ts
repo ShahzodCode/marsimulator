@@ -1,6 +1,7 @@
 import { BUILDINGS, demolishRefund, maxPowerKw } from '../data/buildings';
 import { RECIPES, type RecipeId } from '../data/recipes';
-import { RESOURCES, formatAmount, type ResourceId } from '../data/resources';
+import { RESOURCES, RESOURCE_IDS, formatAmount, formatRate, type ResourceId } from '../data/resources';
+import { PopulationManager } from '../simulation/PopulationManager';
 import type { EventBus } from '../core/EventBus';
 import { formatMarsTime } from '../core/GameClock';
 import { gameStore } from '../state/gameStore';
@@ -8,6 +9,7 @@ import type { BuildingInstance, BuildingStatus } from '../state/types';
 import { buildingIcon, clear, h, setText, toggleClass } from './dom';
 import { buildingThumbnail } from '../settlement/buildings/thumbnails';
 import { BUILDING_ICONS, ICONS, RESOURCE_ICONS } from './icons';
+import { garageSection, pipelineSection, type PanelSection } from './LogisticsPanels';
 
 const STATUS: Record<BuildingStatus, { text: string; cls: string }> = {
   operational: { text: 'Working', cls: 'explored' },
@@ -46,6 +48,8 @@ export class BuildingPanel {
   private note!: HTMLElement;
   private recipeRows = new Map<RecipeId, RecipeRow>();
   private toggle: HTMLButtonElement | null = null;
+  /** Pipelines (Pump Station) or cargo controls (Garage). */
+  private extra: PanelSection | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -122,6 +126,8 @@ export class BuildingPanel {
       recipes.append(root);
     }
 
+    this.extra = b.type === 'pump_station' ? pipelineSection() : b.type === 'cargo_garage' ? garageSection(b.id) : null;
+
     this.toggle = null;
     if (maxPowerKw(b.type) > 0) {
       this.toggle = h(
@@ -160,6 +166,8 @@ export class BuildingPanel {
       h('div', { class: 'progress bp-progress' }, [this.progressFill]),
       h('p', { class: 'bp-desc', text: def.description }),
       ...(def.recipes.length ? [recipes] : []),
+      ...(b.type === 'storage_depot' ? [this.inventory()] : []),
+      ...(this.extra ? [this.extra.el] : []),
       stats,
       h('div', { class: 'fun-fact' }, [h('strong', { text: 'Did you know? ' }), def.funFact]),
       h('div', { class: 'bp-actions' }, [
@@ -217,9 +225,93 @@ export class BuildingPanel {
     return btn;
   }
 
+  /** The depot is the base's heart: everything this base holds, and its families. */
+  private inventory(): HTMLElement {
+    const rows = RESOURCE_IDS.map((id) => {
+      const amt = h('strong');
+      const rate = h('span', { class: 'inv-rate' });
+      const fill = h('span', { class: 'progress-fill' });
+      this.live.set(`inv-${id}`, amt);
+      this.live.set(`rate-${id}`, rate);
+      this.live.set(`fill-${id}`, fill);
+      return h('div', { class: 'inv-row', style: { ['--chip-color' as never]: RESOURCES[id].color } }, [
+        h('span', { class: 'cost-icon', html: RESOURCE_ICONS[id] }),
+        h('span', { class: 'inv-name', text: RESOURCES[id].name }),
+        amt,
+        rate,
+        h('div', { class: 'progress inv-bar' }, [fill]),
+      ]);
+    });
+    const pop = h('strong');
+    const growth = h('span', { class: 'muted' });
+    const growFill = h('span', { class: 'progress-fill' });
+    this.live.set('pop', pop);
+    this.live.set('grow', growth);
+    this.live.set('grow-fill', growFill);
+    return h('div', { class: 'inventory' }, [
+      h('h4', { class: 'step-title', text: `📦 ${gameStore.getState().base.name}: everything in storage` }),
+      ...rows,
+      this.baseList(),
+      h('h4', { class: 'step-title', text: '👪 Families' }),
+      h('div', { class: 'inv-row pop-row' }, [h('span', { text: '👥' }), h('span', { class: 'inv-name', text: 'Colonists / beds' }), pop, growth, h('div', { class: 'progress inv-bar' }, [growFill])]),
+      h('p', {
+        class: 'muted',
+        text: 'Half of the colonists are women. With free beds the base grows by half every 90 sols, faster when beds stand empty. Real pregnancies take about 9 months: the game speeds families up.',
+      }),
+    ]);
+  }
+
+  /** Every base, with a button to jump to its depot. */
+  private baseList(): HTMLElement {
+    const s = gameStore.getState();
+    const others = s.otherBases;
+    if (!others.length) return h('p', { class: 'muted', text: 'Found more bases from the Exploration panel. Their depots will be listed here.' });
+    return h('div', { class: 'base-jump' }, [
+      h('h4', { class: 'step-title', text: '🏘️ Your other bases' }),
+      ...others.map((b) =>
+        h(
+          'button',
+          {
+            class: 'btn base-jump-btn',
+            attrs: { type: 'button' },
+            title: `Switch to ${b.name} and open its Central Storage Depot`,
+            on: {
+              click: () => {
+                const st = gameStore.getState();
+                st.switchBase(b.id);
+                const depot = gameStore.getState().buildings.find((x) => x.type === 'storage_depot');
+                if (depot) gameStore.getState().selectBuilding(depot.id);
+              },
+            },
+          },
+          [h('span', { class: 'btn-icon', html: ICONS.home }), h('strong', { text: b.name }), h('span', { class: 'muted', text: `👥 ${b.colony.colonists}` })],
+        ),
+      ),
+    ]);
+  }
+
   private update(b: BuildingInstance): void {
     const def = BUILDINGS[b.type];
     const s = gameStore.getState();
+    this.extra?.update(b);
+    if (b.type === 'storage_depot') {
+      for (const id of RESOURCE_IDS) {
+        const cap = s.storage[id];
+        const el = this.live.get(`inv-${id}`);
+        if (!el) break;
+        setText(el, `${formatAmount(s.resources[id])} / ${formatAmount(cap)}`);
+        setText(this.live.get(`rate-${id}`)!, `${formatRate(s.rates[id])}/sol`);
+        this.live.get(`fill-${id}`)!.style.transform = `scaleX(${cap > 0 ? Math.min(1, s.resources[id] / cap).toFixed(3) : '0'})`;
+      }
+      const c = s.colony;
+      const next = PopulationManager.solsToNext(c.colonists, c.housing, c.growth);
+      setText(this.live.get('pop')!, `${c.colonists} / ${c.housing}`);
+      setText(
+        this.live.get('grow')!,
+        c.colonists >= c.housing ? 'All beds full: build a Habitat Dome' : next === null ? 'Not growing' : `Next baby in ~${Math.ceil(next)} sols`,
+      );
+      this.live.get('grow-fill')!.style.transform = `scaleX(${Math.min(1, c.growth).toFixed(3)})`;
+    }
     const building = b.constructionProgress < 1;
     const st = STATUS[b.status] ?? STATUS.operational;
     setText(this.status, building ? `Building… ${Math.floor(b.constructionProgress * 100)}%` : st.text);

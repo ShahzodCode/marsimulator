@@ -4,6 +4,8 @@ import { ModelBuilder } from './ModelBuilder';
 import { materials } from './materials';
 import { ChickenFlock } from './Chickens';
 import { instantiateBuildingModel } from './glbModels';
+import { cargoGarage, pumpStation } from './logisticsModels';
+import { bigDome, deepAquiferDrill, fissionReactor, glacierMine, lavaHabitat, megadigger, researchLab, stripMine } from './researchModels';
 
 /**
  * Procedural low-poly models for every building.
@@ -408,6 +410,16 @@ const FACTORIES: Record<BuildingType, Factory> = {
   battery_bank: batteryBank,
   moxie_unit: moxieUnit,
   storage_silo: storageSilo,
+  research_lab: researchLab,
+  fission_reactor: fissionReactor,
+  megadigger,
+  strip_mine: stripMine,
+  glacier_mine: glacierMine,
+  deep_aquifer_drill: deepAquiferDrill,
+  big_dome: bigDome,
+  lava_habitat: lavaHabitat,
+  pump_station: pumpStation,
+  cargo_garage: cargoGarage,
 };
 
 /** Floor height of the chicken run inside the Blender greenhouse model. */

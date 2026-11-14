@@ -1,5 +1,5 @@
 import { BUILDINGS, BUILDING_TYPES } from '../data/buildings';
-import { GOALS, LEVELS, RESEARCH_UNLOCK_LEVEL, TECHNOLOGIES, levelForXp, nextLevel, rankForXp } from '../data/progression';
+import { GOALS, levelForXp, nextLevel, rankForXp } from '../data/progression';
 import { ProgressionManager } from '../simulation/ProgressionManager';
 import { MissionManager } from '../simulation/MissionManager';
 import { ORBITAL_SCAN } from '../data/missions';
@@ -161,55 +161,7 @@ export class MissionsPanel implements Panel {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Research (locked in Stage 1)
-// ---------------------------------------------------------------------------
-
-export class ResearchPanel implements Panel {
-  readonly id = 'research' as const;
-  readonly title = 'Research';
-  readonly subtitle = 'New technologies for your colony.';
-  readonly el = h('div', { class: 'research' });
-  private unsub: (() => void) | null = null;
-  private lastLevel = -1;
-
-  show(): void {
-    this.lastLevel = -1;
-    this.render();
-    this.unsub = gameStore.subscribe(() => this.render());
-  }
-
-  hide(): void {
-    this.unsub?.();
-    this.unsub = null;
-  }
-
-  private render(): void {
-    const p = gameStore.getState().progression;
-    if (p.level === this.lastLevel) return;
-    this.lastLevel = p.level;
-    clear(this.el);
-    const unlockAt = LEVELS.find((l) => l.level === RESEARCH_UNLOCK_LEVEL)!;
-    const locked = p.level < RESEARCH_UNLOCK_LEVEL;
-    this.el.append(
-      h('div', { class: `lock-card ${locked ? '' : 'unlocked'}` }, [
-        h('span', { class: 'lock-icon', html: ICONS.lock }),
-        h('div', {}, [
-          h('strong', { text: locked ? `Research unlocks at rank ${unlockAt.title}` : 'Research Lab plans approved!' }),
-          h('p', {
-            text: locked
-              ? `You have ${p.xp} XP — ${unlockAt.xp - p.xp} XP to go. Earn XP by finishing buildings, reaching goals and exploring new regions.`
-              : 'Your scientists are ready. Research projects open in the next mission update.',
-          }),
-        ]),
-      ]),
-      h('h3', { class: 'section-title', text: 'Technologies on the horizon' }),
-      ...TECHNOLOGIES.map((t) =>
-        h('div', { class: 'tech-card' }, [h('span', { class: 'tech-icon', text: t.icon }), h('div', {}, [h('strong', { text: t.name }), h('p', { text: t.description })])]),
-      ),
-    );
-  }
-}
+export { ResearchPanel } from './ResearchPanel';
 
 // ---------------------------------------------------------------------------
 // Settlement overview (+ save / load)

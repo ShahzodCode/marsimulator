@@ -49,7 +49,7 @@ export class WorldPopups {
     parent: HTMLElement,
     events: EventBus,
     private terrain: Terrain,
-    private grid: SettlementGrid,
+    private gridOf: () => SettlementGrid,
   ) {
     this.layer = h('div', { class: 'popup-layer', attrs: { 'aria-hidden': 'true' } });
     parent.append(this.layer);
@@ -63,7 +63,7 @@ export class WorldPopups {
     const items = (Object.entries(delivered) as [ResourceId, number][]).filter(([id, v]) => v > 0.001 && RESOURCES[id].hud);
     if (!items.length) return;
     const c = rectCenter(footprintRect(b.type, b.gridX, b.gridY, b.rotation));
-    const world = this.grid.surfacePoint(c.x, c.y, 0.03);
+    const world = this.gridOf().surfacePoint(c.x, c.y, 0.03);
     const el = h(
       'div',
       { class: 'popup' },
@@ -122,7 +122,7 @@ export class WorldPopups {
         r = { el, eta, world: new THREE.Vector3(), normal: new THREE.Vector3() };
         this.rovers.set(m.id, r);
       }
-      const p = MissionManager.pointOnRoute(regionManager, m.regionId, MissionManager.routeFraction(m), this.ll);
+      const p = MissionManager.pointOnMission(m, regionManager, MissionManager.routeFraction(m), this.ll);
       this.terrain.surfacePoint(p.lat, p.lon, 0, r.normal);
       r.normal.normalize();
       this.terrain.surfacePoint(p.lat, p.lon, ROVER_LABEL_LIFT * Math.max(1, altitude / 60), r.world);

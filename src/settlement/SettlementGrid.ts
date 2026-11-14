@@ -27,8 +27,12 @@ export class SettlementGrid {
   private readonly rotQ = new THREE.Quaternion();
   private readonly yAxis = new THREE.Vector3(0, 1, 0);
 
-  constructor(private terrain: Terrain) {
-    tangentFrame(SETTLEMENT.lat, SETTLEMENT.lon, this.up, this.east, this.north);
+  constructor(
+    private terrain: Terrain,
+    readonly lat = SETTLEMENT.lat,
+    readonly lon = SETTLEMENT.lon,
+  ) {
+    tangentFrame(lat, lon, this.up, this.east, this.north);
   }
 
   gridToLatLon(x: number, y: number, out: LatLon = { lat: 0, lon: 0 }): LatLon {

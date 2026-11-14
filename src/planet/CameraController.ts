@@ -73,9 +73,17 @@ export class CameraController {
     this.apply();
   }
 
-  /** Smallest allowed altitude here: close zoom is only allowed around the settlement. */
+  /** Bases the camera may zoom in close to. */
+  private bases: LatLon[] = [{ lat: SETTLEMENT.lat, lon: SETTLEMENT.lon }];
+
+  setBases(bases: LatLon[]): void {
+    this.bases = bases.length ? bases : this.bases;
+  }
+
+  /** Smallest allowed altitude here: close zoom is only allowed around a base. */
   minAltitudeAt(lat: number, lon: number): number {
-    const d = angularDistance(lat, lon, SETTLEMENT.lat, SETTLEMENT.lon) * R;
+    let d = Infinity;
+    for (const b of this.bases) d = Math.min(d, angularDistance(lat, lon, b.lat, b.lon) * R);
     return THREE.MathUtils.lerp(this.minAltitude, 2.2, THREE.MathUtils.smoothstep(d, 1.6, 4.5));
   }
 

@@ -6,7 +6,8 @@ import { SETTLEMENT } from '../data/settlement';
 import type { SettlementGrid } from './SettlementGrid';
 
 /**
- * High-detail curved ground around the settlement (Jezero crater floor, rim and delta).
+ * High-detail curved ground around a base. At Jezero it uses the baked crater-floor patch
+ * (rim and delta); at bases founded later it drapes the global Mars map over the graded pad.
  * The globe is cut away underneath it; the outer ring overlaps the globe seamlessly.
  * Also draws the construction grid + buildable boundary while placing buildings.
  */
@@ -19,11 +20,11 @@ export class SettlementGround {
   };
   private gridTarget = 0;
 
-  constructor(terrain: Terrain, grid: SettlementGrid) {
-    const geometry = buildGeometry(grid, 120, 220);
+  constructor(terrain: Terrain, grid: SettlementGrid, home = true) {
+    const geometry = buildGeometry(grid, home ? 120 : 60, home ? 220 : 120, home);
     const material = new THREE.MeshStandardMaterial({
-      map: terrain.textures.patchColor,
-      normalMap: terrain.textures.patchNormal,
+      map: home ? terrain.textures.patchColor : terrain.textures.color,
+      normalMap: home ? terrain.textures.patchNormal : terrain.textures.normal,
       normalMapType: THREE.ObjectSpaceNormalMap,
       roughness: 0.96,
       metalness: 0,
@@ -88,7 +89,7 @@ export class SettlementGround {
   }
 }
 
-function buildGeometry(grid: SettlementGrid, rings: number, segs: number): THREE.BufferGeometry {
+function buildGeometry(grid: SettlementGrid, rings: number, segs: number, home: boolean): THREE.BufferGeometry {
   const R1 = PATCH.radius;
   const cell = SETTLEMENT.cellSize;
   const count = 1 + rings * segs;
@@ -102,7 +103,12 @@ function buildGeometry(grid: SettlementGrid, rings: number, segs: number): THREE
     pos.set([v.x, v.y, v.z], i * 3);
     v.normalize();
     nor.set([v.x, v.y, v.z], i * 3);
-    uv.set([(xu + R1) / (2 * R1), (yu + R1) / (2 * R1)], i * 2);
+    if (home) uv.set([(xu + R1) / (2 * R1), (yu + R1) / (2 * R1)], i * 2);
+    else {
+      // Same equirectangular mapping as the globe.
+      const ll = grid.gridToLatLon(xu / cell, yu / cell);
+      uv.set([(ll.lon + 180) / 360, (90 - ll.lat) / 180], i * 2);
+    }
     local.set([xu / cell, yu / cell], i * 2);
   };
   write(0, 0, 0);

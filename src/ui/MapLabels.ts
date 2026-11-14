@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LABEL_FEATURES } from '../data/marsFeatures';
-import { SETTLEMENT } from '../data/settlement';
+import { BASE_SITES, TRAITS, visibleTraits } from '../data/baseSites';
+import { gameStore } from '../state/gameStore';
 import type { EventBus } from '../core/EventBus';
 import type { Terrain } from '../planet/Terrain';
 import { h, toggleClass } from './dom';
@@ -12,7 +13,13 @@ interface Label {
   minAlt: number;
   maxAlt: number;
   visible: boolean;
+  name?: string;
+  /** A landmark label hidden because a base or site pin sits on the same spot. */
+  suppressed?: boolean;
 }
+
+/** Pins closer than this (about 2° of arc) would draw on top of each other. */
+const SAME_SPOT_DOT = Math.cos((2 * Math.PI) / 180);
 
 /**
  * HTML labels pinned to famous Martian landmarks and to our base.
@@ -21,6 +28,9 @@ interface Label {
 export class MapLabels {
   private layer: HTMLElement;
   private labels: Label[] = [];
+  /** Base and site pins, rebuilt when bases are founded or sites spotted. */
+  private dynamic: Label[] = [];
+  private dynKey = '';
   private readonly v = new THREE.Vector3();
   private readonly toCam = new THREE.Vector3();
 
@@ -38,32 +48,94 @@ export class MapLabels {
         },
         [h('span', { class: 'pin' }), h('span', { class: 'label-text', text: f.name })],
       );
-      this.add(el, terrain.surfacePoint(f.lat, f.lon, 0.6), f.minAltitude ?? 12, 1e9);
+      this.add(el, terrain.surfacePoint(f.lat, f.lon, 0.6), f.minAltitude ?? 12, 1e9, f.name);
     }
-    const base = h(
-      'button',
-      {
-        class: 'map-label base',
-        title: 'Your settlement in Jezero Crater — an ancient lake with a river delta, where NASA’s Perseverance rover landed in 2021. Click to fly there.',
-        attrs: { type: 'button' },
-        on: { click: () => events.emit('camera:home') },
-      },
-      [h('span', { class: 'pin' }), h('span', { class: 'label-text', text: `🏠 ${SETTLEMENT.name} · Jezero Crater` })],
-    );
-    this.add(base, terrain.surfacePoint(SETTLEMENT.lat, SETTLEMENT.lon, 0.3), 3.2, 1e9);
+    const refresh = () => this.refreshDynamic(terrain, events);
+    gameStore.subscribe(refresh);
+    refresh();
   }
 
-  private add(el: HTMLElement, world: THREE.Vector3, minAlt: number, maxAlt: number): void {
+  private refreshDynamic(terrain: Terrain, events: EventBus): void {
+    const s = gameStore.getState();
+    const bases = [s.base, ...s.otherBases];
+    const key = `${bases.map((b) => b.id).join(',')}|${s.base.id}|${Object.keys(s.sitesSeen).join(',')}|${s.research.completed.length}`;
+    if (key === this.dynKey) return;
+    this.dynKey = key;
+    for (const l of this.dynamic) l.el.remove();
+    this.dynamic = [];
+    const push = (el: HTMLElement, lat: number, lon: number, minAlt: number, name?: string) => {
+      el.style.opacity = '0';
+      this.layer.append(el);
+      const world = terrain.surfacePoint(lat, lon, 0.3);
+      this.dynamic.push({ el, world, normal: world.clone().normalize(), minAlt, maxAlt: 1e9, visible: false, name });
+    };
+    for (const b of bases) {
+      const current = b.id === s.base.id;
+      push(
+        h(
+          'button',
+          {
+            class: `map-label base${current ? '' : ' other'}`,
+            title: current ? `${b.name}: the base on screen. Click to fly there.` : `${b.name}: click to switch to this base.`,
+            attrs: { type: 'button' },
+            on: {
+              click: () => {
+                if (current) events.emit('camera:home');
+                else gameStore.getState().switchBase(b.id);
+              },
+            },
+          },
+          [h('span', { class: 'pin' }), h('span', { class: 'label-text', text: `${current ? '🏠' : '🏘️'} ${b.name}` })],
+        ),
+        b.lat,
+        b.lon,
+        3.2,
+      );
+    }
+    for (const site of BASE_SITES) {
+      if (!s.sitesSeen[site.id] || bases.some((b) => b.siteId === site.id)) continue;
+      const icons = visibleTraits(site, s.research.completed).map((t) => TRAITS[t].icon).join('');
+      push(
+        h(
+          'button',
+          {
+            class: 'map-label site',
+            title: `${site.name}: possible base site. ${site.blurb}`,
+            attrs: { type: 'button' },
+            on: {
+              click: () => {
+                const st = gameStore.getState();
+                st.selectRegion(site.regionId);
+                st.openPanel('exploration');
+                events.emit('camera:flyTo', { lat: site.lat, lon: site.lon, altitude: 30 });
+              },
+            },
+          },
+          [h('span', { class: 'pin' }), h('span', { class: 'label-text', text: `📍 ${site.name} ${icons}` })],
+        ),
+        site.lat,
+        site.lon,
+        8,
+        site.name,
+      );
+    }
+    // A base or site pin replaces the landmark label it would sit on top of.
+    for (const l of this.labels) {
+      l.suppressed = this.dynamic.some((d) => (d.name !== undefined && d.name === l.name) || d.normal.dot(l.normal) > SAME_SPOT_DOT);
+    }
+  }
+
+  private add(el: HTMLElement, world: THREE.Vector3, minAlt: number, maxAlt: number, name?: string): void {
     el.style.opacity = '0';
     this.layer.append(el);
-    this.labels.push({ el, world, normal: world.clone().normalize(), minAlt, maxAlt, visible: false });
+    this.labels.push({ el, world, normal: world.clone().normalize(), minAlt, maxAlt, visible: false, name });
   }
 
   update(camera: THREE.PerspectiveCamera, altitude: number, width: number, height: number): void {
-    for (const l of this.labels) {
+    for (const l of [...this.labels, ...this.dynamic]) {
       this.toCam.copy(camera.position).sub(l.world).normalize();
       const facing = this.toCam.dot(l.normal);
-      const show = facing > 0.18 && altitude >= l.minAlt && altitude <= l.maxAlt;
+      const show = !l.suppressed && facing > 0.18 && altitude >= l.minAlt && altitude <= l.maxAlt;
       if (show) {
         this.v.copy(l.world).project(camera);
         const x = (this.v.x * 0.5 + 0.5) * width;

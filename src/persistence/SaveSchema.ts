@@ -1,4 +1,4 @@
-import type { BuildingInstance, GameState, Mission } from '../state/types';
+import type { BaseData, BaseMeta, BuildingInstance, GameState, Mission, ResearchState } from '../state/types';
 import { createInitialState, makeBuilding } from '../state/factory';
 import { starterRoads } from '../settlement/RoadRules';
 import { checkPlacement } from '../settlement/PlacementRules';
@@ -14,8 +14,10 @@ import { PowerManager } from '../simulation/PowerManager';
  *
  * v1 → v2 (Stage 2): recipes, power and batteries, ice deposits, ranks, hydrogen.
  * v2 → v3: NASA-style exploration (orbital maps, crew expeditions, outposts).
+ * v3 → v4: several bases, base sites, research, families (colony.growth).
+ * v4 → v5: pipelines and cargo haulers between bases.
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 5;
 
 type SavedKeys =
   | 'timeSols'
@@ -30,12 +32,32 @@ type SavedKeys =
   | 'progression'
   | 'missions'
   | 'deposits'
-  | 'stats';
+  | 'stats'
+  | 'base'
+  | 'otherBases'
+  | 'sitesSeen'
+  | 'research'
+  | 'pipelines'
+  | 'shipments';
 
 export interface SaveData {
   version: number;
   savedAt: string;
   state: Pick<GameState, SavedKeys> & { batteryKwh?: number };
+}
+
+function copyBase(b: BaseData): BaseData {
+  return {
+    ...b,
+    resources: { ...b.resources },
+    storage: { ...b.storage },
+    rates: { ...b.rates },
+    power: { ...b.power },
+    deposits: { ...b.deposits },
+    colony: { ...b.colony },
+    buildings: b.buildings.map((x) => ({ ...x, stored: { ...x.stored }, recipes: { ...x.recipes } })),
+    roads: [...b.roads],
+  };
 }
 
 export function toSave(state: GameState): SaveData {
@@ -57,6 +79,12 @@ export function toSave(state: GameState): SaveData {
       deposits: { ...state.deposits },
       stats: { produced: { ...state.stats.produced } },
       batteryKwh: state.power.batteryKwh,
+      base: { ...state.base },
+      otherBases: state.otherBases.map(copyBase),
+      sitesSeen: { ...state.sitesSeen },
+      research: { ...state.research, completed: [...state.research.completed] },
+      pipelines: state.pipelines.map((p) => ({ ...p, flow: { ...p.flow } })),
+      shipments: state.shipments.map((x) => ({ ...x, cargo: { ...x.cargo } })),
     },
   };
 }
@@ -116,11 +144,20 @@ export function fromSave(save: SaveData): GameState {
   const exploredRegions = legacy ? { ...discoveredRegions } : { ...base.exploredRegions, ...(st.exploredRegions ?? {}) };
   const xp = st.progression?.xp ?? 0;
   const batteryCapacityKwh = PowerManager.batteryCapacity(buildings);
+  // Before v4 there was one base (Jezero) and no research or base sites.
+  const activeBase: BaseMeta = st.base ? { ...st.base } : { ...base.base };
+  const research: ResearchState = st.research ? { ...st.research, completed: [...st.research.completed] } : base.research;
   return {
     ...base,
+    base: activeBase,
+    otherBases: (st.otherBases ?? []).map(copyBase),
+    sitesSeen: { ...base.sitesSeen, ...(st.sitesSeen ?? {}) },
+    research,
+    pipelines: (st.pipelines ?? []).map((p) => ({ ...p, flow: { ...(p.flow ?? {}) }, working: p.working ?? false })),
+    shipments: (st.shipments ?? []).map((x) => ({ ...x, cargo: { ...x.cargo } })),
     timeSols: st.timeSols,
     speed: st.speed ?? 1,
-    colony: st.colony ?? base.colony,
+    colony: { ...base.colony, ...(st.colony ?? {}), growth: st.colony?.growth ?? 0 },
     buildings,
     roads,
     missions,

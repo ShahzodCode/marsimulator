@@ -9,7 +9,18 @@ import type { ResourceId } from './resources';
  * through separately named multipliers so the science stays visible.
  */
 
-export type RecipeId = 'electrolysis' | 'crops' | 'chickens' | 'ice_mining' | 'excavation' | 'iron_smelting' | 'moxie';
+export type RecipeId =
+  | 'electrolysis'
+  | 'crops'
+  | 'chickens'
+  | 'ice_mining'
+  | 'excavation'
+  | 'iron_smelting'
+  | 'moxie'
+  | 'mega_excavation'
+  | 'strip_mining'
+  | 'glacier_mining'
+  | 'aquifer_pumping';
 
 /** Optional mined deposit a recipe draws from (water ice for now). */
 export type DepositId = 'ice';
@@ -133,6 +144,44 @@ export const RECIPES: Record<RecipeId, ProductionRecipe> = {
     inputs: {},
     outputs: { oxygen: moxieO2PerCycle },
     energyKw: MOXIE_FULL_SCALE.kw * MOXIE_SCALE,
+    durationSols: CYCLE,
+  },
+  // Research mega-buildings (game values): each does one job very well, at a price.
+  mega_excavation: {
+    id: 'mega_excavation',
+    name: 'Bucket-wheel digging',
+    description: 'A giant wheel of buckets eats through the ground non-stop.',
+    inputs: {},
+    outputs: { regolith: 30 },
+    energyKw: 22,
+    durationSols: CYCLE,
+  },
+  strip_mining: {
+    id: 'strip_mining',
+    name: 'Mine hematite',
+    description: 'Scrapes up hematite, an iron mineral, and roasts it straight into iron.',
+    inputs: {},
+    outputs: { iron: 8, regolith: 4 },
+    energyKw: 30,
+    durationSols: CYCLE,
+  },
+  glacier_mining: {
+    id: 'glacier_mining',
+    name: 'Melt glacier ice',
+    description: 'Hot water drills melt a cavern into the buried ice and pump the water up.',
+    inputs: {},
+    outputs: { water: 30 },
+    energyKw: 18,
+    durationSols: CYCLE,
+    deposit: { id: 'ice', amount: 30 },
+  },
+  aquifer_pumping: {
+    id: 'aquifer_pumping',
+    name: 'Pump deep groundwater',
+    description: 'Lifts warm, salty water from kilometres down and cleans it.',
+    inputs: {},
+    outputs: { water: 40 },
+    energyKw: 45,
     durationSols: CYCLE,
   },
 };

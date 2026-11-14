@@ -9,6 +9,7 @@ import type { Expedition, MissionActivity, OrbitalScan } from '../state/types';
 import { clear, h, setText } from './dom';
 import { ICONS, RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
+import { SitesSection } from './SitesSection';
 
 type Status = 'home' | 'explored' | 'expedition' | 'mapped' | 'scanning' | 'unknown';
 
@@ -60,6 +61,39 @@ export const ACTIVITY_TEXT: Record<MissionActivity, string> = {
 /** Earth years a number of sols lasts (S1: a sol is 24.6597 h). */
 const solsToYears = (sols: number) => (sols * 24.6597) / 24 / 365.25;
 
+/** Map → Crew → Outpost: where this region stands, with the reason a step is locked. */
+function stepTracker(s: GameStore, id: string, status: Status): HTMLElement {
+  const mapped = !!s.discoveredRegions[id];
+  const explored = !!s.exploredRegions[id];
+  const hasOutpost = s.outposts.some((o) => o.regionId === id);
+  const canOutpost = !!rewardFor(id).outpost;
+  const step = (n: number, label: string, done: boolean, busy: boolean, why: string | null) =>
+    h('div', { class: `step ${done ? 'done' : busy ? 'busy' : why ? 'locked' : 'ready'}`, title: why ?? '' }, [
+      h('span', { class: 'step-n', text: done ? '✓' : String(n) }),
+      h('span', { text: label }),
+    ]);
+  const exp = s.expeditionCheck(id);
+  return h('div', { class: 'step-tracker' }, [
+    step(1, 'Map from orbit', mapped, status === 'scanning', null),
+    step(2, 'Send a crew', explored, status === 'expedition', !mapped ? 'Map it from orbit first.' : exp.ok ? null : exp.reason),
+    canOutpost ? step(3, 'Build an outpost', hasOutpost, false, !explored ? 'Send a crew first.' : null) : step(3, 'Found a base (below)', false, false, null),
+  ]);
+}
+
+/** A region where the player can do something right now (scan or send a crew), else home. */
+function bestNextRegion(s: GameStore): string {
+  const home = REGIONS.find((r) => r.id === HOME_REGION_ID)!;
+  const byDist = [...REGIONS].sort(
+    (a, b) => Math.hypot(a.latMin - home.latMin, a.lonMin - home.lonMin) - Math.hypot(b.latMin - home.latMin, b.lonMin - home.lonMin),
+  );
+  return (
+    byDist.find((r) => s.expeditionCheck(r.id).ok)?.id ??
+    byDist.find((r) => s.scanCheck(r.id).ok && regionManager.isFrontier(r.id, s.exploredRegions))?.id ??
+    byDist.find((r) => s.scanCheck(r.id).ok)?.id ??
+    HOME_REGION_ID
+  );
+}
+
 /** Region browser: map regions from orbit, send crew expeditions, build outposts. Regions are the real USGS Mars Charts. */
 export class ExplorationPanel implements Panel {
   readonly id = 'exploration' as const;
@@ -69,6 +103,7 @@ export class ExplorationPanel implements Panel {
   private detail: HTMLElement;
   private list: HTMLElement;
   private summary: HTMLElement;
+  private sites: SitesSection;
   private unsub: (() => void) | null = null;
   private lastKey = '';
   /** Live bar + text for the selected region's mission or outpost. */
@@ -78,11 +113,15 @@ export class ExplorationPanel implements Panel {
     this.summary = h('div', { class: 'explore-summary' });
     this.detail = h('div', { class: 'region-detail' });
     this.list = h('div', { class: 'region-list' });
-    this.el = h('div', { class: 'explore' }, [this.summary, this.detail, h('h3', { class: 'section-title', text: 'All regions' }), this.list]);
+    this.sites = new SitesSection(events);
+    this.el = h('div', { class: 'explore' }, [this.summary, this.detail, this.sites.el, h('h3', { class: 'section-title', text: 'All regions' }), this.list]);
   }
 
   show(): void {
     this.lastKey = '';
+    // Open on the most useful region: one where the next step can be taken right now.
+    const st = gameStore.getState();
+    if (!st.selectedRegionId) st.selectRegion(bestNextRegion(st));
     this.render();
     this.unsub = gameStore.subscribe(() => this.render());
   }
@@ -105,14 +144,17 @@ export class ExplorationPanel implements Panel {
       s.outposts.map((o) => `${o.id}:${s.timeSols >= o.readySol}:${o.reserveLeft > 0}`).join(','),
       ...reasons,
       s.progression.level,
+      this.sites.key(s, id),
     ].join('|');
     if (key !== this.lastKey) {
       this.lastKey = key;
       this.renderSummary(s);
       this.renderDetail(s);
       this.renderList(s);
+      this.sites.render(s, id);
     }
     this.live?.update(s);
+    this.sites.update(s);
   }
 
   private renderSummary(s: GameStore): void {
@@ -165,7 +207,7 @@ export class ExplorationPanel implements Panel {
     const r = regionManager.get(id)!;
     const status = statusOf(s, id);
     const reward = rewardFor(id);
-    const plan = MissionManager.planRoute(regionManager, id, getRouteHeight());
+    const plan = MissionManager.planRoute(regionManager, id, getRouteHeight(), s.base);
     this.live = null;
     clear(this.detail);
 
@@ -196,6 +238,7 @@ export class ExplorationPanel implements Panel {
         ),
       ]),
     );
+    if (status !== 'home') this.detail.append(stepTracker(s, id, status));
     if (status === 'home') return;
 
     // Step 1: map from orbit.

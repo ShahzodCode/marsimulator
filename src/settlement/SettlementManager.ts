@@ -3,6 +3,7 @@ import type { Terrain } from '../planet/Terrain';
 import type { EventBus } from '../core/EventBus';
 import { SETTLEMENT } from '../data/settlement';
 import { gameStore, watch } from '../state/gameStore';
+import type { BuildingInstance } from '../state/types';
 import { mulberry32 } from '../planet/noise';
 import { SettlementGrid } from './SettlementGrid';
 import { SettlementGround } from './SettlementGround';
@@ -13,9 +14,18 @@ import { RoadPlacement } from './RoadPlacement';
 import { materials } from './buildings/materials';
 import { R } from '../planet/geo';
 
+export interface BaseSiteRef {
+  id: string;
+  lat: number;
+  lon: number;
+  /** Jezero: uses the baked high-detail crater patch. */
+  home: boolean;
+}
+
 /**
- * Owns everything in the settlement area: detailed ground, roads, decorations,
- * scattered rocks, the buildings themselves and the construction preview.
+ * Owns everything in one base's area: detailed ground, roads, decorations, scattered rocks,
+ * the buildings themselves and the construction preview. The base on screen (active) follows
+ * the store live; other bases are drawn from their saved snapshot.
  */
 export class SettlementManager {
   readonly group = new THREE.Group();
@@ -28,13 +38,20 @@ export class SettlementManager {
   readonly center = new THREE.Vector3();
   private details = new THREE.Group();
   private unsubscribers: (() => void)[] = [];
+  private active = false;
+  private snapshot: { buildings: BuildingInstance[]; roads: string[] } | null = null;
 
-  constructor(terrain: Terrain, events: EventBus) {
-    this.group.name = 'settlement';
-    this.grid = new SettlementGrid(terrain);
+  constructor(
+    terrain: Terrain,
+    events: EventBus,
+    readonly site: BaseSiteRef = { id: 'base-jezero', lat: SETTLEMENT.lat, lon: SETTLEMENT.lon, home: true },
+  ) {
+    this.group.name = `settlement-${site.id}`;
+    if (!site.home) terrain.addPad(site.lat, site.lon);
+    this.grid = new SettlementGrid(terrain, site.lat, site.lon);
     this.grid.surfacePoint(0, 0, 0, this.center);
 
-    this.ground = new SettlementGround(terrain, this.grid);
+    this.ground = new SettlementGround(terrain, this.grid, site.home);
     this.group.add(this.ground.mesh);
 
     this.roads = new Roads(this.grid);
@@ -42,11 +59,15 @@ export class SettlementManager {
     this.placement = new BuildingPlacement(this.grid, events);
     this.roadPlacement = new RoadPlacement(this.grid, events);
     this.details.add(this.roads.group);
-    this.buildRocks();
+    this.buildRocks(site.id);
     this.group.add(this.details, this.buildings.group, this.placement.group, this.roadPlacement.group);
 
+    const live = <T>(sel: (s: ReturnType<typeof gameStore.getState>) => T, cb: (v: T) => void) =>
+      watch(sel, (v) => {
+        if (this.active) cb(v);
+      });
     this.unsubscribers.push(
-      watch(
+      live(
         (s) => s.buildings,
         (buildings) => {
           const sel = this.buildings.sync(buildings);
@@ -54,14 +75,14 @@ export class SettlementManager {
           if (sel) this.buildings.setSelected(gameStore.getState().selectedBuildingId);
         },
       ),
-      watch(
+      live(
         (s) => s.roads,
         (roads) => {
           this.roads.rebuild(roads, gameStore.getState().buildings);
           this.roadPlacement.refresh();
         },
       ),
-      watch(
+      live(
         (s) => s.roadMode,
         (on) => {
           this.roadPlacement.setActive(on);
@@ -69,11 +90,11 @@ export class SettlementManager {
           this.buildings.setRoadHints(on);
         },
       ),
-      watch(
+      live(
         (s) => s.selectedBuildingId,
         (id) => this.buildings.setSelected(id),
       ),
-      watch(
+      live(
         (s) => (s.construction.active ? `${s.construction.buildingType}:${s.construction.rotation}` : ''),
         () => {
           const c = gameStore.getState().construction;
@@ -84,11 +105,47 @@ export class SettlementManager {
     );
   }
 
-  private buildRocks(): void {
+  get isActive(): boolean {
+    return this.active;
+  }
+
+  /** Puts this base on screen (follows the store) or takes it off (static snapshot). */
+  setActive(on: boolean): void {
+    if (on === this.active) return;
+    this.active = on;
+    const s = gameStore.getState();
+    if (on) {
+      this.snapshot = null;
+      this.buildings.sync(s.buildings);
+      this.roads.rebuild(s.roads, s.buildings);
+      this.roadPlacement.refresh();
+      this.buildings.setSelected(s.selectedBuildingId);
+    } else {
+      this.placement.setMode(null, 0);
+      this.roadPlacement.setActive(false);
+      this.ground.setGridVisible(false);
+      this.buildings.setRoadHints(false);
+      this.buildings.setSelected(null);
+    }
+  }
+
+  /** Draws a base that is not on screen (cheap: only when its buildings or roads change). */
+  showSnapshot(buildings: BuildingInstance[], roads: string[]): void {
+    if (this.active) return;
+    const prev = this.snapshot;
+    if (prev && prev.buildings === buildings && prev.roads === roads) return;
+    this.snapshot = { buildings, roads };
+    this.buildings.sync(buildings);
+    this.roads.rebuild(roads, buildings);
+  }
+
+  private buildRocks(seedKey: string): void {
     const geo = new THREE.DodecahedronGeometry(1, 0);
     const count = 420;
     const mesh = new THREE.InstancedMesh(geo, materials().rock, count);
-    const rand = mulberry32(42);
+    let seed = 42;
+    for (let i = 0; i < seedKey.length; i++) seed = (seed * 31 + seedKey.charCodeAt(i)) >>> 0;
+    const rand = mulberry32(seed);
     const dummy = new THREE.Object3D();
     const s = new THREE.Vector3();
     let n = 0;
@@ -117,13 +174,16 @@ export class SettlementManager {
   }
 
   update(dt: number, time: number, cameraAltitude: number, cameraPos: THREE.Vector3): void {
-    const near = cameraAltitude < 2.5 && this.distanceFrom(cameraPos) < 4;
-    this.details.visible = cameraAltitude < 30;
-    this.buildings.group.visible = cameraAltitude < 60;
+    const dist = this.distanceFrom(cameraPos);
+    const near = cameraAltitude < 2.5 && dist < 4;
+    this.details.visible = cameraAltitude < 30 && dist < 40;
+    this.buildings.group.visible = cameraAltitude < 60 && dist < 60;
     this.ground.update(dt, time);
     this.buildings.update(dt, time, near);
-    this.placement.update(time);
-    this.roadPlacement.update(time);
+    if (this.active) {
+      this.placement.update(time);
+      this.roadPlacement.update(time);
+    }
   }
 
   dispose(): void {

@@ -35,7 +35,9 @@ function lab(types: BuildingType[], patch: Partial<GameState> = {}): GameState {
     ...base,
     buildings,
     timeSols: NOON,
-    colony: { colonists: 0, housing: 0 },
+    colony: { colonists: 0, housing: 0, growth: 0 },
+    // A neutral test site: no traits, so recipes run at exactly their listed amounts.
+    base: { ...base.base, siteId: 'lab' },
     resources: { ...emptyResources(), regolith: 100 },
     power: { ...base.power, batteryKwh: cap, batteryCapacityKwh: cap },
     ...patch,

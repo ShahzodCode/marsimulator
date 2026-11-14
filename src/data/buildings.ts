@@ -2,6 +2,8 @@ import type { ResourceId } from './resources';
 import { RECIPES, type RecipeId } from './recipes';
 import { POWER_PRIORITY, SOLAR_FARM_PEAK_KW } from './power';
 import type { RankId } from './progression';
+import type { TechId } from './research';
+import type { TraitId } from './baseSites';
 
 /**
  * Building definitions — pure data, completely separate from rendering.
@@ -20,7 +22,17 @@ export type BuildingType =
   | 'storage_depot'
   | 'battery_bank'
   | 'moxie_unit'
-  | 'storage_silo';
+  | 'storage_silo'
+  | 'research_lab'
+  | 'fission_reactor'
+  | 'megadigger'
+  | 'strip_mine'
+  | 'glacier_mine'
+  | 'deep_aquifer_drill'
+  | 'big_dome'
+  | 'lava_habitat'
+  | 'pump_station'
+  | 'cargo_garage';
 
 export type BuildingCategory = 'living' | 'energy' | 'life_support' | 'food' | 'industry' | 'storage';
 
@@ -54,6 +66,18 @@ export interface BuildingDefinition {
   buildable: boolean;
   /** Rank needed before it appears in the construction menu (data/progression.ts). */
   unlockRank?: RankId;
+  /** Research needed before it can be built (data/research.ts). */
+  requiresTech?: TechId;
+  /** Can only be built at a base whose site has one of these traits (data/baseSites.ts). */
+  requiresTrait?: TraitId[];
+  /** Steady electricity, day and night, whatever the weather (kW). */
+  steadyKw?: number;
+  /** Research points per sol while powered. */
+  researchPerSol?: number;
+  /** Each working one makes the base's solar panels dustier (multiplier on solar). */
+  dustSolar?: number;
+  /** Shown as the downside in the build menu. */
+  con?: string;
 }
 
 export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
@@ -280,6 +304,230 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     storage: { regolith: 1000, iron: 500, water: 2000, oxygen: 1000, food: 800, hydrogen: 200 },
     buildable: true,
   },
+  research_lab: {
+    id: 'research_lab',
+    name: 'Research Lab',
+    shortName: 'Lab',
+    description: 'Scientists test samples, build prototypes and invent new machines. Pick projects in the Research panel.',
+    funFact: 'Curiosity carries a whole chemistry lab in its belly: SAM can bake rock samples and sniff the gases that come out.',
+    model: 'research_lab',
+    category: 'living',
+    constructionCost: { iron: 120, regolith: 80 },
+    buildTimeSols: 1.5,
+    footprint: { width: 7, height: 6 },
+    basePowerKw: 6,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.industry,
+    housing: 0,
+    storage: {},
+    buildable: true,
+    unlockRank: 'settlement_commander',
+    researchPerSol: 12,
+  },
+  fission_reactor: {
+    id: 'fission_reactor',
+    name: 'Compact Fission Reactor',
+    shortName: 'Reactor',
+    description: 'Four small nuclear reactors give steady electricity day and night — even in the worst dust storm.',
+    funFact: 'NASA tested a small space reactor called KRUSTY in 2018. Its plans for Mars use several 10 kW units side by side.',
+    model: 'fission_reactor',
+    category: 'energy',
+    constructionCost: { iron: 400, regolith: 300 },
+    buildTimeSols: 8,
+    footprint: { width: 6, height: 6 },
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.living,
+    housing: 0,
+    storage: {},
+    buildable: true,
+    requiresTech: 'fission',
+    steadyKw: 40,
+    con: 'Very expensive and 8 sols to build',
+  },
+  megadigger: {
+    id: 'megadigger',
+    name: 'Bucket-Wheel Megadigger',
+    shortName: 'Megadigger',
+    description: 'A huge bucket wheel that digs five times faster than an excavator.',
+    funFact: 'The biggest bucket-wheel excavators on Earth are taller than a 20-storey building.',
+    model: 'megadigger',
+    category: 'industry',
+    constructionCost: { iron: 220, regolith: 60 },
+    buildTimeSols: 6,
+    footprint: { width: 8, height: 8 },
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['mega_excavation'],
+    powerPriority: POWER_PRIORITY.industry,
+    housing: 0,
+    storage: {},
+    buildable: true,
+    requiresTech: 'megadigger',
+    dustSolar: 0.9,
+    con: 'Kicks up dust: −10% solar at this base · uses 22 kW',
+  },
+  strip_mine: {
+    id: 'strip_mine',
+    name: 'Hematite Strip Mine',
+    shortName: 'Strip Mine',
+    description: 'Scrapes up hematite and roasts it straight into iron — no refinery needed.',
+    funFact: 'Hematite is the same iron ore that steel mills on Earth use.',
+    model: 'strip_mine',
+    category: 'industry',
+    constructionCost: { iron: 260, regolith: 100 },
+    buildTimeSols: 8,
+    footprint: { width: 9, height: 9 },
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['strip_mining'],
+    powerPriority: POWER_PRIORITY.industry,
+    housing: 0,
+    storage: {},
+    buildable: true,
+    requiresTech: 'strip_mine',
+    requiresTrait: ['hematite'],
+    dustSolar: 0.92,
+    con: 'Only on a hematite field · 30 kW · dusty',
+  },
+  glacier_mine: {
+    id: 'glacier_mine',
+    name: 'Glacier Mine',
+    shortName: 'Glacier Mine',
+    description: 'Melts a cavern into buried ice and pumps up five times as much water as an ice drill.',
+    funFact: 'This trick is real: the South Pole station on Earth gets its water from a well melted into the ice, called a Rodriguez well.',
+    model: 'glacier_mine',
+    category: 'life_support',
+    constructionCost: { iron: 240, regolith: 80 },
+    buildTimeSols: 7,
+    footprint: { width: 7, height: 7 },
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['glacier_mining'],
+    powerPriority: POWER_PRIORITY.water,
+    housing: 0,
+    storage: {},
+    buildable: true,
+    requiresTech: 'glacier_mine',
+    requiresTrait: ['ice_cap', 'buried_glacier', 'ground_ice'],
+    con: 'Only on icy sites · 18 kW · empties the ice reserve fast',
+  },
+  deep_aquifer_drill: {
+    id: 'deep_aquifer_drill',
+    name: 'Deep Aquifer Drill',
+    shortName: 'Aquifer Drill',
+    description: 'Future technology: a drill string more than 11 km long reaches water-soaked rock deep in the crust. It never runs dry.',
+    funFact: 'The deepest hole ever drilled on Earth, the Kola Superdeep Borehole, is 12.2 km deep and took about 20 years.',
+    model: 'deep_aquifer_drill',
+    category: 'life_support',
+    constructionCost: { iron: 900, regolith: 400 },
+    buildTimeSols: 20,
+    footprint: { width: 8, height: 8 },
+    basePowerKw: 0,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: ['aquifer_pumping'],
+    powerPriority: POWER_PRIORITY.water,
+    housing: 0,
+    storage: {},
+    buildable: true,
+    requiresTech: 'deep_aquifer',
+    requiresTrait: ['deep_water'],
+    con: 'Enormous cost · 20 sols to build · 45 kW',
+  },
+  big_dome: {
+    id: 'big_dome',
+    name: 'Big Dome',
+    shortName: 'Big Dome',
+    description: 'A huge habitat with gardens inside and beds for 18 people. Empty beds make families grow faster.',
+    funFact: 'Thin Martian air pushes back almost nothing, so a big dome has to be built like a pressure tank.',
+    model: 'big_dome',
+    category: 'living',
+    constructionCost: { regolith: 420, iron: 220 },
+    buildTimeSols: 5,
+    footprint: { width: 12, height: 12 },
+    basePowerKw: 14,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.living,
+    housing: 18,
+    storage: {},
+    buildable: true,
+    requiresTech: 'big_dome',
+    con: 'Needs 14 kW for heating and air',
+  },
+  lava_habitat: {
+    id: 'lava_habitat',
+    name: 'Lava-Tube Habitat',
+    shortName: 'Lava Tube',
+    description: 'Homes built inside a natural lava cave. Metres of rock overhead keep out radiation, cold and dust.',
+    funFact: 'Martian lava tubes may be much wider than Earth’s, because the low gravity lets caves grow bigger without collapsing.',
+    model: 'lava_habitat',
+    category: 'living',
+    constructionCost: { regolith: 200, iron: 300 },
+    buildTimeSols: 10,
+    footprint: { width: 10, height: 10 },
+    basePowerKw: 8,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.living,
+    housing: 30,
+    storage: {},
+    buildable: true,
+    requiresTech: 'lava_habitat',
+    requiresTrait: ['lava_tube'],
+    con: 'Only at a lava-tube cave · 10 sols to build',
+  },
+  pump_station: {
+    id: 'pump_station',
+    name: 'Pipeline Pump Station',
+    shortName: 'Pump',
+    description: 'Pumps goods into a pipeline to another base and takes in what comes back. Bases joined by a working pipeline share everything: they even each other out, and when one base is short of building materials the other sends them over.',
+    funFact: 'The Trans-Alaska Pipeline is 1,287 km long, and more than half of it runs above the ground on stilts because the ground is frozen. Mars ground is frozen too!',
+    model: 'pump_station',
+    category: 'storage',
+    constructionCost: { iron: 70, regolith: 40 },
+    buildTimeSols: 0.8,
+    footprint: { width: 4, height: 4 },
+    basePowerKw: 4,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.industry,
+    housing: 0,
+    storage: {},
+    buildable: true,
+    con: 'Needs a Pump Station at the other base too',
+  },
+  cargo_garage: {
+    id: 'cargo_garage',
+    name: 'Cargo Hauler Garage',
+    shortName: 'Garage',
+    description: 'Home of three big robotic cargo haulers. Drag the arrow from the garage onto another base, choose what to load, and the haulers drive it there and come back.',
+    funFact: 'NASA’s ATHLETE robot has six legs with a wheel on each. It was designed to carry heavy cargo, even whole habitats, across the Moon.',
+    model: 'cargo_garage',
+    category: 'storage',
+    constructionCost: { iron: 110, regolith: 60 },
+    buildTimeSols: 1.0,
+    footprint: { width: 7, height: 6 },
+    basePowerKw: 3,
+    solarPeakKw: 0,
+    batteryKwh: 0,
+    recipes: [],
+    powerPriority: POWER_PRIORITY.industry,
+    housing: 0,
+    storage: {},
+    buildable: true,
+  },
 };
 
 export const BUILDING_TYPES = Object.keys(BUILDINGS) as BuildingType[];
@@ -323,8 +571,15 @@ export function storageCapacity(buildings: readonly { type: BuildingType; isOper
   return cap;
 }
 
-/** Most power the building can draw when everything in it runs (kW). */
-export function maxPowerKw(type: BuildingType): number {
+/** Heating and air scale with the site's cold (living, food and life-support buildings). */
+export function basePowerKw(type: BuildingType, heating = 1): number {
   const def = BUILDINGS[type];
-  return def.basePowerKw + def.recipes.reduce((sum, r) => sum + RECIPES[r].energyKw, 0);
+  const heated = def.category === 'living' || def.category === 'food' || def.category === 'life_support';
+  return def.basePowerKw * (heated ? heating : 1);
+}
+
+/** Most power the building can draw when everything in it runs (kW). */
+export function maxPowerKw(type: BuildingType, heating = 1): number {
+  const def = BUILDINGS[type];
+  return basePowerKw(type, heating) + def.recipes.reduce((sum, r) => sum + RECIPES[r].energyKw, 0);
 }
