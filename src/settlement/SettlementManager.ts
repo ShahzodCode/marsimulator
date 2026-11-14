@@ -9,6 +9,7 @@ import { SettlementGround } from './SettlementGround';
 import { BuildingManager } from './BuildingManager';
 import { BuildingPlacement } from './BuildingPlacement';
 import { Roads } from './Roads';
+import { RoadPlacement } from './RoadPlacement';
 import { buildDecorationModel } from './buildings/models';
 import { materials } from './buildings/materials';
 import { R } from '../planet/geo';
@@ -24,6 +25,7 @@ export class SettlementManager {
   readonly buildings: BuildingManager;
   readonly placement: BuildingPlacement;
   readonly roads: Roads;
+  readonly roadPlacement: RoadPlacement;
   readonly center = new THREE.Vector3();
   private details = new THREE.Group();
   private unsubscribers: (() => void)[] = [];
@@ -39,18 +41,34 @@ export class SettlementManager {
     this.roads = new Roads(this.grid);
     this.buildings = new BuildingManager(this.grid);
     this.placement = new BuildingPlacement(this.grid, events);
+    this.roadPlacement = new RoadPlacement(this.grid, events);
     this.details.add(this.roads.group);
     this.buildDecorations();
     this.buildRocks();
-    this.group.add(this.details, this.buildings.group, this.placement.group);
+    this.group.add(this.details, this.buildings.group, this.placement.group, this.roadPlacement.group);
 
     this.unsubscribers.push(
       watch(
         (s) => s.buildings,
         (buildings) => {
-          this.buildings.sync(buildings);
-          this.roads.rebuild(buildings);
-          this.buildings.setSelected(gameStore.getState().selectedBuildingId);
+          const sel = this.buildings.sync(buildings);
+          this.roads.rebuild(gameStore.getState().roads, buildings);
+          if (sel) this.buildings.setSelected(gameStore.getState().selectedBuildingId);
+        },
+      ),
+      watch(
+        (s) => s.roads,
+        (roads) => {
+          this.roads.rebuild(roads, gameStore.getState().buildings);
+          this.roadPlacement.refresh();
+        },
+      ),
+      watch(
+        (s) => s.roadMode,
+        (on) => {
+          this.roadPlacement.setActive(on);
+          this.ground.setGridVisible(on || gameStore.getState().construction.active);
+          this.buildings.setRoadHints(on);
         },
       ),
       watch(
@@ -62,7 +80,7 @@ export class SettlementManager {
         () => {
           const c = gameStore.getState().construction;
           this.placement.setMode(c.active ? c.buildingType : null, c.rotation);
-          this.ground.setGridVisible(c.active);
+          this.ground.setGridVisible(c.active || gameStore.getState().roadMode);
         },
       ),
     );
@@ -115,6 +133,7 @@ export class SettlementManager {
     this.ground.update(dt, time);
     this.buildings.update(dt, time, near);
     this.placement.update(time);
+    this.roadPlacement.update(time);
   }
 
   dispose(): void {

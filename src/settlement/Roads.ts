@@ -307,9 +307,28 @@ export class Roads {
   }
 
   private mesh(positions: number[], material: THREE.Material): THREE.Mesh {
+    // Make every triangle wind counter-clockwise seen from above (shapes are generated in
+    // both directions), so they are front faces with upward normals.
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const c = new THREE.Vector3();
+    for (let i = 0; i < positions.length; i += 9) {
+      a.fromArray(positions, i);
+      b.fromArray(positions, i + 3);
+      c.fromArray(positions, i + 6);
+      b.sub(a);
+      c.sub(a);
+      if (b.cross(c).dot(a) < 0) {
+        for (let k = 0; k < 3; k++) {
+          const tmp = positions[i + 3 + k];
+          positions[i + 3 + k] = positions[i + 6 + k];
+          positions[i + 6 + k] = tmp;
+        }
+      }
+    }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    // Normals point straight up from the planet (winding isn't consistent for every shape).
+    // Normals point straight up from the planet.
     const n = new Float32Array(positions.length);
     const v = new THREE.Vector3();
     for (let i = 0; i < positions.length; i += 3) {
@@ -330,7 +349,6 @@ function decal(color: string, order: number): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color,
     roughness: 0.95,
-    side: THREE.DoubleSide,
     polygonOffset: true,
     polygonOffsetFactor: order - 1,
     polygonOffsetUnits: order * 4 - 4,

@@ -60,19 +60,39 @@ export class PlacementHint {
   constructor(parent: HTMLElement, events: EventBus) {
     this.title = h('strong');
     this.feedback = h('span', { class: 'feedback' });
-    this.el = h('div', { class: 'placement-hint', attrs: { role: 'status' } }, [
-      h('div', { class: 'ph-text' }, [this.title, h('span', { class: 'ph-keys', text: 'Click to build · R rotate · Esc cancel' }), this.feedback]),
-      h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => gameStore.getState().rotatePlacement() } }, [h('span', { class: 'btn-icon', html: ICONS.rotate }), 'Rotate']),
-      h('button', { class: 'btn danger', attrs: { type: 'button' }, on: { click: () => gameStore.getState().cancelPlacement() } }, [h('span', { class: 'btn-icon', html: ICONS.close }), 'Cancel']),
+    const keys = h('span', { class: 'ph-keys', text: 'Click to build · R rotate · Esc cancel' });
+    const rotate = h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => gameStore.getState().rotatePlacement() } }, [
+      h('span', { class: 'btn-icon', html: ICONS.rotate }),
+      'Rotate',
     ]);
+    const cancelLabel = h('span', { text: 'Cancel' });
+    const cancel = h(
+      'button',
+      {
+        class: 'btn danger',
+        attrs: { type: 'button' },
+        on: { click: () => (gameStore.getState().roadMode ? gameStore.getState().stopRoadMode() : gameStore.getState().cancelPlacement()) },
+      },
+      [h('span', { class: 'btn-icon', html: ICONS.close }), cancelLabel],
+    );
+    this.el = h('div', { class: 'placement-hint', attrs: { role: 'status' } }, [h('div', { class: 'ph-text' }, [this.title, keys, this.feedback]), rotate, cancel]);
     parent.append(this.el);
     watch(
-      (s) => (s.construction.active ? s.construction.buildingType : null),
-      (type) => {
-        toggleClass(this.el, 'open', !!type);
-        if (type) {
-          setText(this.title, `Placing: ${BUILDINGS[type].icon} ${BUILDINGS[type].name}`);
+      (s) => (s.roadMode ? 'road' : s.construction.active ? s.construction.buildingType : null),
+      (mode) => {
+        toggleClass(this.el, 'open', !!mode);
+        rotate.style.display = mode === 'road' ? 'none' : '';
+        if (mode === 'road') {
+          setText(this.title, '🛣️ Laying roads');
+          setText(keys, 'Click or drag from the plaza or a road end · click a piece to remove · WASD move · Esc done');
+          setText(this.feedback, 'Each piece must join the plaza or another road.');
+          setText(cancelLabel, 'Done');
+          this.feedback.className = 'feedback';
+        } else if (mode) {
+          setText(this.title, `Placing: ${BUILDINGS[mode].icon} ${BUILDINGS[mode].name}`);
+          setText(keys, 'Click to build · R rotate · Esc cancel');
           setText(this.feedback, 'Move the pointer over the base.');
+          setText(cancelLabel, 'Cancel');
           this.feedback.className = 'feedback';
         }
       },

@@ -6,6 +6,9 @@ export interface InputTarget {
   /** Right click without dragging (cancel). */
   onSecondaryClick(): void;
   onKey(key: string, e: KeyboardEvent): boolean;
+  /** When true, a left-button drag paints (e.g. lays roads) instead of panning. */
+  paintMode?(): boolean;
+  onPaint?(clientX: number, clientY: number, start: boolean): void;
 }
 
 interface PointerState {
@@ -15,6 +18,7 @@ interface PointerState {
   startY: number;
   button: number;
   dragged: boolean;
+  painting: boolean;
 }
 
 const DRAG_THRESHOLD = 6;
@@ -52,8 +56,13 @@ export class InputController {
 
   private onDown = (e: PointerEvent) => {
     this.el.setPointerCapture(e.pointerId);
-    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, button: e.button, dragged: false });
-    if (this.pointers.size === 2) this.startPinch();
+    const painting = e.button === 0 && this.pointers.size === 0 && !!this.target.paintMode?.();
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, button: e.button, dragged: false, painting });
+    if (painting) this.target.onPaint?.(e.clientX, e.clientY, true);
+    if (this.pointers.size === 2) {
+      for (const q of this.pointers.values()) q.painting = false;
+      this.startPinch();
+    }
   };
 
   private onMove = (e: PointerEvent) => {
@@ -67,6 +76,10 @@ export class InputController {
     if (!p.dragged && Math.hypot(p.x - p.startX, p.y - p.startY) > DRAG_THRESHOLD) p.dragged = true;
     if (this.pointers.size >= 2) {
       this.updatePinch();
+      return;
+    }
+    if (p.painting) {
+      this.target.onPaint?.(e.clientX, e.clientY, false);
       return;
     }
     if (!p.dragged) return;

@@ -58,6 +58,8 @@ export class BuildingPanel {
     for (const id of Object.keys(def.production) as ResourceId[]) stat(`p-${id}`, `Makes ${RESOURCES[id].name.toLowerCase()} /sol`);
     for (const id of Object.keys(def.consumption) as ResourceId[]) stat(`c-${id}`, `Uses ${RESOURCES[id].name.toLowerCase()} /sol`);
     if (def.housing) stat('housing', 'Beds');
+    stat('road', 'Road');
+    if (Object.keys(def.production).length) stat('stored', 'Waiting for pickup');
     stat('built', 'Started');
 
     this.body.append(
@@ -125,6 +127,16 @@ export class BuildingPanel {
     for (const id of Object.keys(def.consumption) as ResourceId[]) {
       const el = this.live.get(`c-${id}`);
       if (el) setText(el, `${((def.consumption[id] ?? 0) * eff).toFixed(1)}`);
+    }
+    const rEl = this.live.get('road');
+    if (rEl) {
+      setText(rEl, b.connected ? '✔ Connected' : '✖ No road');
+      rEl.style.color = b.connected ? '' : '#ffb020';
+    }
+    const sEl = this.live.get('stored');
+    if (sEl) {
+      const parts = (Object.entries(b.stored) as [ResourceId, number][]).filter(([, v]) => v >= 0.05).map(([id, v]) => `${v.toFixed(0)} ${RESOURCES[id].name.toLowerCase()}`);
+      setText(sEl, parts.length ? parts.join(', ') : 'nothing');
     }
     const hEl = this.live.get('housing');
     if (hEl) setText(hEl, `${def.housing}`);

@@ -5,6 +5,7 @@ import { gameStore } from '../state/gameStore';
 import { h, setText, toggleClass } from './dom';
 import { RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
+import { ROAD_COST } from '../settlement/RoadRules';
 
 interface Card {
   type: BuildingType;
@@ -22,10 +23,13 @@ export class ConstructionMenu implements Panel {
   readonly subtitle = 'Choose a building, then click on the glowing circle around the base.';
   readonly el: HTMLElement;
   private cards: Card[] = [];
+  private roadCard!: HTMLButtonElement;
+  private roadNote!: HTMLElement;
   private unsub: (() => void) | null = null;
 
   constructor() {
     this.el = h('div', { class: 'build-grid' });
+    this.addRoadCard();
     for (const type of BUILDING_TYPES) {
       const def = BUILDINGS[type];
       if (!def.buildable) continue;
@@ -71,6 +75,46 @@ export class ConstructionMenu implements Panel {
     }
   }
 
+  private addRoadCard(): void {
+    const costRow = h('div', { class: 'cost-row' });
+    for (const [id, amount] of Object.entries(ROAD_COST) as [ResourceId, number][]) {
+      costRow.append(
+        h('span', { class: 'cost', title: RESOURCES[id].name, style: { ['--chip-color' as never]: RESOURCES[id].color } }, [
+          h('span', { class: 'cost-icon', html: RESOURCE_ICONS[id] }),
+          `${amount} each`,
+        ]),
+      );
+    }
+    this.roadNote = h('div', { class: 'card-note' });
+    this.roadCard = h(
+      'button',
+      {
+        class: 'build-card road-card',
+        attrs: { type: 'button', 'aria-label': 'Build roads' },
+        on: {
+          click: () => {
+            const res = gameStore.getState().startRoadMode();
+            if (!res.ok) gameStore.getState().pushAlert({ key: 'cant-afford', level: 'warning', title: 'Not enough regolith for roads', message: res.reason });
+          },
+        },
+      },
+      [
+        h('div', { class: 'card-icon', text: '🛣️' }),
+        h('div', { class: 'card-main' }, [
+          h('div', { class: 'card-title', text: 'Road (N)' }),
+          h('div', {
+            class: 'card-desc',
+            text: 'Rovers carry goods along roads. Lay pieces one by one from the plaza to each building — without a road, its goods pile up and can’t reach the base.',
+          }),
+          h('div', { class: 'card-effects', text: 'Click or drag to lay pieces · click a piece to remove it' }),
+          h('div', { class: 'card-foot' }, [costRow, h('span', { class: 'build-time', text: '⏱ instant' })]),
+          this.roadNote,
+        ]),
+      ],
+    );
+    this.el.append(this.roadCard);
+  }
+
   private choose(type: BuildingType): void {
     const res = gameStore.getState().startPlacement(type);
     if (!res.ok) {
@@ -91,6 +135,9 @@ export class ConstructionMenu implements Panel {
   private refresh(): void {
     const s = gameStore.getState();
     const spare = s.energy.generation - s.energy.consumption;
+    const roadOk = ResourceManager.canAfford(s.resources, ROAD_COST);
+    toggleClass(this.roadCard, 'disabled', !roadOk);
+    setText(this.roadNote, roadOk ? '' : ResourceManager.describeMissing(s.resources, ROAD_COST));
     for (const c of this.cards) {
       const def = BUILDINGS[c.type];
       const affordable = ResourceManager.canAfford(s.resources, def.constructionCost);

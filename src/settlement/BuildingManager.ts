@@ -13,6 +13,43 @@ interface Entry {
   model: BuiltModel;
   scaffold: THREE.LineSegments | null;
   pop: number;
+  /** Floating "needs a road" sign. */
+  marker: THREE.Sprite;
+}
+
+let markerTexture: THREE.CanvasTexture | null = null;
+
+/** A round amber road sign (drawn once, shared by every marker). */
+function roadSignTexture(): THREE.CanvasTexture {
+  if (markerTexture) return markerTexture;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = 'rgba(0,0,0,0.35)';
+  g.beginPath();
+  g.arc(64, 68, 56, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#ffb020';
+  g.strokeStyle = '#ffffff';
+  g.lineWidth = 8;
+  g.beginPath();
+  g.arc(64, 62, 52, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  // Road in perspective with a dashed centre line.
+  g.fillStyle = '#3a3532';
+  g.beginPath();
+  g.moveTo(52, 24);
+  g.lineTo(76, 24);
+  g.lineTo(98, 100);
+  g.lineTo(30, 100);
+  g.closePath();
+  g.fill();
+  g.fillStyle = '#ffe27a';
+  for (const [y, h, w] of [[30, 10, 4], [50, 14, 5], [74, 18, 6]]) g.fillRect(64 - w / 2, y, w, h);
+  markerTexture = new THREE.CanvasTexture(c);
+  markerTexture.colorSpace = THREE.SRGBColorSpace;
+  return markerTexture;
 }
 
 /**
@@ -25,37 +62,57 @@ export class BuildingManager {
   private selectedId: string | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private scaffoldMaterial = new THREE.LineBasicMaterial({ color: '#ffb347', transparent: true, opacity: 0.9 });
+  private markerMaterial = new THREE.SpriteMaterial({ map: roadSignTexture(), depthTest: false, transparent: true });
+  private roadHints = false;
 
   constructor(private grid: SettlementGrid) {
     this.group.name = 'buildings';
   }
 
-  sync(buildings: BuildingInstance[]): void {
+  /** Returns true when buildings were added or removed. */
+  sync(buildings: BuildingInstance[]): boolean {
     const seen = new Set<string>();
+    let changed = false;
     for (const b of buildings) {
       seen.add(b.id);
       const e = this.entries.get(b.id);
-      if (!e) this.create(b);
-      else if (e.data !== b) this.updateEntry(e, b);
+      if (!e) {
+        this.create(b);
+        changed = true;
+      } else if (e.data !== b) this.updateEntry(e, b);
     }
     for (const [id, e] of this.entries) {
       if (!seen.has(id)) {
         this.group.remove(e.root);
         disposeGeometries(e.root);
         this.entries.delete(id);
+        changed = true;
         if (this.selectedId === id) this.setSelected(null);
       }
     }
+    return changed;
+  }
+
+  /** While the road tool is active, the "needs a road" signs are drawn bigger. */
+  setRoadHints(on: boolean): void {
+    this.roadHints = on;
   }
 
   private create(b: BuildingInstance): void {
     const model = buildBuildingModel(b.type);
+    // Height measured in model space (before the model is parented and placed).
+    const top = new THREE.Box3().setFromObject(model.group).max.y;
     const root = new THREE.Group();
     root.userData.buildingId = b.id;
     root.add(model.group);
     const c = rectCenter(footprintRect(b.type, b.gridX, b.gridY, b.rotation));
     this.grid.place(root, c.x, c.y, (b.rotation * Math.PI) / 2);
-    const entry: Entry = { data: b, root, model, scaffold: null, pop: 0 };
+    const marker = new THREE.Sprite(this.markerMaterial);
+    marker.renderOrder = 10;
+    marker.position.y = (Number.isFinite(top) ? top : 2) + 1.4;
+    marker.visible = false;
+    root.add(marker);
+    const entry: Entry = { data: b, root, model, scaffold: null, pop: 0, marker };
     this.group.add(root);
     this.entries.set(b.id, entry);
     this.updateEntry(entry, b);
@@ -64,6 +121,7 @@ export class BuildingManager {
   private updateEntry(e: Entry, b: BuildingInstance): void {
     const wasBuilding = e.data.constructionProgress < 1;
     e.data = b;
+    e.marker.visible = !b.connected;
     if (b.constructionProgress < 1) {
       if (!e.scaffold) {
         const fp = BUILDINGS[b.type].footprint;
@@ -141,6 +199,10 @@ export class BuildingManager {
       }
       if (e.scaffold) {
         (e.scaffold.material as THREE.LineBasicMaterial).opacity = 0.55 + 0.35 * Math.sin(time * 5);
+      }
+      if (e.marker.visible) {
+        const s = (this.roadHints ? 2.6 : 1.7) * (1 + 0.08 * Math.sin(time * 4));
+        e.marker.scale.set(s, s, 1);
       }
     }
     if (this.selection) {

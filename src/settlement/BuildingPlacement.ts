@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BUILDINGS, type BuildingType } from '../data/buildings';
-import { gameStore } from '../state/gameStore';
+import { gameStore, roadSet } from '../state/gameStore';
 import type { EventBus } from '../core/EventBus';
 import type { SurfaceHit } from '../planet/CameraController';
 import { checkPlacement, footprintRect, rectCenter, snapToGrid, PROBLEM_TEXT } from './PlacementRules';
@@ -91,7 +91,7 @@ export class BuildingPlacement {
     if (!this.type || !this.ghost) return;
     // Rotation may have changed the footprint; re-snap around the same centre.
     const state = gameStore.getState();
-    const problem = checkPlacement(this.type, this.gridX, this.gridY, this.rotation, state.buildings);
+    const problem = checkPlacement(this.type, this.gridX, this.gridY, this.rotation, state.buildings, roadSet(state.roads));
     const cost = BUILDINGS[this.type].constructionCost;
     const affordable = ResourceManager.canAfford(state.resources, cost);
     this.valid = !problem && affordable;

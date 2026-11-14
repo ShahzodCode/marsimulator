@@ -109,6 +109,8 @@ export class Game {
       onClick: (x, y) => this.handleClick(x, y),
       onSecondaryClick: () => this.handleCancel(),
       onKey: (k, e) => this.handleKey(k, e),
+      paintMode: () => gameStore.getState().roadMode,
+      onPaint: (x, y, start) => this.settlement.roadPlacement.paint(this.camera.pickSurface(x, y), start),
     });
 
     this.buildUI(terrain);
@@ -200,6 +202,10 @@ export class Game {
 
   private handleClick(x: number, y: number): void {
     const s = gameStore.getState();
+    if (s.roadMode) {
+      this.settlement.roadPlacement.click(this.camera.pickSurface(x, y));
+      return;
+    }
     if (s.construction.active) {
       this.settlement.placement.hover(this.camera.pickSurface(x, y));
       this.settlement.placement.confirm();
@@ -225,6 +231,10 @@ export class Game {
 
   private handleCancel(): boolean {
     const s = gameStore.getState();
+    if (s.roadMode) {
+      s.stopRoadMode();
+      return true;
+    }
     if (s.construction.active) {
       s.cancelPlacement();
       return true;
@@ -262,6 +272,13 @@ export class Game {
       case 'r':
         s.rotatePlacement();
         return s.construction.active;
+      case 'n':
+        if (s.roadMode) s.stopRoadMode();
+        else {
+          const res = s.startRoadMode();
+          if (!res.ok) s.pushAlert({ key: 'cant-afford', level: 'warning', title: 'Not enough regolith for roads', message: res.reason });
+        }
+        return true;
       case 'h':
         this.events.emit('camera:home');
         return true;
@@ -313,6 +330,7 @@ export class Game {
     h.dirty = false;
     const hit = this.camera.pickSurface(h.x, h.y);
     if (this.settlement.placement.active) this.settlement.placement.hover(hit);
+    this.settlement.roadPlacement.hover(hit);
     if (!hit) {
       this.events.emit('pointer:surface', null);
       if (this.lastRegionHover !== -1) this.fog.setHover((this.lastRegionHover = -1));
