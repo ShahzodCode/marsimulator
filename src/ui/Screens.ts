@@ -1,4 +1,5 @@
 import { h, setText } from './dom';
+import { accountButton } from './AuthDialog';
 
 /** Loading overlay shown while the planet is generated. */
 export class LoadingScreen {
@@ -40,12 +41,16 @@ export class LoadingScreen {
 export class WelcomeScreen {
   readonly el: HTMLElement;
 
-  constructor(parent: HTMLElement, onStart: () => void, hasSave: Promise<boolean>, onLoad: () => void) {
-    const loadBtn = h('button', { class: 'btn', text: 'Continue saved game', attrs: { type: 'button' }, on: { click: () => this.close(onLoad) } });
-    loadBtn.style.display = 'none';
-    hasSave.then((yes) => {
-      if (yes) loadBtn.style.display = '';
-    });
+  private loadBtn: HTMLButtonElement;
+
+  constructor(
+    parent: HTMLElement,
+    onStart: () => void,
+    private hasSave: () => Promise<boolean>,
+    onLoad: () => void,
+  ) {
+    const loadBtn = (this.loadBtn = h('button', { class: 'btn', text: 'Continue saved game', attrs: { type: 'button' }, on: { click: () => this.close(onLoad) } }));
+    this.refreshSave();
     this.el = h('div', { class: 'welcome', attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'welcome-title' } }, [
       h('div', { class: 'welcome-card' }, [
         h('span', { class: 'eyebrow', text: 'Mission briefing · Sol 1' }),
@@ -63,9 +68,22 @@ export class WelcomeScreen {
           h('button', { class: 'btn primary big', text: 'Start mission 🚀', attrs: { type: 'button' }, on: { click: () => this.close(onStart) } }),
           loadBtn,
         ]),
+        h('div', { class: 'welcome-account' }, [h('span', { class: 'muted', text: 'Save your colony to an account:' }), accountButton(parent)]),
       ]),
     ]);
     parent.append(this.el);
+  }
+
+  /** Re-checks for a saved game (e.g. after logging in to a different account). */
+  refreshSave(): void {
+    this.loadBtn.style.display = 'none';
+    this.hasSave().then((yes) => {
+      if (yes) this.loadBtn.style.display = '';
+    });
+  }
+
+  get open(): boolean {
+    return this.el.isConnected && !this.el.classList.contains('done');
   }
 
   private close(then: () => void): void {

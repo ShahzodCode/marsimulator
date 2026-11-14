@@ -8,7 +8,8 @@ import type { PanelId } from '../state/types';
 export interface Prefs {
   camera?: { lat: number; lon: number; alt: number };
   lastPanel?: PanelId | null;
-  lastSave?: { savedAt: string; sol: number; cloud: boolean };
+  /** `owner` is the account id the save belongs to (null for a guest). */
+  lastSave?: { savedAt: string; sol: number; cloud: boolean; owner?: string | null };
   autosave?: boolean;
 }
 

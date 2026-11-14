@@ -35,6 +35,7 @@ export const ICONS = {
   people: svg('<circle cx="9" cy="8" r="3.2" fill="currentColor"/><circle cx="17" cy="9" r="2.5" fill="currentColor" opacity=".7"/><path d="M3 20a6 6 0 0 1 12 0zM14 20a5 5 0 0 1 8 0z" fill="currentColor"/>'),
   rover: svg('<rect x="4" y="8" width="14" height="6" rx="1.5" fill="currentColor"/><circle cx="7" cy="17" r="2.2" fill="currentColor"/><circle cx="15" cy="17" r="2.2" fill="currentColor"/><path d="M16 8V4h3" stroke="currentColor" stroke-width="1.8" fill="none"/>'),
   save: svg('<path d="M5 3h11l3 3v15H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="8" y="3" width="7" height="5" fill="currentColor"/><rect x="8" y="13" width="8" height="5" rx="1" fill="currentColor" opacity=".6"/>'),
+  user: svg('<circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/>'),
   load: svg('<path d="M4 17v3h16v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 4v11m-5-5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
 };
 

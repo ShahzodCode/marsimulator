@@ -12,7 +12,7 @@ export interface Account {
 /** Why the account changed: a fresh sign-up, a log-in, a log-out, or a profile edit. */
 export type AuthChange = 'signup' | 'login' | 'logout' | 'update';
 
-export type AuthResult = { ok: true; account: Account } | { ok: true; confirmEmail: true } | { ok: false; error: string };
+export type AuthResult = { ok: true; account: Account } | { ok: false; error: string };
 
 export const USERNAME_MIN = 3;
 export const USERNAME_MAX = 20;
@@ -32,7 +32,8 @@ function friendly(message: string): string {
   const m = message.toLowerCase();
   if (m.includes('invalid login credentials')) return 'Wrong email or password.';
   if (m.includes('already registered') || m.includes('already been registered')) return 'That email already has an account — try logging in.';
-  if (m.includes('email not confirmed')) return 'Please confirm your email first — check your inbox for the link.';
+  // Only happens if "Confirm email" is switched on in Supabase; the game expects it off.
+  if (m.includes('email not confirmed')) return 'Accounts are not set up correctly yet — please tell a grown-up.';
   if (m.includes('password') && (m.includes('least') || m.includes('short') || m.includes('weak'))) return `Password needs at least ${PASSWORD_MIN} characters.`;
   if (m.includes('rate limit') || m.includes('too many')) return 'Too many tries — wait a minute and try again.';
   if (m.includes('fetch') || m.includes('network')) return 'Could not reach the server. Check your internet connection.';
@@ -101,10 +102,18 @@ class AuthService {
     if (!supabase) return { ok: false, error: 'Accounts are not available right now.' };
     const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
     if (error) return { ok: false, error: friendly(error.message) };
-    // Supabase hides "already registered" behind an empty identities list when email confirmation is on.
+    // Supabase hides "already registered" behind an empty identities list.
     if (data.user && data.user.identities?.length === 0) return { ok: false, error: friendly('already registered') };
-    const account = toAccount(data.session);
-    if (!account) return { ok: true, confirmEmail: true };
+    // No email verification: with "Confirm email" off, sign-up returns a session straight away.
+    // If it didn't, try logging in so the player is never sent to their inbox.
+    let session = data.session;
+    if (!session) {
+      const login = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (login.error) return { ok: false, error: friendly(login.error.message) };
+      session = login.data.session;
+    }
+    const account = toAccount(session);
+    if (!account) return { ok: false, error: 'Could not create the account. Please try again.' };
     this.set(account, 'signup');
     return { ok: true, account };
   }

@@ -2,6 +2,7 @@ import { fromSave, isSaveData, toSave, type SaveData } from './SaveSchema';
 import type { GameState } from '../state/types';
 import { CloudSaves } from './CloudSaves';
 import { LocalPrefs } from './LocalPrefs';
+import { Auth } from './Auth';
 
 export interface SaveResult {
   data: SaveData;
@@ -17,7 +18,8 @@ const DEFAULT_SLOT = 'slot-1';
 
 /**
  * Saves go to IndexedDB on this device first, then to Supabase (cloud) for the
- * signed-in (anonymous) player. Loading picks whichever copy is newer, so progress
+ * signed-in player (an email account, or an anonymous guest). Each account gets its
+ * own local copy, so logging in on a shared device never mixes up two players' colonies. Loading picks whichever copy is newer, so progress
  * survives cleared browser data and an offline session still syncs on the next save.
  * Every call fails gracefully — e.g. offline, or in private browsing.
  */
@@ -53,13 +55,22 @@ export class SaveManager {
     });
   }
 
-  private async putLocal(data: SaveData, slot: string): Promise<void> {
-    await this.tx('readwrite', (s) => s.put(data, slot));
+  /** IndexedDB key: guests use the bare slot (as before accounts existed), accounts are prefixed by user id. */
+  private async localKey(slot: string, owner?: string | null): Promise<string> {
+    await Auth.ready;
+    const id = owner === undefined ? (Auth.current?.id ?? null) : owner;
+    return id ? `${id}:${slot}` : slot;
   }
 
-  private async getLocal(slot: string): Promise<SaveData | null> {
+  private async putLocal(data: SaveData, slot: string, owner?: string | null): Promise<void> {
+    const key = await this.localKey(slot, owner);
+    await this.tx('readwrite', (s) => s.put(data, key));
+  }
+
+  private async getLocal(slot: string, owner?: string | null): Promise<SaveData | null> {
     try {
-      const raw = await this.tx<unknown>('readonly', (s) => s.get(slot));
+      const key = await this.localKey(slot, owner);
+      const raw = await this.tx<unknown>('readonly', (s) => s.get(key));
       return isSaveData(raw) ? raw : null;
     } catch {
       return null;
@@ -101,7 +112,7 @@ export class SaveManager {
       console.warn('Cloud save failed', e);
     }
     if (localError && !cloud) throw localError;
-    LocalPrefs.set('lastSave', { savedAt: data.savedAt, sol: Math.floor(data.state.timeSols) + 1, cloud });
+    LocalPrefs.set('lastSave', { savedAt: data.savedAt, sol: Math.floor(data.state.timeSols) + 1, cloud, owner: Auth.current?.id ?? null });
     return { data, cloud, cloudError };
   }
 
@@ -118,8 +129,30 @@ export class SaveManager {
     return save ? { savedAt: save.savedAt, sol: Math.floor(save.state.timeSols) + 1 } : null;
   }
 
+  /**
+   * Local-only copy for a given owner (account id, or null for the guest). Used to
+   * keep the previous player's colony on this device when someone logs in or out.
+   */
+  async saveLocalFor(state: GameState, owner: string | null, slot = DEFAULT_SLOT): Promise<void> {
+    await this.putLocal(toSave(state), slot, owner);
+  }
+
+  /**
+   * After signing up, carry the guest colony on this device over to the new account
+   * (unless the account already has a save). Returns true when a save was copied.
+   */
+  async adoptGuestSave(slot = DEFAULT_SLOT): Promise<boolean> {
+    const guest = await this.getLocal(slot, null);
+    if (!guest || (await this.newest(slot))) return false;
+    await this.putLocal(guest, slot).catch(() => {});
+    await CloudSaves.put(guest, slot).catch((e) => console.warn('Cloud save failed', e));
+    return true;
+  }
+
   /** Quick summary from localStorage — no network or database needed. */
   cachedInfo(): { savedAt: string; sol: number; cloud: boolean } | null {
-    return LocalPrefs.get('lastSave') ?? null;
+    const last = LocalPrefs.get('lastSave');
+    if (!last || (last.owner ?? null) !== (Auth.current?.id ?? null)) return null;
+    return last;
   }
 }

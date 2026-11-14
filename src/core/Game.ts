@@ -13,6 +13,8 @@ import { loadBuildingModels } from '../settlement/buildings/glbModels';
 import { renderBuildingThumbnails } from '../settlement/buildings/thumbnails';
 import { SaveManager } from '../persistence/SaveManager';
 import { LocalPrefs } from '../persistence/LocalPrefs';
+import { Auth, type AuthChange } from '../persistence/Auth';
+import { createInitialState } from '../state/factory';
 import { gameStore, regionManager, watch } from '../state/gameStore';
 import type { PanelId } from '../state/types';
 import { HUD } from '../ui/HUD';
@@ -51,6 +53,9 @@ export class Game {
   private input!: InputController;
   private sim = new SimulationRunner(this.events);
   private saves = new SaveManager();
+  private welcome: WelcomeScreen | null = null;
+  /** Whose colony is on screen: the account id, or null for a guest. */
+  private owner: string | null = null;
   private labels!: MapLabels;
   private popups!: WorldPopups;
   private mapControls!: MapControls;
@@ -138,13 +143,13 @@ export class Game {
     loading.progress(1, 'Ready');
     loading.hide();
 
-    new WelcomeScreen(
+    this.welcome = new WelcomeScreen(
       this.ui,
       () => {
         gameStore.getState().start();
         this.events.emit('camera:home');
       },
-      this.saves.info().then((i) => !!i),
+      () => this.saves.info().then((i) => !!i),
       () => this.loadSaved(),
     );
   }
@@ -197,6 +202,10 @@ export class Game {
         if (gameStore.getState().started) LocalPrefs.set('lastPanel', panel);
       },
     );
+    Auth.ready.then(() => (this.owner = Auth.current?.id ?? null));
+    Auth.onChange((account, change) => {
+      this.onAccountChange(account?.id ?? null, change).catch((e) => console.warn('Account switch failed', e));
+    });
     window.setInterval(() => this.autosave(), AUTOSAVE_SECONDS * 1000);
     const flush = () => {
       this.rememberCamera();
@@ -248,6 +257,41 @@ export class Game {
       gameStore.getState().start();
     }
     this.events.emit('camera:home');
+  }
+
+  /**
+   * Signing up keeps the colony you're playing. Logging in switches to that
+   * account's colony (or moves the current one into the account if it has none);
+   * logging out switches back to the guest colony on this device.
+   */
+  private async onAccountChange(owner: string | null, change: AuthChange): Promise<void> {
+    if (change === 'update') return;
+    const prev = this.owner;
+    this.owner = owner;
+    const s = gameStore.getState();
+    if (s.started && prev !== owner) await this.saves.saveLocalFor(s, prev).catch(() => {});
+
+    if (change === 'signup') await this.saves.adoptGuestSave();
+    if (!s.started) {
+      if (this.welcome?.open) this.welcome.refreshSave();
+      return;
+    }
+    if (change !== 'signup') {
+      const saved = await this.saves.load();
+      if (saved) gameStore.getState().replaceState({ ...saved, started: true, paused: false });
+      else if (change === 'logout') gameStore.getState().replaceState({ ...createInitialState(), started: true });
+      if (saved || change === 'logout') {
+        this.afterLoad();
+        this.events.emit('camera:home');
+      }
+    }
+    await this.autosave();
+    const name = Auth.current?.username ?? 'your account';
+    gameStore.getState().pushAlert(
+      change === 'logout'
+        ? { key: 'account', level: 'info', title: 'Logged out', message: 'You are playing as a guest on this device.' }
+        : { key: 'account', level: 'success', title: change === 'signup' ? 'Account created' : `Welcome back, ${name}!`, message: `Your colony now saves to ${name}.` },
+    );
   }
 
   private afterLoad(): void {

@@ -7,6 +7,8 @@ import { RESOURCES, RESOURCE_IDS, formatAmount, formatRate } from '../data/resou
 import { SETTLEMENT } from '../data/settlement';
 import type { EventBus } from '../core/EventBus';
 import type { SaveManager } from '../persistence/SaveManager';
+import { Auth } from '../persistence/Auth';
+import { accountButton } from './AuthDialog';
 import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore } from '../state/gameStore';
 import { buildingIcon, clear, h, setText, toggleClass } from './dom';
@@ -263,6 +265,15 @@ export class SettlementPanel implements Panel {
       ]),
       this.saveStatus,
     );
+    if (Auth.available) {
+      const note = h('p', { class: 'muted' });
+      const update = () =>
+        setText(note, Auth.current ? `Saving to ${Auth.current.email}.` : 'Playing as a guest. Log in or sign up to keep your colony safe on any device.');
+      Auth.onChange(update);
+      Auth.ready.then(update);
+      update();
+      this.el.append(h('h3', { class: 'section-title', text: 'Account' }), note, h('div', { class: 'region-actions' }, [accountButton(document.getElementById('ui-root') ?? document.body)]));
+    }
   }
 
   private async save(): Promise<void> {

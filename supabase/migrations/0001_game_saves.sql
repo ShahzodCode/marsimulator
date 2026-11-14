@@ -1,6 +1,8 @@
 -- Cloud saves for Mars Colony Command.
 -- Run once in the Supabase dashboard → SQL Editor.
 -- Also enable: Authentication → Sign In / Providers → "Allow anonymous sign-ins".
+-- And turn OFF: Authentication → Sign In / Providers → Email → "Confirm email"
+-- (players sign up with email + password and start playing right away, no verification).
 
 create table if not exists public.game_saves (
   user_id    uuid        not null references auth.users (id) on delete cascade,
