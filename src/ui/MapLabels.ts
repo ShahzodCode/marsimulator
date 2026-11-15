@@ -16,10 +16,20 @@ interface Label {
   name?: string;
   /** A landmark label hidden because a base or site pin sits on the same spot. */
   suppressed?: boolean;
+  /** Smallest scale this label shrinks to as the camera pulls out (none: always full size). */
+  minScale?: number;
 }
 
 /** Pins closer than this (about 2° of arc) would draw on top of each other. */
 const SAME_SPOT_DOT = Math.cos((2 * Math.PI) / 180);
+
+/** Labels are full size up to SHRINK_FROM altitude and smallest (still readable) at SHRINK_TO. */
+const SHRINK_FROM = 40;
+const SHRINK_TO = 260;
+/** Landmark names: just enough to read and see that something is there. */
+const LANDMARK_MIN_SCALE = 0.5;
+/** Base names stay a little larger than landmarks. */
+const BASE_MIN_SCALE = 0.8;
 
 /**
  * HTML labels pinned to famous Martian landmarks and to our base.
@@ -63,11 +73,11 @@ export class MapLabels {
     this.dynKey = key;
     for (const l of this.dynamic) l.el.remove();
     this.dynamic = [];
-    const push = (el: HTMLElement, lat: number, lon: number, minAlt: number, name?: string) => {
+    const push = (el: HTMLElement, lat: number, lon: number, minAlt: number, name?: string, minScale?: number) => {
       el.style.opacity = '0';
       this.layer.append(el);
       const world = terrain.surfacePoint(lat, lon, 0.3);
-      this.dynamic.push({ el, world, normal: world.clone().normalize(), minAlt, maxAlt: 1e9, visible: false, name });
+      this.dynamic.push({ el, world, normal: world.clone().normalize(), minAlt, maxAlt: 1e9, visible: false, name, minScale });
     };
     for (const b of bases) {
       const current = b.id === s.base.id;
@@ -90,6 +100,8 @@ export class MapLabels {
         b.lat,
         b.lon,
         3.2,
+        undefined,
+        BASE_MIN_SCALE,
       );
     }
     for (const site of BASE_SITES) {
@@ -128,10 +140,11 @@ export class MapLabels {
   private add(el: HTMLElement, world: THREE.Vector3, minAlt: number, maxAlt: number, name?: string): void {
     el.style.opacity = '0';
     this.layer.append(el);
-    this.labels.push({ el, world, normal: world.clone().normalize(), minAlt, maxAlt, visible: false, name });
+    this.labels.push({ el, world, normal: world.clone().normalize(), minAlt, maxAlt, visible: false, name, minScale: LANDMARK_MIN_SCALE });
   }
 
   update(camera: THREE.PerspectiveCamera, altitude: number, width: number, height: number): void {
+    const t = THREE.MathUtils.clamp((altitude - SHRINK_FROM) / (SHRINK_TO - SHRINK_FROM), 0, 1);
     for (const l of [...this.labels, ...this.dynamic]) {
       this.toCam.copy(camera.position).sub(l.world).normalize();
       const facing = this.toCam.dot(l.normal);
@@ -140,7 +153,7 @@ export class MapLabels {
         this.v.copy(l.world).project(camera);
         const x = (this.v.x * 0.5 + 0.5) * width;
         const y = (-this.v.y * 0.5 + 0.5) * height;
-        l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+        l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)${l.minScale === undefined ? '' : ` scale(${(1 - t * (1 - l.minScale)).toFixed(3)})`}`;
         const fade = Math.min(1, (facing - 0.18) / 0.25) * Math.min(1, (altitude - l.minAlt) / Math.max(1, l.minAlt * 0.5));
         l.el.style.opacity = fade.toFixed(2);
       }

@@ -235,22 +235,23 @@ export interface ColonyStats {
 
 export interface ResearchState {
   completed: TechId[];
-  /** Project the labs are working on. */
-  active: TechId | null;
-  /** Development stage of the active project (index into STAGES: concept … mission ready). */
-  stage: number;
-  /** Research points put into the active stage. */
-  progress: number;
-  /** The stage is finished and the next one waits for its test materials to be paid. */
-  awaiting: boolean;
+  /** Projects running right now: one per working Research Lab, side by side. */
+  active: ActiveProject[];
   /** Projects put on hold, so switching never throws away work already paid for. */
   shelved: Partial<Record<TechId, ShelvedProject>>;
 }
 
 export interface ShelvedProject {
+  /** Development stage (index into STAGES: concept … mission ready). */
   stage: number;
+  /** Research points put into this stage. */
   progress: number;
+  /** The stage is finished and the next one waits for its test materials to be paid. */
   awaiting: boolean;
+}
+
+export interface ActiveProject extends ShelvedProject {
+  id: TechId;
 }
 
 /** Who and where a base is. The active base's data lives at the top of GameState. */

@@ -440,32 +440,45 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
   }
 
   // 6. Research.
+  // Every running project gets an equal share of the labs' points; one waiting for test
+  // materials hands its share to the others.
   let research = state.research;
-  if (research.active && !research.awaiting && dt > 0 && researchRp > 0) {
-    const tech = TECH_BY_ID[research.active];
-    const progress = research.progress + researchRp * dt;
-    const need = stageRp(tech, research.stage);
-    const last = research.stage >= STAGES.length - 1;
-    if (progress < need) {
-      research = { ...research, progress };
-    } else if (!last) {
-      // Stages that need test hardware wait for the player to pay for it.
-      const done = STAGES[research.stage];
-      const next = STAGES[research.stage + 1];
-      const paid = Object.keys(stageMaterials(tech, research.stage + 1)).length > 0;
-      research = paid ? { ...research, progress: need, awaiting: true } : { ...research, stage: research.stage + 1, progress: 0 };
-      notices.push({
-        key: `tech-stage-${tech.id}`,
-        level: 'info',
-        title: `${done.name} done: ${tech.name}`,
-        message: paid ? `Ready for the ${next.name.toLowerCase()}. Open Research to send the materials.` : `Now: ${next.name.toLowerCase()}.`,
-      });
-    } else {
-      research = { ...research, completed: [...research.completed, tech.id], active: null, stage: 0, progress: 0, awaiting: false };
-      notices.push({ key: `tech-${tech.id}`, level: 'success', title: `${tech.icon} Research complete: ${tech.name}`, message: `${tech.effect}. ${tech.fact}` });
-      grant(Math.round(tech.cost / 4), `tech-${tech.id}`);
-      if (tech.id === 'orbiter_mk2') for (const id of Object.keys(sitesSeen)) sitesSeen = { ...sitesSeen, [id]: 2 };
+  const working = research.active.filter((p) => !p.awaiting);
+  if (working.length && dt > 0 && researchRp > 0) {
+    const share = (researchRp * dt) / working.length;
+    const active: typeof research.active = [];
+    const completed = [...research.completed];
+    for (const p of research.active) {
+      if (p.awaiting) {
+        active.push(p);
+        continue;
+      }
+      const tech = TECH_BY_ID[p.id];
+      const progress = p.progress + share;
+      const need = stageRp(tech, p.stage);
+      const last = p.stage >= STAGES.length - 1;
+      if (progress < need) {
+        active.push({ ...p, progress });
+      } else if (!last) {
+        // Stages that need test hardware wait for the player to pay for it.
+        const done = STAGES[p.stage];
+        const next = STAGES[p.stage + 1];
+        const paid = Object.keys(stageMaterials(tech, p.stage + 1)).length > 0;
+        active.push(paid ? { ...p, progress: need, awaiting: true } : { ...p, stage: p.stage + 1, progress: 0 });
+        notices.push({
+          key: `tech-stage-${tech.id}`,
+          level: 'info',
+          title: `${done.name} done: ${tech.name}`,
+          message: paid ? `Ready for the ${next.name.toLowerCase()}. Open Research to send the materials.` : `Now: ${next.name.toLowerCase()}.`,
+        });
+      } else {
+        completed.push(tech.id);
+        notices.push({ key: `tech-${tech.id}`, level: 'success', title: `${tech.icon} Research complete: ${tech.name}`, message: `${tech.effect}. ${tech.fact}` });
+        grant(Math.round(tech.cost / 4), `tech-${tech.id}`);
+        if (tech.id === 'orbiter_mk2') for (const id of Object.keys(sitesSeen)) sitesSeen = { ...sitesSeen, [id]: 2 };
+      }
     }
+    research = { ...research, active, completed };
   }
 
   // 7. Write every base back: the active one to the top level, the rest (and new ones) to otherBases.

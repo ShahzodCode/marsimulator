@@ -449,13 +449,13 @@ export class Game {
         s.selectBuilding(id);
         return;
       }
-      // Another base's Central Storage Depot: switch to that base and open its depot.
+      // Any building of another base: switch to that base and open the clicked building.
       for (const b of s.otherBases) {
         const hit = this.settlements.get(b.id)?.buildings.pick(ray);
-        const depot = hit ? b.buildings.find((x) => x.id === hit && x.type === 'storage_depot') : undefined;
-        if (!depot) continue;
+        const building = hit ? b.buildings.find((x) => x.id === hit) : undefined;
+        if (!building) continue;
         s.switchBase(b.id);
-        gameStore.getState().selectBuilding(depot.id);
+        gameStore.getState().selectBuilding(building.id);
         return;
       }
     }

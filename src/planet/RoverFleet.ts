@@ -8,12 +8,16 @@ import type { Expedition, OrbitalScan, Outpost, Shipment } from '../state/types'
 import { Logistics } from '../simulation/Logistics';
 import type { Terrain } from './Terrain';
 import { greatCirclePoint, latLonToDir, R, type LatLon } from './geo';
-import { instantiateVehicleModel } from '../settlement/buildings/glbModels';
+import { instantiateSiteModel, instantiateVehicleModel } from '../settlement/buildings/glbModels';
 
 /** Size of a rover on screen: a fraction of the camera's height, so it stays readable at any zoom. */
 const SIZE_PER_ALT = 0.022;
 const MIN_SIZE = 0.012;
 const MAX_SIZE = 6;
+/** Outposts are buildings: a fixed size on the ground, so they don't swell as the camera pulls out. */
+const OUTPOST_SIZE = 0.5;
+/** ...except far out, where they keep a small on-screen size so you can still see something is there. */
+const OUTPOST_MIN_SIZE_PER_ALT = 0.004;
 const ROUTE_POINTS = 128;
 const ROUTE_LIFT = 0.25;
 /** Scene units per km on the surface (planet radius R = 3389.5 km). */
@@ -83,6 +87,19 @@ function buildOrbiter(): THREE.Group {
   return g;
 }
 
+/** Across the pad of the simple outpost; the Blender one is scaled to match. */
+const OUTPOST_SPAN = 2.1;
+
+/** The Blender ice outpost (blender/ice_outpost.py) if it loaded, else the simple one. */
+function outpost(): THREE.Group {
+  const glb = instantiateSiteModel('ice_outpost');
+  if (!glb) return buildOutpost();
+  glb.scale.setScalar(OUTPOST_SPAN);
+  const g = new THREE.Group();
+  g.add(glb);
+  return g;
+}
+
 /** A remote outpost: a habitat dome on a landing pad, with a beacon light. */
 function buildOutpost(): THREE.Group {
   const g = new THREE.Group();
@@ -135,6 +152,7 @@ export class RoverFleet {
   private readonly ahead = new THREE.Vector3();
   private readonly m4 = new THREE.Matrix4();
   private size = 1;
+  private outpostSize = OUTPOST_SIZE;
   private orbitAngle = 0;
 
   constructor(private terrain: Terrain) {
@@ -155,9 +173,13 @@ export class RoverFleet {
   update(dt: number, altitude: number): void {
     const s = gameStore.getState();
     this.size = THREE.MathUtils.clamp(altitude * SIZE_PER_ALT, MIN_SIZE, MAX_SIZE);
+    this.outpostSize = Math.max(OUTPOST_SIZE, altitude * OUTPOST_MIN_SIZE_PER_ALT);
     this.updateExpeditions(s.missions.filter((m): m is Expedition => m.type === 'expedition' && m.status === 'active'));
     this.updateOrbiter(s.missions.find((m): m is OrbitalScan => m.type === 'orbital' && m.status === 'active'), dt, s.paused ? 0 : s.speed);
     this.updateOutposts(s.outposts, s.timeSols);
+    // Drill strings turn while the game runs.
+    const spin = s.paused ? 0 : dt;
+    if (spin) for (const v of this.outposts.values()) v.site.traverse((o) => typeof o.userData.spin === 'number' && o.rotateY(o.userData.spin * spin));
     this.updateShipments(s.shipments);
   }
 
@@ -311,12 +333,13 @@ export class RoverFleet {
       const to = MissionManager.site(regionManager, o.regionId);
       let v = this.outposts.get(o.id);
       if (!v) {
-        v = { site: buildOutpost(), cargo: rover(true), route: this.routeLine(from, to, '#f0a443', true) };
+        v = { site: outpost(), cargo: rover(true), route: this.routeLine(from, to, '#f0a443', true) };
         (v.route.material as THREE.LineDashedMaterial).opacity = 0.4;
         this.group.add(v.site, v.cargo, v.route);
         this.outposts.set(o.id, v);
       }
       this.place(v.site, from, to, 1, 1);
+      v.site.scale.setScalar(this.outpostSize);
       v.site.visible = timeSols >= o.readySol - OUTPOST.setupSols;
       const oneWay = o.tripSols / 2;
       let f: number;

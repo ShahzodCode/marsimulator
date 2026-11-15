@@ -1580,6 +1580,8 @@ svg {
   will-change: transform, opacity;
   margin-left: -5px;
   margin-top: -5px;
+  /* Scale around the pin, so a shrinking label stays on its spot. */
+  transform-origin: 5px 5px;
 }
 
 .map-label.hidden {

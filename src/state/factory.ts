@@ -151,7 +151,7 @@ export function createInitialState(): GameState {
     base: { ...HOME_BASE },
     otherBases: [],
     sitesSeen,
-    research: { completed: [], active: null, stage: 0, progress: 0, awaiting: false, shelved: {} },
+    research: { completed: [], active: [], shelved: {} },
     paused: true,
     speed: 1,
     started: false,

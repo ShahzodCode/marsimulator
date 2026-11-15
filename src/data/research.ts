@@ -1,3 +1,4 @@
+import { BUILDINGS, type BuildingType } from './buildings';
 import type { ResourceId } from './resources';
 
 type Cost = Partial<Record<ResourceId, number>>;
@@ -287,6 +288,16 @@ export const TECH_BY_ID: Record<TechId, TechDefinition> = Object.fromEntries(TEC
 
 export function hasTech(completed: readonly string[], id: TechId | undefined): boolean {
   return !id || completed.includes(id);
+}
+
+/**
+ * How many projects can run side by side: one per finished Research Lab, at any base.
+ * Working labs pool their research points and share them out between the running projects.
+ */
+export function labSlots(baseBuildings: readonly (readonly { type: BuildingType; isOperational: boolean }[])[]): number {
+  let n = 0;
+  for (const list of baseBuildings) for (const b of list) if (b.isOperational && BUILDINGS[b.type].researchPerSol) n++;
+  return n;
 }
 
 export function canResearch(completed: readonly string[], id: TechId): boolean {
