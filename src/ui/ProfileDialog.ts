@@ -6,10 +6,18 @@ import { AuthDialog } from './AuthDialog';
 import { h, setText } from './dom';
 import { ICONS } from './icons';
 import { rankBadgeSvg } from './RankBadge';
+import { Leaderboard } from '../persistence/Leaderboard';
+import { LeaderboardView } from './LeaderboardView';
+import { PlayerProfileView } from './PlayerProfileView';
+
+type Tab = 'profile' | 'leaderboard';
 
 /**
- * Commander profile, opened from the rank badge in the top bar: name, email,
- * rank and XP progress, colony stats and the rank ladder.
+ * Commander profile, opened from the rank badge in the top bar. Two tabs:
+ * - My profile: name, email, rank and XP, colony stats, rank ladder, and a short
+ *   online leaderboard (with search) at the bottom;
+ * - Leaderboard: the full online board, sortable and searchable.
+ * Clicking a player opens their public profile, from where their bases can be visited.
  */
 export class ProfileDialog {
   private static open: ProfileDialog | null = null;
@@ -19,6 +27,10 @@ export class ProfileDialog {
   private returnFocus: Element | null = document.activeElement;
   private editing = false;
   private offAuth: () => void;
+  private tab: Tab = 'profile';
+  /** Another player's profile on screen (null: the tab is shown). */
+  private player: string | null = null;
+  private views: { destroy(): void }[] = [];
 
   static toggle(parent: HTMLElement): void {
     if (ProfileDialog.open) ProfileDialog.open.close();
@@ -44,12 +56,137 @@ export class ProfileDialog {
   close(): void {
     if (ProfileDialog.open === this) ProfileDialog.open = null;
     this.offAuth();
+    this.dropViews();
     this.el.classList.add('done');
     window.setTimeout(() => this.el.remove(), 250);
     (this.returnFocus as HTMLElement | null)?.focus?.();
   }
 
+  private dropViews(): void {
+    for (const v of this.views) v.destroy();
+    this.views = [];
+  }
+
   private render(): void {
+    this.dropViews();
+    const close = h('button', { class: 'icon-btn small auth-close', html: ICONS.close, attrs: { type: 'button', 'aria-label': 'Close' }, on: { click: () => this.close() } });
+    if (this.player) {
+      const view = new PlayerProfileView(this.player, {
+        onBack: () => this.showTab(this.tab),
+        onVisit: () => this.close(),
+      });
+      this.views.push(view);
+      this.card.replaceChildren(close, view.el);
+      return;
+    }
+    const body = this.tab === 'leaderboard' ? this.leaderboardTab() : this.profileTab();
+    this.card.replaceChildren(close, this.tabs(), ...body.filter((x): x is HTMLElement => !!x));
+  }
+
+  private showTab(tab: Tab, focusSearch = false): void {
+    this.tab = tab;
+    this.player = null;
+    this.editing = false;
+    this.render();
+    this.card.scrollTop = 0;
+    if (focusSearch) this.card.querySelector<HTMLInputElement>('.lb-search input')?.focus();
+    else this.card.querySelector<HTMLElement>('.profile-tab.on')?.focus();
+  }
+
+  private openPlayer(userId: string): void {
+    this.player = userId;
+    this.render();
+    this.card.scrollTop = 0;
+  }
+
+  private tabs(): HTMLElement {
+    const names: [Tab, string][] = [
+      ['profile', 'My profile'],
+      ['leaderboard', 'Leaderboard'],
+    ];
+    const list = h(
+      'div',
+      { class: 'profile-tabs', attrs: { role: 'tablist', 'aria-label': 'Profile sections' } },
+      names.map(([id, label]) =>
+        h('button', {
+          class: `profile-tab${this.tab === id ? ' on' : ''}`,
+          text: label,
+          attrs: { type: 'button', role: 'tab', 'aria-selected': String(this.tab === id), tabindex: this.tab === id ? '0' : '-1' },
+          on: { click: () => this.tab !== id && this.showTab(id) },
+        }),
+      ),
+    );
+    list.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      this.showTab(this.tab === 'profile' ? 'leaderboard' : 'profile');
+    });
+    return list;
+  }
+
+  private board(full: boolean): LeaderboardView {
+    const view = new LeaderboardView({
+      full,
+      limit: full ? 50 : 5,
+      onOpen: (id) => this.openPlayer(id),
+      onShowAll: full ? undefined : () => this.showTab('leaderboard', true),
+      onLogin: () => this.openAuth('login'),
+    });
+    this.views.push(view);
+    return view;
+  }
+
+  private leaderboardTab(): (HTMLElement | null)[] {
+    return [
+      h('div', { class: 'lb-head' }, [
+        h('span', { class: 'lb-head-icon', html: ICONS.trophy }),
+        h('div', {}, [
+          h('h2', { text: 'Online leaderboard', attrs: { id: 'profile-title' } }),
+          h('p', { class: 'muted', text: 'Commanders from all over Earth. Tap one to see their profile and visit their bases.' }),
+        ]),
+      ]),
+      this.board(true).el,
+    ];
+  }
+
+  /** "Show me on the leaderboard" and the player's current place (signed-in players with a name). */
+  private boardSwitch(): HTMLElement | null {
+    const account = Auth.current;
+    if (!account || !Auth.available) return null;
+    if (!account.username) return h('p', { class: 'muted lb-hint', text: 'Pick your name to join the leaderboard.' });
+    const box = h('input', { attrs: { type: 'checkbox', disabled: '' } });
+    const place = h('span', { class: 'muted lb-place' });
+    const error = h('p', { class: 'auth-error', attrs: { role: 'alert' } });
+    const showPlace = async (fresh: boolean) => {
+      const me = await Leaderboard.myPosition('xp', fresh);
+      setText(place, me.ok && me.data?.listed ? `You are #${me.data.position} of ${me.data.total} by XP` : '');
+    };
+    void Leaderboard.visible()
+      .then((on) => (box.checked = on))
+      .catch(() => (box.checked = true))
+      .finally(() => (box.disabled = false));
+    void showPlace(false);
+    box.addEventListener('change', async () => {
+      box.disabled = true;
+      setText(error, '');
+      const r = await Leaderboard.setVisible(box.checked);
+      box.disabled = false;
+      if (!r.ok) {
+        box.checked = !box.checked;
+        setText(error, r.message ?? 'Could not change that right now.');
+        return;
+      }
+      void showPlace(true);
+      for (const v of this.views) if (v instanceof LeaderboardView) void v.reload();
+    });
+    return h('div', { class: 'lb-switch-row' }, [
+      h('label', { class: 'lb-switch' }, [box, h('span', { class: 'lb-switch-track', attrs: { 'aria-hidden': 'true' } }), 'Show me on the leaderboard']),
+      place,
+      error,
+    ]);
+  }
+
+  private profileTab(): (HTMLElement | null)[] {
     const s = gameStore.getState();
     const account = Auth.current;
     const rank = rankForXp(s.progression.xp);
@@ -105,15 +242,18 @@ export class ProfileDialog {
       }),
     );
 
-    this.card.replaceChildren(
-      h('button', { class: 'icon-btn small auth-close', html: ICONS.close, attrs: { type: 'button', 'aria-label': 'Close' }, on: { click: () => this.close() } }),
+    return [
       header,
       rankBox,
       stats,
+      this.actions(),
       h('h3', { class: 'section-title', text: 'Ranks' }),
       ladder,
-      this.actions(),
-    );
+      // The online leaderboard sits at the bottom of the profile: search bar on top of the best player.
+      h('h3', { class: 'section-title lb-title' }, [h('span', { class: 'lb-title-icon', html: ICONS.trophy }), 'Online leaderboard']),
+      this.boardSwitch(),
+      this.board(false).el,
+    ];
   }
 
   private actions(): HTMLElement {

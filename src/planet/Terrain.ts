@@ -94,6 +94,15 @@ export class Terrain {
     this.pads.push({ lat, lon, km: sampleGrid(this.grid, lat, lon) });
   }
 
+  hasPad(lat: number, lon: number): boolean {
+    return this.pads.some((p) => Math.abs(p.lat - lat) < 1e-6 && Math.abs(p.lon - lon) < 1e-6);
+  }
+
+  /** Takes away a pad graded only for a visit to another player's base. */
+  removePad(lat: number, lon: number): void {
+    this.pads = this.pads.filter((p) => Math.abs(p.lat - lat) >= 1e-6 || Math.abs(p.lon - lon) >= 1e-6);
+  }
+
   /** Surface height above the reference sphere, in scene units (exaggerated). */
   heightUnits(lat: number, lon: number): number {
     return kmToUnitsHeight(this.heightKm(lat, lon));

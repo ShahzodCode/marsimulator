@@ -37,6 +37,8 @@ import { MapControls } from '../ui/MapControls';
 import { MapLabels } from '../ui/MapLabels';
 import { WorldPopups } from '../ui/WorldPopups';
 import { LoadingScreen, WelcomeScreen } from '../ui/Screens';
+import { Spectator } from './Spectator';
+import { Visits } from './Visits';
 
 const GLOBE_ALTITUDE = 235;
 const BASE_ALTITUDE = 0.75;
@@ -73,6 +75,8 @@ export class Game {
   private labels!: MapLabels;
   private popups!: WorldPopups;
   private mapControls!: MapControls;
+  /** Visiting another player's colony (spectate mode). */
+  private spectator!: Spectator;
   private xray!: XrayControl;
   private loop = new GameLoop((dt, t) => this.frame(dt, t));
   private width = 1;
@@ -159,6 +163,19 @@ export class Game {
     this.links = new LinkTools(this.camera, this.logistics, this.events);
 
     this.buildUI(terrain);
+    this.spectator = new Spectator({
+      scene: this.scene,
+      terrain,
+      mars: this.mars,
+      camera: this.camera,
+      events: this.events,
+      ui: this.ui,
+      restoreOwnBases: () => this.syncBases(),
+    });
+    // The radar view is about your own colony: switch it off for a visit.
+    Visits.onChange((v) => {
+      if (v && this.xray.isOn) this.xray.toggle();
+    });
     this.wireState();
     this.wirePersistence();
     this.sim.refresh();
@@ -254,7 +271,9 @@ export class Game {
     );
     this.events.on('camera:flyTo', ({ lat, lon, altitude }) => this.camera.flyTo(lat, lon, altitude));
     this.events.on('camera:home', () => {
-      const b = gameStore.getState().base;
+      // While visiting, Home means the visited base.
+      const visit = Visits.current;
+      const b = (visit && visit.colony.bases.find((x) => x.id === visit.baseId)) || gameStore.getState().base;
       this.camera.flyTo(b.lat, b.lon, BASE_ALTITUDE);
     });
     // Switching bases flies the camera there.
@@ -356,6 +375,7 @@ export class Game {
    */
   private async onAccountChange(owner: string | null, change: AuthChange): Promise<void> {
     if (change === 'update') return;
+    Visits.stop();
     const prev = this.owner;
     this.owner = owner;
     const s = gameStore.getState();
@@ -389,6 +409,7 @@ export class Game {
   }
 
   private afterLoad(): void {
+    Visits.stop();
     this.fog.setDiscovered(gameStore.getState().discoveredRegions, true);
     this.sim.refresh();
   }
@@ -430,6 +451,11 @@ export class Game {
   // -------------------------------------------------------------------------
 
   private handleClick(x: number, y: number): void {
+    // Visiting: buildings can be looked at, nothing else.
+    if (this.spectator.active) {
+      if (this.camera.alt < 8) this.spectator.click(this.camera.getRay(x, y));
+      return;
+    }
     const s = gameStore.getState();
     // The pipeline tool builds when a drag is let go (LinkTools.pipelineEnd).
     if (s.pipelineMode) return;
@@ -471,6 +497,7 @@ export class Game {
   }
 
   private handleCancel(): boolean {
+    if (this.spectator.active) return false;
     const s = gameStore.getState();
     if (s.pipelineMode) {
       s.stopPipelineMode();
@@ -498,6 +525,13 @@ export class Game {
   private handleKey(key: string, e: KeyboardEvent): boolean {
     const s = gameStore.getState();
     if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    if (this.spectator.active) {
+      if (key === 'escape') Visits.stop();
+      else if (key === 'h') this.events.emit('camera:home');
+      else if (key === 'g') this.events.emit('camera:globe');
+      else return false;
+      return true;
+    }
     switch (key) {
       case 'escape':
         return this.handleCancel();
@@ -577,9 +611,12 @@ export class Game {
     if (this.xray.isOn && alt < 10) this.xray.toggle();
     // Under the radar view the surface sinks away: hide what sits on it.
     const surface = this.mars.xrayAmount < 0.05;
-    this.fleet.group.visible = surface;
-    this.logistics.group.visible = surface;
-    for (const m of this.settlements.values()) m.group.visible = surface;
+    // While visiting, your own colony steps aside for the visited one.
+    const own = surface && !this.spectator.active;
+    this.fleet.group.visible = own;
+    this.logistics.group.visible = own;
+    for (const m of this.settlements.values()) m.group.visible = own;
+    this.spectator.update(dt, time, alt, cam.position, surface);
     for (const m of this.settlements.values()) m.update(dt, time, alt, cam.position);
     this.updateLight(alt);
 

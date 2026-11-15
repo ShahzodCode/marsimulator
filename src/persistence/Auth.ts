@@ -1,5 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 import { supabase, resetCloudUser } from './supabase';
+import { isNameAllowed } from '../data/usernameFilter';
 
 /** A signed-in player with a real (email + password) account. Guests have no Account. */
 export interface Account {
@@ -52,6 +53,7 @@ export function validateUsername(name: string): string | null {
   const n = name.trim();
   if (n.length < USERNAME_MIN || n.length > USERNAME_MAX) return `Pick a name with ${USERNAME_MIN}–${USERNAME_MAX} characters.`;
   if (!USERNAME_RE.test(n)) return 'Use only letters, numbers, spaces, - and _.';
+  if (!isNameAllowed(n)) return 'Other players will see this name — please pick a friendlier one.';
   return null;
 }
 
