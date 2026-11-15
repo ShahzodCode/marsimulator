@@ -7,15 +7,6 @@ import type { BranchId, StageDefinition, TechId } from '../data/research';
 const svg = (body: string, view = '0 0 24 24') =>
   `<svg viewBox="${view}" aria-hidden="true" focusable="false">${body}</svg>`;
 
-export const RESOURCE_ICONS: Record<ResourceId, string> = {
-  regolith: svg('<path d="M3 18l4-7 3 4 3-6 8 9z" fill="currentColor"/><circle cx="7" cy="7" r="1.5" fill="currentColor" opacity=".6"/>'),
-  iron: svg('<path d="M4 15l4-6h12l-4 6z" fill="currentColor"/><path d="M4 15h12v3H4z" fill="currentColor" opacity=".65"/><path d="M16 15l4-6v3l-4 6z" fill="currentColor" opacity=".45"/>'),
-  water: svg('<path d="M12 3c3.5 4.6 6 8 6 11a6 6 0 0 1-12 0c0-3 2.5-6.4 6-11z" fill="currentColor"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5" stroke="#fff" stroke-width="1.4" fill="none" opacity=".7" stroke-linecap="round"/>'),
-  oxygen: svg('<circle cx="9" cy="13" r="5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="17.5" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="16.5" r="1.6" fill="currentColor"/>'),
-  food: svg('<path d="M12 7c-4-3-9 0-8 5 .7 4 4 8 8 8s7.3-4 8-8c1-5-4-8-8-5z" fill="currentColor"/><path d="M12 7c0-2 1-3.5 3-4.5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/>'),
-  hydrogen: svg('<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 8v8M15 8v8M9 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
-};
-
 const HUD_STROKE = 'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"';
 
 /**
@@ -39,6 +30,16 @@ export const HUD_ICONS: Record<ResourceId | 'energy' | 'crew', string> = {
   energy: svg(`<g ${HUD_STROKE}><circle cx="12" cy="12" r="9"/><path d="M13 6.5l-4.2 6.2h3.6l-1.4 4.8 4.2-6.2h-3.6z"/></g>`),
   // An astronaut helmet with visor.
   crew: svg(`<g ${HUD_STROKE}><path d="M5 17.5V12a7 7 0 0 1 14 0v5.5"/><path d="M3.5 20.5h17l-1.5-3h-14z"/><path d="M8 12.5a4 3 0 0 1 8 0v1a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 8 13.5z"/></g>`),
+};
+
+/** Resource icons everywhere else (build costs, panels): the same glyphs as the top bar. */
+export const RESOURCE_ICONS: Record<ResourceId, string> = {
+  regolith: HUD_ICONS.regolith,
+  iron: HUD_ICONS.iron,
+  water: HUD_ICONS.water,
+  oxygen: HUD_ICONS.oxygen,
+  food: HUD_ICONS.food,
+  hydrogen: HUD_ICONS.hydrogen,
 };
 
 export const ICONS = {

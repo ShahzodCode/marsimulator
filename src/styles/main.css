@@ -1150,8 +1150,8 @@ svg {
 }
 
 .cost-icon {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   display: inline-block;
   color: var(--chip-color, #fff);
 }
@@ -5077,7 +5077,7 @@ button.lb-row:hover {
 }
 
 /* On/off switch built from a checkbox. */
-.switch {
+.toggle-switch {
   appearance: none;
   flex: none;
   position: relative;
@@ -5091,7 +5091,7 @@ button.lb-row:hover {
   transition: background 0.15s;
 }
 
-.switch::after {
+.toggle-switch::after {
   content: '';
   position: absolute;
   top: 2px;
@@ -5103,16 +5103,16 @@ button.lb-row:hover {
   transition: transform 0.15s;
 }
 
-.switch:checked {
+.toggle-switch:checked {
   background: var(--accent);
   border-color: transparent;
 }
 
-.switch:checked::after {
+.toggle-switch:checked::after {
   transform: translateX(18px);
 }
 
-.switch:focus-visible {
+.toggle-switch:focus-visible {
   outline: 2px solid var(--data);
   outline-offset: 2px;
 }

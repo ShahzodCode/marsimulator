@@ -181,7 +181,7 @@ function segmented<T extends string | number>(label: string, options: { id: T; l
 
 /** An on/off switch bound to a boolean graphics setting. */
 function toggle(label: string, hint: string, key: keyof Pick<GraphicsSettings, 'adaptive' | 'showFps'>): HTMLElement {
-  const input = h('input', { class: 'switch', attrs: { type: 'checkbox', role: 'switch' } });
+  const input = h('input', { class: 'toggle-switch', attrs: { type: 'checkbox', role: 'switch' } });
   input.checked = Graphics.settings[key];
   input.addEventListener('change', () => Graphics.set({ [key]: input.checked }));
   return h('label', { class: 'setting setting-toggle' }, [h('span', {}, [h('strong', { text: label }), h('span', { class: 'setting-hint', text: hint })]), input]);

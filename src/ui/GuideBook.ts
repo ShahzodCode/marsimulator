@@ -2,6 +2,7 @@ import { chapterUnlocked, GUIDE, unlockHint, type GuideChapter, type GuidePage }
 import { LocalPrefs } from '../persistence/LocalPrefs';
 import { gameStore, watch } from '../state/gameStore';
 import { clear, h, setText, toggleClass } from './dom';
+import { ICONS } from './icons';
 import { t } from '../i18n';
 
 /** One page of the open book: the contents, a chapter page, or the "coming next" teaser. */
@@ -21,6 +22,7 @@ export class GuideBook {
   private book: HTMLElement;
   private track: HTMLElement;
   private counter: HTMLElement;
+  private progress: HTMLElement;
   private prevBtn: HTMLButtonElement;
   private nextBtn: HTMLButtonElement;
   private leaves: Leaf[] = [];
@@ -40,16 +42,22 @@ export class GuideBook {
 
     this.track = h('div', { class: 'guide-track' });
     const viewport = h('div', { class: 'guide-viewport' }, [this.track]);
-    this.prevBtn = h('button', { class: 'guide-turn', text: '◀', attrs: { type: 'button', 'aria-label': t('Previous page') }, on: { click: () => this.go(this.index - 1) } });
-    this.nextBtn = h('button', { class: 'guide-turn', text: '▶', attrs: { type: 'button', 'aria-label': t('Next page') }, on: { click: () => this.go(this.index + 1) } });
+    this.prevBtn = h('button', { class: 'guide-turn', html: ICONS.back, attrs: { type: 'button', 'aria-label': t('Previous page') }, on: { click: () => this.go(this.index - 1) } });
+    this.nextBtn = h('button', { class: 'guide-turn next', html: ICONS.back, attrs: { type: 'button', 'aria-label': t('Next page') }, on: { click: () => this.go(this.index + 1) } });
     this.counter = h('span', { class: 'guide-counter' });
+    this.progress = h('span', { class: 'guide-progress-fill' });
     this.book = h('div', { class: 'guide-book', attrs: { role: 'dialog', 'aria-label': t('Commander’s Guidebook'), hidden: '' } }, [
       h('div', { class: 'guide-cover' }, [
         h('span', { class: 'guide-cover-title', text: `📖 ${t('Commander’s Guidebook')}` }),
         h('button', { class: 'guide-close', text: '✕', attrs: { type: 'button', 'aria-label': t('Close') }, on: { click: () => this.close() } }),
       ]),
       viewport,
-      h('div', { class: 'guide-foot' }, [this.prevBtn, this.counter, this.nextBtn]),
+      // A quiet slider: arrows either side of a thin progress line, the page number beneath it.
+      h('div', { class: 'guide-foot' }, [
+        this.prevBtn,
+        h('div', { class: 'guide-progress-wrap' }, [h('span', { class: 'guide-progress', attrs: { 'aria-hidden': 'true' } }, [this.progress]), this.counter]),
+        this.nextBtn,
+      ]),
     ]);
 
     // Swipe: the page follows the finger, then snaps to the next or previous page.
@@ -219,6 +227,7 @@ export class GuideBook {
     this.prevBtn.disabled = this.index === 0;
     this.nextBtn.disabled = this.index === this.leaves.length - 1;
     setText(this.counter, `${this.index + 1} / ${this.leaves.length}`);
+    this.progress.style.transform = `scaleX(${((this.index + 1) / this.leaves.length).toFixed(4)})`;
     const pages = this.track.children;
     for (let k = 0; k < pages.length; k++) (pages[k] as HTMLElement).inert = k !== this.index;
     (pages[this.index] as HTMLElement | undefined)?.scrollTo?.({ top: 0 });
