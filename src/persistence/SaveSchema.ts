@@ -39,7 +39,8 @@ type SavedKeys =
   | 'sitesSeen'
   | 'research'
   | 'pipelines'
-  | 'shipments';
+  | 'shipments'
+  | 'log';
 
 export interface SaveData {
   version: number;
@@ -100,6 +101,7 @@ export function toSave(state: GameState): SaveData {
       research: { completed: [...state.research.completed], active: state.research.active.map((p) => ({ ...p })), shelved: { ...state.research.shelved } },
       pipelines: state.pipelines.map((p) => ({ ...p, flow: { ...p.flow }, faults: p.faults.map((f) => ({ ...f })) })),
       shipments: state.shipments.map((x) => ({ ...x, cargo: { ...x.cargo } })),
+      log: state.log.map((x) => ({ ...x })),
     },
   };
 }
@@ -173,6 +175,7 @@ export function fromSave(save: SaveData): GameState {
     research,
     pipelines: (st.pipelines ?? []).map((p) => ({ ...p, flow: { ...(p.flow ?? {}) }, working: p.working ?? false, faults: (p.faults ?? []).map((f) => ({ ...f })) })),
     shipments: (st.shipments ?? []).map((x) => ({ ...x, cargo: { ...x.cargo } })),
+    log: (st.log ?? []).map((x) => ({ ...x })),
     timeSols: st.timeSols,
     speed: st.speed ?? 1,
     colony: { ...base.colony, ...(st.colony ?? {}), growth: st.colony?.growth ?? 0 },

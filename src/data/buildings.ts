@@ -303,6 +303,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     housing: 0,
     storage: { regolith: 1000, iron: 500, water: 2000, oxygen: 1000, food: 800, hydrogen: 200 },
     buildable: true,
+    unlockRank: 'astronaut_candidate',
   },
   research_lab: {
     id: 'research_lab',
@@ -506,6 +507,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     housing: 0,
     storage: {},
     buildable: true,
+    unlockRank: 'rover_pilot',
     con: 'Needs a Pump Station at the other base too',
   },
   cargo_garage: {
@@ -527,6 +529,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     housing: 0,
     storage: {},
     buildable: true,
+    unlockRank: 'rover_pilot',
   },
 };
 

@@ -1,6 +1,9 @@
 import { GOALS, rankForXp, type GoalDefinition, type RankDefinition } from '../data/progression';
 import type { GameState, Progression } from '../state/types';
 
+type GoalState = Pick<GameState, 'stats' | 'buildings' | 'discoveredRegions' | 'exploredRegions'> &
+  Partial<Pick<GameState, 'otherBases' | 'research' | 'outposts'>>;
+
 /** XP, ranks and goals — data-driven and independent of the UI. */
 export const ProgressionManager = {
   /** Adds XP once (a milestone id prevents granting the same reward twice). */
@@ -13,24 +16,33 @@ export const ProgressionManager = {
   },
 
   /** How far a goal is: current value and target. */
-  goalProgress(state: Pick<GameState, 'stats' | 'buildings' | 'discoveredRegions' | 'exploredRegions'>, goal: GoalDefinition): { current: number; target: number } {
+  goalProgress(state: GoalState, goal: GoalDefinition): { current: number; target: number } {
     const c = goal.condition;
     switch (c.kind) {
       case 'produce':
         return { current: state.stats.produced[c.resource] ?? 0, target: c.amount };
-      case 'buildings':
-        return { current: state.buildings.filter((b) => !b.starter && b.isOperational).length, target: c.count };
+      case 'buildings': {
+        // Every base counts.
+        const lists = [state.buildings, ...(state.otherBases ?? []).map((b) => b.buildings)];
+        return { current: lists.reduce((n, l) => n + l.filter((b) => !b.starter && b.isOperational).length, 0), target: c.count };
+      }
       case 'has_building':
         return { current: state.buildings.some((b) => b.type === c.type && b.isOperational) ? 1 : 0, target: 1 };
       case 'regions':
         return { current: Object.values(state.discoveredRegions).filter(Boolean).length, target: c.count };
       case 'explored':
         return { current: Object.values(state.exploredRegions).filter(Boolean).length, target: c.count };
+      case 'bases':
+        return { current: 1 + (state.otherBases?.length ?? 0), target: c.count };
+      case 'research':
+        return { current: state.research?.completed.length ?? 0, target: c.count };
+      case 'outposts':
+        return { current: state.outposts?.length ?? 0, target: c.count };
     }
   },
 
   /** Goals reached now that were not rewarded before. */
-  newlyReached(state: Pick<GameState, 'stats' | 'buildings' | 'discoveredRegions' | 'exploredRegions' | 'progression'>): GoalDefinition[] {
+  newlyReached(state: GoalState & Pick<GameState, 'progression'>): GoalDefinition[] {
     return GOALS.filter((g) => {
       if (state.progression.milestones.includes(g.id)) return false;
       const { current, target } = ProgressionManager.goalProgress(state, g);

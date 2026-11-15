@@ -189,6 +189,7 @@ export function createInitialState(): GameState {
     progression: { level: 1, xp: 0, milestones: [] },
     missions: [],
     alerts: [],
+    log: [],
     activePanel: null,
   };
 }

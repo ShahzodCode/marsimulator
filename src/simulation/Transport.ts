@@ -18,16 +18,17 @@ export interface TransportNetwork {
 
 /** Global inventory reached over the road network (the Stage 2 implementation). */
 export class RoadTransport implements TransportNetwork {
-  private static cache: { roads: string[]; sig: string; ids: Set<string> } | null = null;
+  /** One entry per base (keyed by its roads list), so several bases don't evict each other. */
+  private static cache = new WeakMap<string[], { sig: string; ids: Set<string> }>();
   private ids: Set<string>;
 
   constructor(buildings: BuildingInstance[], roads: string[]) {
     const sig = buildings.map((b) => `${b.id}:${b.gridX},${b.gridY},${b.rotation}`).join('|');
-    const c = RoadTransport.cache;
-    if (c && c.roads === roads && c.sig === sig) this.ids = c.ids;
+    const c = RoadTransport.cache.get(roads);
+    if (c && c.sig === sig) this.ids = c.ids;
     else {
       this.ids = connectedBuildingIds(buildings, new Set(roads));
-      RoadTransport.cache = { roads, sig, ids: this.ids };
+      RoadTransport.cache.set(roads, { sig, ids: this.ids });
     }
   }
 

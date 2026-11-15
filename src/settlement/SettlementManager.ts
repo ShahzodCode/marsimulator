@@ -39,7 +39,7 @@ export class SettlementManager {
   private details = new THREE.Group();
   private unsubscribers: (() => void)[] = [];
   private active = false;
-  private snapshot: { buildings: BuildingInstance[]; roads: string[] } | null = null;
+  private snapshot: { buildings: BuildingInstance[]; roads: string[]; layout: string; look: string } | null = null;
 
   constructor(
     terrain: Terrain,
@@ -134,9 +134,18 @@ export class SettlementManager {
     if (this.active) return;
     const prev = this.snapshot;
     if (prev && prev.buildings === buildings && prev.roads === roads) return;
-    this.snapshot = { buildings, roads };
+    // A background base's buildings change every step (recipe progress, power), but only
+    // what can be seen from afar matters: layout, construction stage and the road sign.
+    const layout = buildings.map((b) => `${b.id}:${b.type}:${b.gridX},${b.gridY},${b.rotation}`).join('|');
+    const look = buildings.map((b) => `${Math.round(b.constructionProgress * 20)}${b.connected ? 1 : 0}`).join('');
+    const roadsChanged = !prev || prev.roads !== roads || prev.layout !== layout;
+    if (prev && !roadsChanged && prev.look === look) {
+      this.snapshot = { ...prev, buildings };
+      return;
+    }
+    this.snapshot = { buildings, roads, layout, look };
     this.buildings.sync(buildings);
-    this.roads.rebuild(roads, buildings);
+    if (roadsChanged) this.roads.rebuild(roads, buildings);
   }
 
   private buildRocks(seedKey: string): void {

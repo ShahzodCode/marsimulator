@@ -46,8 +46,7 @@ export const ORBITAL_SCAN = {
    */
   timeScale: 50,
   xp: 20,
-  /** One orbiter, so one region at a time. */
-  maxConcurrent: 1,
+  // How many orbiters map at once depends on rank (RankDefinition.orbiters).
 };
 
 /** Real sols MRO's Context Camera needed per share of the planet (S9). */
@@ -71,8 +70,7 @@ export const EXPEDITION = {
   reserveSols: NASA_ROVER_DATA.sevSafeHavenHours / 24.6597,
   /** Battery charge taken from the base at launch; the rover's own panels recharge it each day (estimate). */
   energyKwh: 40,
-  /** The base has two crew rovers (game value; NASA plans rovers in pairs for safety, S8). */
-  maxConcurrent: 2,
+  // Crew rovers out at once depend on rank (RankDefinition.crewRovers; NASA plans rovers in pairs for safety, S8).
   /** Chance a dust storm stops the rover during a trip, and how long it lasts in game sols (game values). */
   stormChance: 0.3,
   stormSols: [1, 2.5] as const,

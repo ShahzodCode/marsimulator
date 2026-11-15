@@ -168,6 +168,16 @@ export function garageSection(garageId: string): PanelSection {
   const total = h('span', { class: 'cargo-total' });
   const trips = h('div', { class: 'link-list' });
   const send = h('button', { class: 'btn primary', attrs: { type: 'button' } }, ['🚚 Send haulers']);
+  const autoBtn = h('button', { class: 'btn', attrs: { type: 'button' } });
+  const autoPlan = h('span');
+  const autoHold = h('span', { class: 'cargo-auto-hold' });
+  const autoBox = h('div', { class: 'cargo-auto' }, [
+    h('strong', { text: '🔁 Automatic' }),
+    autoPlan,
+    h('span', { class: 'muted', text: 'Sends this load whenever haulers are parked. It stops by itself if the base would keep less than it ships, and starts again when there is enough.' }),
+    autoHold,
+  ]);
+  let autoOn = false;
   const sliders = new Map<ResourceId, { input: HTMLInputElement; value: HTMLElement }>();
 
   const sliderRows = RESOURCE_IDS.map((id) => {
@@ -213,6 +223,17 @@ export function garageSection(garageId: string): PanelSection {
     }
   });
 
+  autoBtn.addEventListener('click', () => {
+    const store = gameStore.getState();
+    if (autoOn) {
+      alertFail('Can’t change the garage', store.setGarageAuto(garageId, null));
+      return;
+    }
+    const cargo: Partial<Record<ResourceId, number>> = {};
+    for (const id of RESOURCE_IDS) if ((load[id] ?? 0) > 0) cargo[id] = load[id];
+    alertFail('Can’t switch to automatic', store.setGarageAuto(garageId, cargo));
+  });
+
   const clearBtn = h(
     'button',
     { class: 'btn small', attrs: { type: 'button' }, title: 'Forget the destination', on: { click: () => gameStore.getState().setGarageTarget(garageId, null) } },
@@ -226,7 +247,8 @@ export function garageSection(garageId: string): PanelSection {
     h('div', { class: 'link-head' }, [h('span', { text: 'Parked here:' }), free]),
     h('div', { class: 'cargo-sliders' }, sliderRows),
     total,
-    send,
+    h('div', { class: 'cargo-actions' }, [send, autoBtn]),
+    autoBox,
     h('h4', { class: 'step-title', text: 'On the road' }),
     trips,
     h('p', {
@@ -270,6 +292,15 @@ export function garageSection(garageId: string): PanelSection {
       refreshTotal();
       const ready = b.isOperational && !!to && parked > 0 && loaded() > 0 && loaded() <= cap;
       send.toggleAttribute('disabled', !ready);
+
+      autoOn = !!b.autoCargo;
+      setText(autoBtn, autoOn ? '⏹ Stop automatic' : '🔁 Send this load automatically');
+      autoBtn.title = autoOn ? 'Back to sending by hand' : 'Repeat the load on the sliders every time haulers are parked';
+      autoBtn.toggleAttribute('disabled', !autoOn && !(loaded() > 0 && loaded() <= CARGO.haulersPerGarage * CARGO.payload));
+      autoBox.style.display = autoOn ? '' : 'none';
+      if (b.autoCargo) setText(autoPlan, `Load: ${describeCost(b.autoCargo)}`);
+      setText(autoHold, b.autoHold ?? '');
+      autoHold.style.display = b.autoHold ? '' : 'none';
 
       const mine = s.shipments.filter((x) => x.garageId === garageId);
       const k = mine.map((x) => x.id).join(',');

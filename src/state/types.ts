@@ -59,6 +59,10 @@ export interface BuildingInstance {
   starter?: boolean;
   /** Cargo Garage: the base its haulers drive to (set by dragging its arrow). */
   target?: string;
+  /** Cargo Garage on automatic: this load is sent again whenever haulers are parked. */
+  autoCargo?: Partial<Record<ResourceId, number>>;
+  /** Cargo Garage on automatic: why it is waiting right now (null = sending normally). */
+  autoHold?: string | null;
 }
 
 export type MissionStatus = 'active' | 'complete';
@@ -203,6 +207,20 @@ export interface Alert {
   sol: number;
   /** Persistent alerts stay until their condition clears; others are toasts. */
   persistent: boolean;
+  /** Where it happened: a base, a region, a pipeline route… */
+  where?: string;
+}
+
+/** One line of the mission log: every message the game has sent, oldest first. */
+export interface LogEntry {
+  id: string;
+  key: string;
+  level: AlertLevel;
+  title: string;
+  message: string;
+  /** Game time it was sent (sols). */
+  sol: number;
+  where: string;
 }
 
 /** Electricity: flows in kW, battery storage in kWh. */
@@ -335,5 +353,7 @@ export interface GameState {
   progression: Progression;
   missions: Mission[];
   alerts: Alert[];
+  /** The mission log: every message sent this game (newest last, capped). */
+  log: LogEntry[];
   activePanel: PanelId | null;
 }

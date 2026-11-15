@@ -180,4 +180,22 @@ describe('Cargo haulers', () => {
     expect(s.shipments).toHaveLength(0);
     expect(Logistics.haulersFree(s.shipments, id)).toBe(CARGO.haulersPerGarage);
   });
+
+  it('on automatic, keep sending only while the base keeps at least as much as it ships', () => {
+    expect(Logistics.autoCargoCheck(() => 200, { iron: 100 }, 3)).toMatchObject({ ok: true, haulers: 1 });
+    expect(Logistics.autoCargoCheck(() => 199, { iron: 100 }, 3)).toMatchObject({ ok: false, hold: expect.stringMatching(/iron/) });
+    expect(Logistics.autoCargoCheck(() => 1e6, { iron: 100 }, 0)).toMatchObject({ ok: false, wait: expect.any(String) });
+
+    let s = withGarage();
+    const id = garageId(s);
+    const load = Math.floor(s.resources.iron / 4);
+    s = { ...s, buildings: s.buildings.map((b) => (b.id === id ? { ...b, autoCargo: { iron: load } } : b)) };
+    s = run(s, 0.1);
+    expect(s.shipments.length).toBeGreaterThan(0);
+    // Stock was 4 loads: it sends while it keeps at least one load's worth, then holds.
+    expect(s.resources.iron).toBeGreaterThanOrEqual(load - 1e-6);
+    const sent = s.shipments.reduce((n, x) => n + (x.cargo.iron ?? 0), 0);
+    expect(sent).toBeLessThanOrEqual(3 * load);
+    expect(s.buildings.find((b) => b.id === id)!.autoHold).toMatch(/Stopped/);
+  });
 });

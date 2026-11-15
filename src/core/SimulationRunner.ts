@@ -1,7 +1,7 @@
 import { SIM_KEYS, stepSimulation, type SimEvent } from '../simulation/SimulationEngine';
 import { SIM_STEP_SOLS, SimulationClock } from '../simulation/SimulationClock';
 import type { AlertSpec } from '../simulation/Warnings';
-import { gameStore, regionManager } from '../state/gameStore';
+import { gameStore, getRouteHeight, regionManager } from '../state/gameStore';
 import type { GameState } from '../state/types';
 import type { EventBus } from './EventBus';
 
@@ -31,7 +31,7 @@ export class SimulationRunner {
     const notices: AlertSpec[] = [];
     let warnings: AlertSpec[] = [];
     for (let i = 0; i < steps; i++) {
-      const r = stepSimulation(state, dt, regionManager);
+      const r = stepSimulation(state, dt, regionManager, { height: getRouteHeight() });
       state = r.state;
       events.push(...r.events);
       notices.push(...r.notices);

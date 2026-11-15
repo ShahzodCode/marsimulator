@@ -284,29 +284,52 @@ export const Logistics = {
     if (!check.ok) return check;
     const g = state.buildings.find((x) => x.id === garageId)!;
     const to = state.otherBases.find((b) => b.id === g.target)!;
+    const shipment = Logistics.makeShipment(state.base, g, to, cargo, check.haulers, state.timeSols, height);
+    return { ok: true, shipment, resources: ResourceManager.deduct(state.resources, shipment.cargo), to };
+  },
+
+  makeShipment(home: { id: string } & LatLon, g: BuildingInstance, to: BaseData, cargo: Cost, haulers: number, sol: number, height?: HeightSampler): Shipment {
     const clean: Cost = {};
     for (const [id, v] of Object.entries(cargo) as [ResourceId, number][]) if (v > 0) clean[id] = v;
-    const from = Logistics.spotOf(state.base, g);
+    const from = Logistics.spotOf(home, g);
     const dest = { lat: to.lat, lon: to.lon };
     const plan = MissionManager.planBetween(from, dest, height);
-    const shipment: Shipment = {
+    return {
       id: makeId('cargo'),
-      garageId,
-      fromBaseId: state.base.id,
+      garageId: g.id,
+      fromBaseId: home.id,
       toBaseId: to.id,
       from,
       to: dest,
       routeKm: plan.routeKm,
       legKm: plan.legKm,
       drivenKm: 0,
-      haulers: check.haulers,
+      haulers,
       cargo: clean,
       delivered: false,
       unloadSolsLeft: 0,
-      startSol: state.timeSols,
+      startSol: sol,
       activity: 'driving',
     };
-    return { ok: true, shipment, resources: ResourceManager.deduct(state.resources, clean), to };
+  },
+
+  /**
+   * Automatic garage: may it send its saved load now? It only ships while the base keeps at
+   * least as much of every resource as it sends, so it never empties its own stores.
+   * `wait` is a normal pause (haulers out, no destination); `hold` is the safety stop.
+   */
+  autoCargoCheck(stock: (id: ResourceId) => number, plan: Cost, free: number): { ok: true; haulers: number } | { ok: false; wait?: string; hold?: string } {
+    const total = sumCost(plan);
+    if (total <= 0) return { ok: false, hold: 'The automatic load is empty.' };
+    const haulers = Math.ceil(total / CARGO.payload);
+    if (haulers > CARGO.haulersPerGarage) return { ok: false, hold: `The load needs ${haulers} haulers; the garage has ${CARGO.haulersPerGarage}.` };
+    const short = (Object.entries(plan) as [ResourceId, number][]).filter(([id, v]) => v > 0 && stock(id) - v < v);
+    if (short.length) {
+      const what = short.map(([id, v]) => `${RESOURCES[id].name.toLowerCase()} (has ${Math.floor(stock(id))}, needs ${Math.ceil(v * 2)})`).join(', ');
+      return { ok: false, hold: `Stopped: shipping would leave less than it sends of ${what}.` };
+    }
+    if (haulers > free) return { ok: false, wait: 'Waiting for haulers to come home.' };
+    return { ok: true, haulers };
   },
 
   /** Rough sols for a one-way trip (night stops included). */

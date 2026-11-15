@@ -10,7 +10,7 @@ import { activeBaseData, makeNewBase, withActiveBase } from '../state/factory';
 import type { BaseData, BuildingInstance, GameState, OrbitalScan } from '../state/types';
 import { baseEnv } from './BaseEnv';
 import { ConstructionManager } from './ConstructionManager';
-import { HOME_BASE_ID, MissionManager } from './MissionManager';
+import { HOME_BASE_ID, MissionManager, type HeightSampler } from './MissionManager';
 import { PopulationManager } from './PopulationManager';
 import { PowerManager, PowerPool } from './PowerManager';
 import { ProductionManager, type ProductionContext } from './ProductionManager';
@@ -44,6 +44,8 @@ export interface StepResult {
 export interface StepOptions {
   /** Override how goods move (tests use EVERYWHERE). Defaults to the road network. */
   transport?: TransportNetwork;
+  /** Terrain heights, so automatic hauler trips count the climbing like hand-sent ones. */
+  height?: HeightSampler;
 }
 
 /** The parts of the game state the simulation owns and writes back to the store. */
@@ -81,8 +83,11 @@ interface BaseStep {
 /**
  * One base for one step: construction → power + production (by priority) → crew needs →
  * families → depot safety net. Its inventory stays open so missions can still deliver to it.
+ *
+ * A background base (not on screen) runs the same economy but reports nothing: `events` is
+ * null, so no floating labels or HUD glows are made for it.
  */
-function stepBase(b: BaseData, state: GameState, dt: number, transportOverride: TransportNetwork | undefined, events: SimEvent[]): BaseStep {
+function stepBase(b: BaseData, state: GameState, dt: number, transportOverride: TransportNetwork | undefined, events: SimEvent[] | null): BaseStep {
   const built = ConstructionManager.advance(b.buildings, dt);
   let buildings = built.buildings;
   const env = baseEnv(b.siteId, state.research.completed, buildings);
@@ -121,7 +126,7 @@ function stepBase(b: BaseData, state: GameState, dt: number, transportOverride: 
     const delivered = Object.entries(res.delivered) as [ResourceId, number][];
     if (delivered.length) {
       for (const [id, v] of delivered) produced[id] = (produced[id] ?? 0) + v;
-      events.push({ type: 'production', buildingId: x.id, delivered: res.delivered });
+      events?.push({ type: 'production', buildingId: x.id, delivered: res.delivered });
     }
     if (res.building.status === 'insufficient_power') unpowered++;
     if (powered) {
@@ -131,7 +136,9 @@ function stepBase(b: BaseData, state: GameState, dt: number, transportOverride: 
     if (x.type === 'life_support' && powered) lifeSupportWorking = true;
     updated.set(x.id, sameBuilding(x, res.building) ? x : res.building);
   }
-  buildings = buildings.map((x) => updated.get(x.id) ?? x);
+  const next = buildings.map((x) => updated.get(x.id) ?? x);
+  // Keep the same array when nothing changed, so watchers (and renderers) can skip it.
+  buildings = next.length === b.buildings.length && next.every((x, i) => x === b.buildings[i]) ? b.buildings : next;
 
   // Crew needs. Rationing can't take more than what is stored, never below zero.
   // Crew out on a round trip live on the supplies they packed.
@@ -195,7 +202,10 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
 
   // 1. Every base.
   const all: BaseData[] = [activeBaseData(state), ...state.otherBases];
-  const steps = all.map((b) => stepBase(b, state, dt, b.id === state.base.id ? opts.transport : undefined, events));
+  const onScreen = (b: BaseData) => b.id === state.base.id;
+  const steps = all.map((b) => stepBase(b, state, dt, onScreen(b) ? opts.transport : undefined, onScreen(b) ? events : null));
+  // Effects on the map are only for the base on screen; messages come from every base.
+  const here = (...ids: (string | undefined)[]) => ids.some((id) => (id ?? HOME_BASE_ID) === state.base.id);
   const stepOf = (id: string | undefined): BaseStep => steps.find((x) => x.base.id === (id ?? HOME_BASE_ID)) ?? steps[0];
   const produced = { ...state.stats.produced };
   let researchRp = 0;
@@ -209,7 +219,7 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
     const g = ProgressionManager.grant(progression, xp, milestone);
     progression = g.progression;
     if (g.rankUp) {
-      notices.push({ key: `rank-${g.rankUp.id}`, level: 'success', title: `${g.rankUp.icon} Promoted to ${g.rankUp.title}!`, message: `Unlocked: ${g.rankUp.perks.join(' · ')}.` });
+      notices.push({ key: `rank-${g.rankUp.id}`, level: 'success', title: `${g.rankUp.icon} Promoted to ${g.rankUp.title}!`, message: `Unlocked: ${g.rankUp.perks.join(' · ')}.`, where: 'Colony command' });
     }
   };
   const putAll = (inv: ResourceManager, items: Partial<Record<ResourceId, number>>): string[] => {
@@ -220,22 +230,29 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
     }
     return got;
   };
-  const at = (st: BaseStep) => (st.base.id === state.base.id ? '' : ` at ${st.base.name}`);
 
-  // 2. Construction rewards and births at every base.
+  // 2. Construction rewards (XP at every base) and births.
   for (const st of steps) {
+    const shown = here(st.base.id);
     for (const b of st.completed) {
       const def = BUILDINGS[b.type];
-      notices.push({ key: `done-${b.id}`, level: 'success', title: `${def.name} is ready${at(st)}!`, message: `${def.funFact} (+${XP_REWARDS.buildingComplete} XP)` });
-      events.push({ type: 'building:completed', id: b.id });
+      notices.push({
+        key: `done-${b.id}`,
+        level: 'success',
+        title: `🏗️ ${def.name} finished`,
+        message: `Construction robots finished the ${def.name} at ${st.base.name}. ${def.funFact} (+${XP_REWARDS.buildingComplete} XP)`,
+        where: st.base.name,
+      });
+      if (shown) events.push({ type: 'building:completed', id: b.id });
       grant(XP_REWARDS.buildingComplete, `built-${b.id}`);
     }
     if (st.births > 0) {
       notices.push({
         key: `born-${st.base.id}-${Math.floor(state.timeSols)}`,
         level: 'success',
-        title: `👶 ${st.births === 1 ? 'A baby was' : `${st.births} babies were`} born${at(st)}!`,
+        title: `👶 ${st.births === 1 ? 'A baby was' : `${st.births} babies were`} born!`,
         message: `${st.base.name} now has ${st.base.colony.colonists} colonists. Families grow faster while there are empty beds.`,
+        where: st.base.name,
       });
     }
   }
@@ -256,9 +273,10 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
           message: pumps
             ? 'The two bases now even out everything they store, and send each other building materials when one runs short.'
             : `It starts pumping as soon as both bases have a working Pipeline Pump Station. (+${XP_REWARDS.buildingComplete} XP)`,
+          where: `${nameOf(p.fromBaseId)} ⇄ ${nameOf(p.toBaseId)} pipeline (${Math.round(p.km).toLocaleString()} km)`,
         });
-        grant(XP_REWARDS.buildingComplete, `pipe-${p.id}`);
       }
+      if (q.progress >= 1) grant(XP_REWARDS.buildingComplete, `pipe-${p.id}`);
     }
     const working = q.progress >= 1 && pumpsOn.has(q.fromBaseId) && pumpsOn.has(q.toBaseId);
     if (working !== q.working) q = { ...q, working };
@@ -273,6 +291,7 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
         level: 'warning',
         title: `⚠️ ${def.name} on the ${route} pipeline`,
         message: `${def.why} About ${km.toLocaleString()} km from ${nameOf(q.fromBaseId)}, ${Math.round(f.pinch * 100)}% of the pipe is pinched shut, so less can flow. Repair robots are on their way (about ${f.repairSols.toFixed(1)} sols).`,
+        where: `${route} pipeline, ${km.toLocaleString()} km from ${nameOf(q.fromBaseId)}`,
       });
     }
     for (const f of tw.fixed) {
@@ -281,13 +300,14 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
         level: 'success',
         title: `🔧 ${route} pipeline repaired`,
         message: `The robots straightened the ${PIPE_FAULTS[f.kind].name.toLowerCase()}, cleaned the sliding shoes and fitted a new section. Full flow again.`,
+        where: `${route} pipeline, ${Math.round(f.at * q.km).toLocaleString()} km from ${nameOf(q.fromBaseId)}`,
       });
     }
     return tw.pipe;
   });
   pipelines = Logistics.balance(pipelines, new Map(steps.map((st) => [st.base.id, { inv: st.inv, rates: st.base.rates }])), dt);
 
-  const shipments = Logistics.advanceShipments(
+  let shipments = Logistics.advanceShipments(
     state.shipments,
     dt,
     state.timeSols,
@@ -304,22 +324,57 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
         key: `cargo-in-${sh.id}`,
         level: 'success',
         title: `🚚 Cargo haulers reached ${dest.base.name}`,
-        message: `${got ? `Unloaded ${got}.` : 'Storage there is full, so nothing could be unloaded.'}${Object.keys(left).length ? ` No room for ${describeCost(left)}: it rides back home.` : ''}`,
+        message: `${sh.haulers} hauler${sh.haulers > 1 ? 's' : ''} from ${nameOf(sh.fromBaseId)} drove ${Math.round(sh.routeKm).toLocaleString()} km. ${got ? `Unloaded ${got}.` : 'Storage there is full, so nothing could be unloaded.'}${Object.keys(left).length ? ` No room for ${describeCost(left)}: it rides back home.` : ''}`,
+        where: dest.base.name,
       });
       return left;
     },
     (sh) => {
       const home = stepOf(sh.fromBaseId);
       const back = putAll(home.inv, sh.cargo);
+      grant(CARGO.xp, `cargo-${sh.id}`);
       notices.push({
         key: `cargo-home-${sh.id}`,
         level: 'info',
         title: `🚚 Haulers are back at ${home.base.name}`,
         message: `${back.length ? `They brought back ${back.join(', ')}. ` : ''}Ready for the next trip. (+${CARGO.xp} XP)`,
+        where: home.base.name,
       });
-      grant(CARGO.xp, `cargo-${sh.id}`);
     },
   );
+
+  // Garages on automatic send their saved load whenever haulers are parked, at every base,
+  // as long as the base keeps at least as much as it ships.
+  for (const st of steps) {
+    if (!st.base.buildings.some((x) => x.type === 'cargo_garage' && x.autoCargo)) continue;
+    const buildings = st.base.buildings.map((g) => {
+      if (g.type !== 'cargo_garage' || !g.autoCargo) return g;
+      const to = g.target ? steps.find((x) => x.base.id === g.target)?.base : undefined;
+      let hold: string | null = null;
+      if (!g.isOperational || !g.enabled) hold = 'The garage is not working.';
+      else if (!to) hold = 'No destination: drag the arrow onto another base.';
+      else if (dt > 0) {
+        const c = Logistics.autoCargoCheck((id) => st.inv.get(id), g.autoCargo, Logistics.haulersFree(shipments, g.id));
+        if (c.ok) {
+          const sh = Logistics.makeShipment(st.base, g, to, g.autoCargo, c.haulers, state.timeSols, opts.height);
+          for (const [id, v] of Object.entries(sh.cargo) as [ResourceId, number][]) st.inv.take(id, v);
+          shipments = [...shipments, sh];
+          notices.push({
+            key: `cargo-${sh.id}`,
+            level: 'info',
+            title: `🔁 Automatic haulers left for ${to.name}`,
+            message: `${c.haulers} hauler${c.haulers > 1 ? 's' : ''} carrying ${describeCost(sh.cargo)} over ${Math.round(sh.routeKm).toLocaleString()} km. Back in about ${(Logistics.tripSols(sh.legKm) * 2).toFixed(1)} sols.`,
+            where: st.base.name,
+          });
+        } else hold = c.hold ?? null;
+        if (c.ok === false && c.hold && !g.autoHold) {
+          notices.push({ key: `cargo-hold-${g.id}`, level: 'warning', title: `⏸️ Automatic garage stopped`, message: `${c.hold} It starts again by itself when there is enough.`, where: st.base.name });
+        }
+      } else hold = g.autoHold ?? null;
+      return (g.autoHold ?? null) === hold ? g : { ...g, autoHold: hold };
+    });
+    st.base = { ...st.base, buildings };
+  }
 
   // 4. Missions and outposts.
   const mis = MissionManager.advance(state.missions, dt, state.timeSols, regions);
@@ -342,6 +397,7 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
           level: 'success',
           title: `📡 ${name} mapped from orbit`,
           message: `${rewardFor(m.regionId).hint} ${count ? `${count} possible base site${count > 1 ? 's' : ''} found.` : 'No good base sites here.'} (+${ORBITAL_SCAN.xp} XP)`,
+          where: `${name}, from orbit`,
         });
         events.push({ type: 'region:discovered', id: m.regionId });
         grant(ORBITAL_SCAN.xp, `scan-${m.regionId}`);
@@ -356,6 +412,7 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
           level: 'success',
           title: `🧑‍🚀 Crew reached ${name}!`,
           message: `${n.mission.reward?.find ?? ''}${outpost ? ' You can build an outpost here.' : ''} The crew checked every base site in the region. Now collecting samples, then driving home.`,
+          where: name,
         });
         events.push({ type: 'region:explored', id: m.regionId });
         break;
@@ -366,6 +423,7 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
           level: 'warning',
           title: `🌪️ Dust storm near ${name}`,
           message: 'Dust is blocking the sunlight, so the rover parks and waits. In 2018 a storm like this ended NASA’s solar-powered Opportunity rover.',
+          where: `On the road to ${name}`,
         });
         break;
       case 'home': {
@@ -378,6 +436,7 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
           level: 'success',
           title: `🏠 Expedition to ${name} is home`,
           message: `${samples.length ? `Samples: ${samples.join(', ')}. ` : ''}${back.length ? `Unused supplies back in storage: ${back.join(', ')}.` : ''} (+${r?.xp ?? 0} XP)`,
+          where: stepOf(n.mission.fromBaseId).base.name,
         });
         if (r) grant(r.xp, `mission-${m.id}`);
         break;
@@ -404,6 +463,7 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
           level: 'success',
           title: `🏗️ ${nb.name} is founded!`,
           message: `The convoy unpacked its Central Storage Depot at ${site.name}. ${traits.length ? `Site: ${traits.join(', ')}.` : ''} Switch to the new base to build homes, power and drills. (+${FOUNDING.xp} XP)`,
+          where: site.name,
         });
         events.push({ type: 'base:founded', id: nb.id });
         grant(FOUNDING.xp, `founded-${nb.id}`);
@@ -413,9 +473,16 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
   }
   const out = MissionManager.advanceOutposts(state.outposts, state.timeSols, dt);
   for (const d of out.deliveries) {
-    const got = putAll(stepOf(d.outpost.baseId).inv, { [d.outpost.resource]: d.amount });
+    const home = stepOf(d.outpost.baseId);
+    const got = putAll(home.inv, { [d.outpost.resource]: d.amount });
     const name = regions.get(d.outpost.regionId)?.name ?? d.outpost.regionId;
-    notices.push({ key: `cargo-${d.outpost.id}`, level: 'info', title: `🚚 Cargo from ${name}`, message: got.length ? `The cargo rover delivered ${got.join(', ')}.` : 'Storage is full, so the cargo was left behind. Build more storage!' });
+    notices.push({
+      key: `cargo-${d.outpost.id}`,
+      level: 'info',
+      title: `🚚 Cargo from the ${name} outpost`,
+      message: got.length ? `The cargo rover delivered ${got.join(', ')} to ${home.base.name}.` : `Storage at ${home.base.name} is full, so the cargo was left behind. Build more storage!`,
+      where: home.base.name,
+    });
   }
 
   // 5. Base sites appear one by one while the orbiter maps a region.
@@ -434,6 +501,7 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
         level: 'info',
         title: `📡 Base site spotted: ${site.name}`,
         message: best.length ? `The orbiter sees ${best.join(', ')}. Open Exploration to see the site report.` : 'A flat, safe place for a base. Open Exploration to see the site report.',
+        where: `${site.name}, ${regions.get(m.regionId)?.name ?? m.regionId}`,
       });
       events.push({ type: 'site:spotted', id: site.id });
     });
@@ -468,12 +536,13 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
         notices.push({
           key: `tech-stage-${tech.id}`,
           level: 'info',
-          title: `${done.name} done: ${tech.name}`,
-          message: paid ? `Ready for the ${next.name.toLowerCase()}. Open Research to send the materials.` : `Now: ${next.name.toLowerCase()}.`,
+          title: `${tech.icon} ${done.name} done: ${tech.name}`,
+          message: `Stage ${p.stage + 1} of ${STAGES.length} is finished. ${paid ? `Ready for the ${next.name.toLowerCase()}: open Research to send ${describeCost(stageMaterials(tech, p.stage + 1))}.` : `Now: ${next.name.toLowerCase()}.`}`,
+          where: 'Research Labs',
         });
       } else {
         completed.push(tech.id);
-        notices.push({ key: `tech-${tech.id}`, level: 'success', title: `${tech.icon} Research complete: ${tech.name}`, message: `${tech.effect}. ${tech.fact}` });
+        notices.push({ key: `tech-${tech.id}`, level: 'success', title: `${tech.icon} Research complete: ${tech.name}`, message: `${tech.effect}. ${tech.fact}`, where: 'Research Labs, every base' });
         grant(Math.round(tech.cost / 4), `tech-${tech.id}`);
         if (tech.id === 'orbiter_mk2') for (const id of Object.keys(sitesSeen)) sitesSeen = { ...sitesSeen, [id]: 2 };
       }
@@ -506,7 +575,7 @@ export function stepSimulation(state: GameState, dt: number, regions: RegionMana
 
   // 8. Goals.
   for (const goal of ProgressionManager.newlyReached(next)) {
-    notices.push({ key: goal.id, level: 'success', title: `${goal.icon} Goal reached: ${goal.title}`, message: `Great work, commander! +${goal.xp} XP` });
+    notices.push({ key: goal.id, level: 'success', title: `${goal.icon} Goal reached: ${goal.title}`, message: `Great work, commander! +${goal.xp} XP`, where: 'Colony command' });
     grant(goal.xp, goal.id);
   }
   next.progression = progression;

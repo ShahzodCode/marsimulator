@@ -1,5 +1,6 @@
 import { BUILDINGS, type BuildingType } from './buildings';
 import type { ResourceId } from './resources';
+import type { RankId } from './progression';
 
 type Cost = Partial<Record<ResourceId, number>>;
 
@@ -53,6 +54,8 @@ export interface TechDefinition {
   cost: number;
   /** All of these must be finished first. */
   requires: TechId[];
+  /** Rank needed before a lab may start it (data/progression.ts). */
+  rank?: RankId;
   /** What it does, in plain words. */
   effect: string;
   /** Real science behind it. */
@@ -78,6 +81,7 @@ export const TECHS: TechDefinition[] = [
     icon: '🌐',
     cost: 630,
     requires: ['orbiter_mk2'],
+    rank: 'flight_engineer',
     effect: 'X-ray view down to 20 km · reveals deep groundwater',
     fact: 'Future technology. Today the deep water was found by InSight’s seismometer listening to marsquakes, not from orbit.',
   },
@@ -99,6 +103,7 @@ export const TECHS: TechDefinition[] = [
     icon: '🏔️',
     cost: 330,
     requires: ['better_drills'],
+    rank: 'mission_specialist',
     effect: 'Unlocks the Glacier Mine (icy sites only)',
     fact: 'The South Pole station on Earth melts its drinking water out of the ice with a “Rodriguez well”.',
   },
@@ -109,6 +114,7 @@ export const TECHS: TechDefinition[] = [
     icon: '🌊',
     cost: 900,
     requires: ['glacier_mine', 'orbiter_mk3'],
+    rank: 'base_director',
     effect: 'Unlocks the Deep Aquifer Drill (where the radar orbiter found deep water)',
     fact: 'InSight’s data suggests water 11.5–20 km down, enough to cover Mars 1–2 km deep.',
   },
@@ -130,6 +136,7 @@ export const TECHS: TechDefinition[] = [
     icon: '⚙️',
     cost: 300,
     requires: ['regolith_bricks'],
+    rank: 'mission_specialist',
     effect: 'Unlocks the Megadigger: 5× the regolith of an excavator',
     fact: 'Bucket-wheel excavators are the biggest land machines ever built on Earth.',
   },
@@ -140,6 +147,7 @@ export const TECHS: TechDefinition[] = [
     icon: '⛏️',
     cost: 450,
     requires: ['megadigger'],
+    rank: 'expedition_leader',
     effect: 'Unlocks the Strip Mine (hematite sites only)',
     fact: 'Opportunity found hematite “blueberries” at Meridiani, and orbiters see up to 20% hematite there.',
   },
@@ -161,6 +169,7 @@ export const TECHS: TechDefinition[] = [
     icon: '⚛️',
     cost: 540,
     requires: ['dust_cleaning'],
+    rank: 'flight_engineer',
     effect: 'Unlocks the Fission Reactor: 40 kW day and night',
     fact: 'NASA’s KRUSTY test reactor ran in 2018; Mars plans use several 10 kW units together.',
   },
@@ -182,6 +191,7 @@ export const TECHS: TechDefinition[] = [
     icon: '🏟️',
     cost: 360,
     requires: ['hydroponics'],
+    rank: 'mission_specialist',
     effect: 'Unlocks the Big Dome: 18 beds',
     fact: 'Bigger domes mean more space per person, which matters on a long mission.',
   },
@@ -192,6 +202,7 @@ export const TECHS: TechDefinition[] = [
     icon: '🕳️',
     cost: 570,
     requires: ['big_dome'],
+    rank: 'base_director',
     effect: 'Unlocks the Lava-Tube Habitat: 30 beds (cave sites only)',
     fact: 'HiRISE has photographed pits on Arsia Mons that may be skylights into lava tubes.',
   },

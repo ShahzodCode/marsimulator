@@ -10,10 +10,12 @@ import type { Terrain } from './Terrain';
 import { greatCirclePoint, latLonToDir, R, type LatLon } from './geo';
 import { instantiateSiteModel, instantiateVehicleModel } from '../settlement/buildings/glbModels';
 
-/** Size of a rover on screen: a fraction of the camera's height, so it stays readable at any zoom. */
-const SIZE_PER_ALT = 0.022;
-const MIN_SIZE = 0.012;
-const MAX_SIZE = 6;
+/** Rovers and haulers are vehicles on the ground: a fixed length (scene units), like the outposts. */
+const ROVER_SIZE = 0.35;
+/** ...except far out, where they keep a small on-screen size so you can still see something is there. */
+const ROVER_MIN_SIZE_PER_ALT = 0.003;
+/** The orbiter has no ground to compare with, so it keeps a readable on-screen size. */
+const ORBITER_SIZE_PER_ALT = 0.018;
 /** Outposts are buildings: a fixed size on the ground, so they don't swell as the camera pulls out. */
 const OUTPOST_SIZE = 0.5;
 /** ...except far out, where they keep a small on-screen size so you can still see something is there. */
@@ -151,7 +153,8 @@ export class RoverFleet {
   private readonly pos = new THREE.Vector3();
   private readonly ahead = new THREE.Vector3();
   private readonly m4 = new THREE.Matrix4();
-  private size = 1;
+  private size = ROVER_SIZE;
+  private orbiterSize = 1;
   private outpostSize = OUTPOST_SIZE;
   private orbitAngle = 0;
 
@@ -172,7 +175,8 @@ export class RoverFleet {
 
   update(dt: number, altitude: number): void {
     const s = gameStore.getState();
-    this.size = THREE.MathUtils.clamp(altitude * SIZE_PER_ALT, MIN_SIZE, MAX_SIZE);
+    this.size = Math.max(ROVER_SIZE, altitude * ROVER_MIN_SIZE_PER_ALT);
+    this.orbiterSize = THREE.MathUtils.clamp(altitude * ORBITER_SIZE_PER_ALT, 0.4, 5);
     this.outpostSize = Math.max(OUTPOST_SIZE, altitude * OUTPOST_MIN_SIZE_PER_ALT);
     this.updateExpeditions(s.missions.filter((m): m is Expedition => m.type === 'expedition' && m.status === 'active'));
     this.updateOrbiter(s.missions.find((m): m is OrbitalScan => m.type === 'orbital' && m.status === 'active'), dt, s.paused ? 0 : s.speed);
@@ -312,7 +316,7 @@ export class RoverFleet {
     this.side.crossVectors(this.fwd, this.up).normalize();
     this.m4.makeBasis(this.side, this.up, this.fwd);
     this.orbiter.quaternion.setFromRotationMatrix(this.m4);
-    this.orbiter.scale.setScalar(Math.max(0.4, this.size * 0.8));
+    this.orbiter.scale.setScalar(this.orbiterSize);
     const beam = this.beam.geometry.getAttribute('position') as THREE.BufferAttribute;
     const ground = this.pos.copy(this.up).multiplyScalar(R);
     beam.setXYZ(0, this.orbiter.position.x, this.orbiter.position.y, this.orbiter.position.z);

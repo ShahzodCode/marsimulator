@@ -10,12 +10,13 @@ import { ROAD_COST, ROAD_PROBLEM_TEXT, canRemoveRoad, checkRoad, roadKey } from 
 import { RegionManager } from '../planet/RegionManager';
 import { SITE_BY_ID } from '../data/baseSites';
 import { canResearch, labSlots, STAGES, TECH_BY_ID, stageMaterials, type TechId } from '../data/research';
+import { hasRank, rankById, RESEARCH_UNLOCK_RANK } from '../data/progression';
 import { envOf } from '../simulation/BaseEnv';
 import { createInitialState, gridToLatLon, makeId, switchBase } from './factory';
-import type { Alert, GameState, PanelId, SimSpeed } from './types';
+import type { Alert, GameState, LogEntry, PanelId, SimSpeed } from './types';
 import { describeCost, Logistics } from '../simulation/Logistics';
 import { DEMOLISH_REFUND } from '../data/buildings';
-import { pipelineCost } from '../data/logistics';
+import { CARGO, pipelineCost } from '../data/logistics';
 import type { Cost } from '../simulation/ResourceManager';
 
 /** Changes one base's stock (the active one or another), keeping storage limits when adding. */
@@ -33,6 +34,17 @@ export function setRouteHeight(sampler: HeightSampler): void {
 }
 export function getRouteHeight(): HeightSampler | undefined {
   return routeHeight ?? undefined;
+}
+
+/** Most messages the mission log keeps (oldest drop off). */
+export const LOG_LIMIT = 500;
+
+function appendLog(log: LogEntry[], a: Omit<Alert, 'id' | 'sol' | 'persistent'> & { where: string }, sol: number): LogEntry[] {
+  const entry: LogEntry = { id: makeId('log'), key: a.key, level: a.level, title: a.title, message: a.message, sol, where: a.where };
+  // The same message again a moment later (a button pressed twice) is shown once.
+  const last = log[log.length - 1];
+  if (last && last.key === entry.key && last.message === entry.message && last.where === entry.where && sol - last.sol < 0.05) return log;
+  return [...log, entry].slice(-LOG_LIMIT);
 }
 
 export { createInitialState, gridToLatLon, makeId };
@@ -71,6 +83,8 @@ export interface GameActions {
   removePipeline(id: string): ActionResult;
   /** Where a Cargo Garage sends its haulers (null = nowhere). */
   setGarageTarget(buildingId: string, baseId: string | null): ActionResult;
+  /** Puts a Garage on automatic with this load (null = back to sending by hand). */
+  setGarageAuto(buildingId: string, cargo: Partial<Record<ResourceId, number>> | null): ActionResult;
   /** Loads haulers at a Garage of the active base and sends them off. */
   sendCargo(buildingId: string, cargo: Cost): ActionResult;
   /** Removes a player-built building and returns half its construction cost (never energy). */
@@ -243,6 +257,22 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     if (!g || g.type !== 'cargo_garage') return { ok: false, reason: 'That garage is gone.' };
     if (baseId !== null && !s.otherBases.some((b) => b.id === baseId)) return { ok: false, reason: 'Drag the arrow onto one of your other bases.' };
     set({ buildings: s.buildings.map((x) => (x.id === buildingId ? { ...x, target: baseId ?? undefined } : x)) });
+    return { ok: true };
+  },
+
+  setGarageAuto(buildingId, cargo) {
+    const s = get();
+    const g = s.buildings.find((x) => x.id === buildingId);
+    if (!g || g.type !== 'cargo_garage') return { ok: false, reason: 'That garage is gone.' };
+    let plan: Partial<Record<ResourceId, number>> | undefined;
+    if (cargo) {
+      plan = {};
+      for (const [id, v] of Object.entries(cargo) as [ResourceId, number][]) if (v > 0) plan[id] = v;
+      const total = Object.values(plan).reduce((a, b) => a + (b ?? 0), 0);
+      if (total <= 0) return { ok: false, reason: 'Load something first: move a slider.' };
+      if (total > CARGO.haulersPerGarage * CARGO.payload) return { ok: false, reason: `The garage’s ${CARGO.haulersPerGarage} haulers carry ${(CARGO.haulersPerGarage * CARGO.payload).toLocaleString()} at most.` };
+    }
+    set({ buildings: s.buildings.map((x) => (x.id === buildingId ? { ...x, autoCargo: plan, autoHold: null } : x)) });
     return { ok: true };
   },
 
@@ -443,6 +473,9 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
       return { ok: false, reason: 'Build a Research Lab first.' };
     }
     if (s.research.completed.includes(id)) return { ok: false, reason: 'Already researched.' };
+    const needRank = TECH_BY_ID[id].rank;
+    if (!hasRank(s.progression.level, RESEARCH_UNLOCK_RANK)) return { ok: false, reason: `Research opens at rank ${rankById(RESEARCH_UNLOCK_RANK).title}.` };
+    if (!hasRank(s.progression.level, needRank)) return { ok: false, reason: `This project unlocks at rank ${rankById(needRank!).title}. Earn XP to be promoted!` };
     if (!canResearch(s.research.completed, id)) {
       const need = TECH_BY_ID[id].requires.filter((r) => !s.research.completed.includes(r)).map((r) => TECH_BY_ID[r].name);
       return { ok: false, reason: `Research ${need.join(' and ')} first.` };
@@ -483,8 +516,7 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
 
   pushAlert(alert) {
     const s = get();
-    const full: Alert = { ...alert, id: makeId('alert'), sol: s.timeSols, persistent: false };
-    set({ alerts: [...s.alerts.filter((a) => a.key !== alert.key), full].slice(-30) });
+    set({ log: appendLog(s.log, { ...alert, where: alert.where ?? s.base.name }, s.timeSols) });
   },
 
   dismissAlert(id) {
@@ -501,9 +533,12 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
     const kept = s.alerts.filter((a) => !a.persistent);
     const next: Alert[] = list.map((n) => {
       const prev = current.find((c) => c.key === n.key);
-      return { ...n, id: prev?.id ?? makeId('warn'), sol: prev?.sol ?? s.timeSols, persistent: true };
+      return { ...n, where: n.where ?? prev?.where ?? s.base.name, id: prev?.id ?? makeId('warn'), sol: prev?.sol ?? s.timeSols, persistent: true };
     });
-    set({ alerts: [...kept, ...next] });
+    // A warning that just appeared goes into the mission log too.
+    let log = s.log;
+    for (const n of next) if (!current.some((c) => c.key === n.key)) log = appendLog(log, { ...n, where: n.where! }, s.timeSols);
+    set({ alerts: [...kept, ...next], log });
   },
 
   addXp(amount, milestone) {

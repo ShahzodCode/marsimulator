@@ -1,5 +1,5 @@
 import { BUILDINGS, BUILDING_TYPES, type BuildingType } from '../data/buildings';
-import { LEVELS, RESEARCH_UNLOCK_LEVEL } from '../data/progression';
+import { hasRank, rankById, RESEARCH_UNLOCK_RANK } from '../data/progression';
 import { RESOURCES, type ResourceId } from '../data/resources';
 import {
   BRANCHES,
@@ -104,7 +104,7 @@ export class ResearchPanel implements Panel {
   private stateOf(s: GameStore, t: TechDefinition): NodeState {
     if (s.research.completed.includes(t.id)) return 'done';
     if (s.research.active.some((p) => p.id === t.id)) return 'active';
-    return canResearch(s.research.completed, t.id) ? 'open' : 'locked';
+    return canResearch(s.research.completed, t.id) && hasRank(s.progression.level, t.rank) ? 'open' : 'locked';
   }
 
   /** Stage and progress of any project, wherever it is (active, on hold or not started). */
@@ -171,8 +171,9 @@ export class ResearchPanel implements Panel {
       ]),
     );
 
-    const unlockAt = LEVELS.find((l) => l.level === RESEARCH_UNLOCK_LEVEL)!;
-    if (s.progression.level < RESEARCH_UNLOCK_LEVEL) {
+    const unlockAt = rankById(RESEARCH_UNLOCK_RANK);
+    const researchOpen = hasRank(s.progression.level, RESEARCH_UNLOCK_RANK);
+    if (!researchOpen) {
       this.el.append(
         h('div', { class: 'lock-card' }, [
           h('span', { class: 'lock-icon', html: ICONS.lock }),
@@ -191,7 +192,7 @@ export class ResearchPanel implements Panel {
       );
     }
 
-    if (labCount > 0 && s.progression.level >= RESEARCH_UNLOCK_LEVEL) {
+    if (labCount > 0 && researchOpen) {
       const share = ResearchPanel.share(s, rp);
       const free = Math.max(0, labCount - r.active.length);
       this.el.append(
@@ -423,8 +424,9 @@ export class ResearchPanel implements Panel {
     let action: HTMLElement;
     const msg = (text: string, icon = ICONS.lock) => h('div', { class: 'rs-action-note' }, [h('span', { class: 'row-icon', html: icon }), text]);
     if (state === 'done') action = msg('Researched — in use at every base.', MISC_ICONS.done);
-    else if (state === 'locked') action = msg(`First research: ${needs.join(' and ')}.`);
-    else if (s.progression.level < RESEARCH_UNLOCK_LEVEL) action = msg('Research opens at rank Settlement Commander.');
+    else if (state === 'locked' && needs.length) action = msg(`First research: ${needs.join(' and ')}.`);
+    else if (!hasRank(s.progression.level, RESEARCH_UNLOCK_RANK)) action = msg(`Research opens at rank ${rankById(RESEARCH_UNLOCK_RANK).title}.`);
+    else if (!hasRank(s.progression.level, t.rank)) action = msg(`Unlocks at rank ${rankById(t.rank!).title} — earn XP to be promoted.`);
     else if (labCount === 0) action = msg('Build a Research Lab to start.', ICONS.research);
     else if (state === 'active') {
       const note = p.awaiting ? msg('Stage finished — send the materials from the lab card above.', MISC_ICONS.materials) : msg('A lab is working on this.', MISC_ICONS.rp);
@@ -457,7 +459,10 @@ export class ResearchPanel implements Panel {
       h('div', { class: 'rs-detail-head' }, [
         h('span', { class: 'rs-hex big', html: TECH_ICONS[t.id] }),
         h('div', {}, [
-          h('span', { class: 'rs-eyebrow' }, [h('span', { class: 'rs-eyebrow-icon', html: BRANCH_ICONS[br.id] }), `${br.name} technology · Tier ${techTier(t.id) + 1}`]),
+          h('span', { class: 'rs-eyebrow' }, [
+            h('span', { class: 'rs-eyebrow-icon', html: BRANCH_ICONS[br.id] }),
+            `${br.name} technology · Tier ${techTier(t.id) + 1}${t.rank ? ` · ${rankById(t.rank).icon} ${rankById(t.rank).title}` : ''}`,
+          ]),
           h('h3', { text: t.name }),
           h('p', { class: 'rs-effect', text: t.effect }),
         ]),

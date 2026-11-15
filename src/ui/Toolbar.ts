@@ -1,5 +1,5 @@
 import { BUILDINGS } from '../data/buildings';
-import { RESEARCH_UNLOCK_LEVEL } from '../data/progression';
+import { hasRank, RESEARCH_UNLOCK_RANK } from '../data/progression';
 import type { EventBus } from '../core/EventBus';
 import { gameStore, watch } from '../state/gameStore';
 import type { PanelId } from '../state/types';
@@ -44,7 +44,7 @@ export class Toolbar {
   private render(): void {
     const s = gameStore.getState();
     for (const [id, b] of this.buttons) toggleClass(b, 'active', s.activePanel === id);
-    toggleClass(this.buttons.get('research')!, 'locked', s.progression.level < RESEARCH_UNLOCK_LEVEL);
+    toggleClass(this.buttons.get('research')!, 'locked', !hasRank(s.progression.level, RESEARCH_UNLOCK_RANK));
     const active = s.missions.filter((m) => m.status === 'active').length;
     const mb = this.buttons.get('missions')!;
     mb.dataset.badge = active ? String(active) : '';

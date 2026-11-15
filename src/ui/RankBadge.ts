@@ -1,11 +1,14 @@
 import { RANKS, type RankDefinition } from '../data/progression';
 
-/** Ring and star colours per rank tier: bronze, silver, gold (higher ranks reuse gold). */
+/** Ring and star colours per rank tier: bronze, silver, gold, then platinum. */
 const TIERS = [
   { ring: '#d08a4f', ringHi: '#f2c194', star: '#f2c194' },
   { ring: '#b9c6d6', ringHi: '#eef4fb', star: '#eef4fb' },
   { ring: '#f5b83d', ringHi: '#ffe7a3', star: '#ffd34d' },
+  { ring: '#7fd8e8', ringHi: '#e6fbff', star: '#bdf3ff' },
 ];
+/** Ranks per tier: each tier starts with no stars and gains one per rank. */
+const RANKS_PER_TIER = 3;
 
 let uid = 0;
 
@@ -36,14 +39,16 @@ function laurel(color: string): string {
 }
 
 /**
- * The player's rank emblem: ringed Mars whose ring turns bronze → silver → gold,
- * gaining stars (and a laurel at the top rank) as the player ranks up.
+ * The player's rank emblem: ringed Mars whose ring turns bronze → silver → gold →
+ * platinum every three ranks, gaining a star per rank inside a tier (and a laurel
+ * at the top rank).
  */
 export function rankBadgeSvg(rank: RankDefinition): string {
   const top = rank.level >= RANKS.length;
-  const t = TIERS[Math.min(rank.level, TIERS.length) - 1];
+  const step = rank.level - 1;
+  const t = TIERS[Math.min(Math.floor(step / RANKS_PER_TIER), TIERS.length - 1)];
   const id = `rb${++uid}`;
-  const stars = Math.min(rank.level - 1, 3);
+  const stars = top ? 3 : step % RANKS_PER_TIER;
   const starXs = stars === 1 ? [24] : stars === 2 ? [19, 29] : stars === 3 ? [15, 24, 33] : [];
   const starSvg = starXs.map((x, i) => star(x, stars === 3 && i !== 1 ? 7 : 5.5, 3.6, t.star)).join('');
   const ring = `stroke="url(#${id}r)" stroke-width="2.4" fill="none" stroke-linecap="round"`;

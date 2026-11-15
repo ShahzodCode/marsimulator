@@ -2,7 +2,7 @@ import { EXPEDITION, FOUNDING, GAME_KM_PER_SOL, ORBITAL_SCAN, OUTPOST, realScanS
 import { SITE_BY_ID } from '../data/baseSites';
 import { orbiterFor } from '../data/research';
 import { sunFactor } from '../data/power';
-import { hasRank, rankById } from '../data/progression';
+import { hasRank, OUTPOST_UNLOCK_RANK, rankAtLevel, rankById, RANKS } from '../data/progression';
 import { COLONIST_NEEDS_PER_SOL, RESOURCE_IDS, type ResourceId } from '../data/resources';
 import { SETTLEMENT } from '../data/settlement';
 import { angularDistance, greatCirclePoint, MARS_RADIUS_KM, type LatLon } from '../planet/geo';
@@ -70,6 +70,13 @@ function activeOf<T extends Mission['type']>(missions: Mission[], type: T): Extr
  * Exploration, the NASA way: orbital mapping, crewed rover expeditions with real speeds
  * (time-lapsed by a named multiplier), and remote outposts. Pure functions of the state.
  */
+/** Names the next rank that raises this limit (" Reach X for more."), or '' at the top. */
+function upgradeHint(level: number, key: 'orbiters' | 'crewRovers' | 'maxBases'): string {
+  const now = rankAtLevel(level)[key];
+  const r = RANKS.find((x) => x.level > level && x[key] > now);
+  return r ? ` Reach ${r.title} for more.` : '';
+}
+
 export const MissionManager = {
   // ---------------------------------------------------------------- orbital scans
 
@@ -77,15 +84,18 @@ export const MissionManager = {
     return realScanSols(regions.areaFraction(regionId)) / ORBITAL_SCAN.timeScale / orbiterFor(research).scanSpeed;
   },
 
-  checkScan(state: Pick<GameState, 'discoveredRegions' | 'missions'>, regions: RegionManager, regionId: string): MissionCheck {
+  checkScan(state: Pick<GameState, 'discoveredRegions' | 'missions' | 'progression'>, regions: RegionManager, regionId: string): MissionCheck {
     if (!regions.get(regionId)) return { ok: false, reason: 'Unknown region.' };
     if (state.discoveredRegions[regionId]) return { ok: false, reason: 'Already mapped.' };
     if (activeOf(state.missions, 'orbital').some((m) => m.regionId === regionId)) return { ok: false, reason: 'The orbiter is mapping it now.' };
-    if (activeOf(state.missions, 'orbital').length >= ORBITAL_SCAN.maxConcurrent) return { ok: false, reason: 'The orbiter is busy mapping another region.' };
+    const orbiters = MissionManager.orbiters(state.progression.level);
+    if (activeOf(state.missions, 'orbital').length >= orbiters) {
+      return { ok: false, reason: orbiters === 1 ? `The orbiter is busy mapping another region.${upgradeHint(state.progression.level, 'orbiters')}` : `All ${orbiters} orbiters are busy mapping.${upgradeHint(state.progression.level, 'orbiters')}` };
+    }
     return { ok: true };
   },
 
-  launchScan(state: Pick<GameState, 'discoveredRegions' | 'missions' | 'timeSols' | 'research'>, regions: RegionManager, regionId: string): { ok: true; mission: OrbitalScan } | { ok: false; reason: string } {
+  launchScan(state: Pick<GameState, 'discoveredRegions' | 'missions' | 'timeSols' | 'research' | 'progression'>, regions: RegionManager, regionId: string): { ok: true; mission: OrbitalScan } | { ok: false; reason: string } {
     const check = MissionManager.checkScan(state, regions, regionId);
     if (!check.ok) return check;
     return {
@@ -193,7 +203,10 @@ export const MissionManager = {
     if (!regions.isFrontier(regionId, state.exploredRegions)) return { ok: false, reason: 'Too far for one trip. Explore a region next to it first.' };
     const reward = rewardFor(regionId);
     if (!hasRank(state.progression.level, reward.rank)) return { ok: false, reason: `Long-range expedition: unlocks at rank ${rankById(reward.rank!).title}.` };
-    if (active.length >= EXPEDITION.maxConcurrent) return { ok: false, reason: `Both crew rovers are out. Wait for one to come home.` };
+    const rovers = MissionManager.crewRovers(state.progression.level);
+    if (active.length >= rovers) {
+      return { ok: false, reason: `${rovers === 1 ? 'The crew rover is' : rovers === 2 ? 'Both crew rovers are' : `All ${rovers} crew rovers are`} out. Wait for one to come home.${upgradeHint(state.progression.level, 'crewRovers')}` };
+    }
     const atBase = state.colony.colonists - MissionManager.crewAway(state.missions, state.base.id);
     if (atBase - EXPEDITION.crew < 2) return { ok: false, reason: 'Not enough crew at the base: someone has to stay behind!' };
     const { supplies } = MissionManager.supplies(MissionManager.planRoute(regions, regionId, height, state.base));
@@ -249,13 +262,23 @@ export const MissionManager = {
   // ---------------------------------------------------------------- founding convoys
 
   /** How far a founding convoy may drive (km). */
-  foundingRangeKm(research: readonly string[]): number {
-    return FOUNDING.rangeKm * (research.includes('long_range') ? 1.5 : 1);
+  foundingRangeKm(research: readonly string[], level = 1): number {
+    return FOUNDING.rangeKm * (research.includes('long_range') ? 1.5 : 1) * rankAtLevel(level).convoyRange;
   },
 
-  /** Most bases allowed at this rank: 2 at the first rank, one more per rank. */
+  /** Most bases allowed at this rank (data/progression.ts). */
   maxBases(level: number): number {
-    return 1 + level;
+    return rankAtLevel(level).maxBases;
+  },
+
+  /** Crew rovers that can be out at once at this rank. */
+  crewRovers(level: number): number {
+    return rankAtLevel(level).crewRovers;
+  },
+
+  /** Orbiters that can map at once at this rank. */
+  orbiters(level: number): number {
+    return rankAtLevel(level).orbiters;
   },
 
   /** What a founding convoy packs: the depot kit plus food, water and oxygen for the trip and the first sols. */
@@ -281,10 +304,10 @@ export const MissionManager = {
     if (convoys.some((m) => m.found!.siteId === siteId)) return { ok: false, reason: 'A convoy is already driving there.' };
     const bases = 1 + state.otherBases.length + convoys.length;
     if (bases >= MissionManager.maxBases(state.progression.level)) {
-      return { ok: false, reason: `Your rank allows ${MissionManager.maxBases(state.progression.level)} bases. Earn XP to be promoted!` };
+      return { ok: false, reason: `Your rank allows ${MissionManager.maxBases(state.progression.level)} bases.${upgradeHint(state.progression.level, 'maxBases') || ' Earn XP to be promoted!'}` };
     }
     const plan = MissionManager.planBetween(state.base, site, height);
-    const range = MissionManager.foundingRangeKm(state.research.completed);
+    const range = MissionManager.foundingRangeKm(state.research.completed, state.progression.level);
     if (plan.routeKm > range) {
       return { ok: false, reason: `${Math.round(plan.routeKm).toLocaleString()} km is too far from ${state.base.name} (limit ${Math.round(range).toLocaleString()} km). Found a base closer to it first, then hop on from there.` };
     }
@@ -439,17 +462,18 @@ export const MissionManager = {
 
   // ---------------------------------------------------------------- outposts
 
-  checkOutpost(state: Pick<GameState, 'exploredRegions' | 'outposts' | 'resources'>, regionId: string): MissionCheck {
+  checkOutpost(state: Pick<GameState, 'exploredRegions' | 'outposts' | 'resources' | 'progression'>, regionId: string): MissionCheck {
     const site = rewardFor(regionId).outpost;
     if (!site) return { ok: false, reason: 'Nothing here is worth mining.' };
     if (!state.exploredRegions[regionId]) return { ok: false, reason: 'Send a crew to explore it first.' };
+    if (!hasRank(state.progression.level, OUTPOST_UNLOCK_RANK)) return { ok: false, reason: `Remote outposts unlock at rank ${rankById(OUTPOST_UNLOCK_RANK).title}.` };
     if (state.outposts.some((o) => o.regionId === regionId)) return { ok: false, reason: 'There is already an outpost here.' };
     if (!ResourceManager.canAfford(state.resources, OUTPOST.cost)) return { ok: false, reason: ResourceManager.describeMissing(state.resources, OUTPOST.cost) };
     return { ok: true };
   },
 
   buildOutpost(
-    state: Pick<GameState, 'exploredRegions' | 'outposts' | 'resources' | 'timeSols' | 'base'>,
+    state: Pick<GameState, 'exploredRegions' | 'outposts' | 'resources' | 'timeSols' | 'base' | 'progression'>,
     regions: RegionManager,
     regionId: string,
     height?: HeightSampler,

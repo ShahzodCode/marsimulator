@@ -5,6 +5,8 @@ import { RECIPES, SOL_HOURS } from '../data/recipes';
 import { emptyResources, RESOURCE_IDS } from '../data/resources';
 import { EXPEDITION, GAME_KM_PER_SOL, NASA_ROVER_DATA, rewardFor } from '../data/missions';
 import { REGIONS } from '../data/regions';
+import { RANKS, rankById, rankForXp } from '../data/progression';
+import { TECHS } from '../data/research';
 import { RegionManager } from '../planet/RegionManager';
 import { createInitialState, makeBuilding } from '../state/factory';
 import type { BuildingInstance, Expedition, GameState } from '../state/types';
@@ -331,7 +333,10 @@ describe('Exploration: orbit, crew rover, outposts', () => {
 
   it('an outpost sends cargo home until its site runs out', () => {
     const site = REGIONS.find((r) => rewardFor(r.id).outpost)!.id;
-    const s0: GameState = { ...createInitialState(), exploredRegions: { ...createInitialState().exploredRegions, [site]: true } };
+    const fresh: GameState = { ...createInitialState(), exploredRegions: { ...createInitialState().exploredRegions, [site]: true } };
+    // Outposts unlock at Astronaut Candidate.
+    expect(MissionManager.checkOutpost(fresh, site).ok).toBe(false);
+    const s0: GameState = { ...fresh, progression: { ...fresh.progression, level: rankById('astronaut_candidate').level } };
     const r = MissionManager.buildOutpost(s0, regions, site);
     if (!r.ok) throw new Error(r.reason);
     const o = r.outpost;
@@ -382,5 +387,38 @@ describe('Starting settlement', () => {
     const b = play(144);
     expect(a.timeSols).toBeCloseTo(b.timeSols, 6);
     for (const id of RESOURCE_IDS) expect(a.resources[id]).toBeCloseTo(b.resources[id], 6);
+  });
+});
+
+describe('Rank ladder', () => {
+  it('climbs in XP order and only ever raises what the player may do', () => {
+    RANKS.forEach((r, i) => {
+      expect(r.level).toBe(i + 1);
+      if (i === 0) return;
+      const prev = RANKS[i - 1];
+      expect(r.xp).toBeGreaterThan(prev.xp);
+      expect(r.maxBases).toBeGreaterThanOrEqual(prev.maxBases);
+      expect(r.crewRovers).toBeGreaterThanOrEqual(prev.crewRovers);
+      expect(r.orbiters).toBeGreaterThanOrEqual(prev.orbiters);
+      expect(r.convoyRange).toBeGreaterThanOrEqual(prev.convoyRange);
+      expect(r.perks.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('keeps the XP of the original three ranks, so old saves lose nothing', () => {
+    expect(rankForXp(120).id).toBe('mars_engineer');
+    expect(rankForXp(400).id).toBe('settlement_commander');
+    expect(MissionManager.maxBases(rankForXp(400).level)).toBeGreaterThanOrEqual(4);
+  });
+
+  it('every rank-gated building and research project names a real rank', () => {
+    for (const def of Object.values(BUILDINGS)) if (def.unlockRank) expect(rankById(def.unlockRank)).toBeDefined();
+    for (const t of TECHS) if (t.rank) expect(rankById(t.rank)).toBeDefined();
+  });
+
+  it('gives more crew rovers at higher ranks', () => {
+    expect(MissionManager.crewRovers(1)).toBe(1);
+    expect(MissionManager.crewRovers(rankById('expedition_leader').level)).toBe(3);
+    expect(MissionManager.orbiters(rankById('flight_engineer').level)).toBe(2);
   });
 });
