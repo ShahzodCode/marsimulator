@@ -1,6 +1,6 @@
 import { BUILDINGS, BUILDING_TYPES, maxPowerKw, type BuildingType } from '../data/buildings';
 import { RECIPES, recipeRatePerSol } from '../data/recipes';
-import { rankById } from '../data/progression';
+import { hasRank, rankById } from '../data/progression';
 import { ConstructionManager } from '../simulation/ConstructionManager';
 import { buildCost, envOf } from '../simulation/BaseEnv';
 import { RESOURCES, RESOURCE_IDS, type ResourceId } from '../data/resources';
@@ -14,6 +14,7 @@ import { focusResearch } from './ResearchPanel';
 import type { Panel } from './SidePanel';
 import { ROAD_COST } from '../settlement/RoadRules';
 import { Logistics } from '../simulation/Logistics';
+import { t, tn } from '../i18n';
 
 interface Card {
   type: BuildingType;
@@ -31,7 +32,7 @@ function shadowIcon(type: BuildingType): HTMLElement {
     : h('span', { class: 'card-icon shadow-icon', html: BUILDING_ICONS[type] });
 }
 
-const SUB: Record<ResourceId, string> = { regolith: 'regolith', iron: 'iron', water: 'water', oxygen: 'O₂', food: 'food', hydrogen: 'H₂' };
+const SUB: Record<ResourceId, string> = { regolith: t('regolith'), iron: t('iron'), water: t('water'), oxygen: 'O₂', food: t('food'), hydrogen: 'H₂' };
 
 function fmt(v: number): string {
   return v >= 10 ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, '');
@@ -40,8 +41,8 @@ function fmt(v: number): string {
 /** Construction menu: pick a building, then click a spot on the map to place it. */
 export class ConstructionMenu implements Panel {
   readonly id = 'construction' as const;
-  readonly title = 'Construction';
-  readonly subtitle = 'Choose a building, then click on the glowing circle around the base.';
+  readonly title = t('Construction');
+  readonly subtitle = t('Choose a building, then click on the glowing circle around the base.');
   readonly el: HTMLElement;
   private cards: Card[] = [];
   private roadCard!: HTMLButtonElement;
@@ -65,29 +66,29 @@ export class ConstructionMenu implements Panel {
         costRow.append(el);
       }
       const effects: string[] = [];
-      if (def.solarPeakKw > 0) effects.push(`☀ up to ${fmt(def.solarPeakKw)} kW in sunshine`);
-      if (def.batteryKwh > 0) effects.push(`🔋 stores ${def.batteryKwh} kWh`);
+      if (def.solarPeakKw > 0) effects.push(`☀ ${t('up to {kw} kW in sunshine', { kw: fmt(def.solarPeakKw) })}`);
+      if (def.batteryKwh > 0) effects.push(`🔋 ${t('stores {n} kWh', { n: def.batteryKwh })}`);
       const kw = maxPowerKw(type);
-      if (kw > 0) effects.push(`⚡ uses ${fmt(kw)} kW`);
+      if (kw > 0) effects.push(`⚡ ${t('uses {kw} kW', { kw: fmt(kw) })}`);
       const flows: string[] = [];
       for (const id of RESOURCE_IDS) {
         const v = def.recipes.reduce((sum, r) => sum + recipeRatePerSol(RECIPES[r], id), 0);
         if (Math.abs(v) > 1e-6) flows.push(`${v > 0 ? '+' : '−'}${fmt(Math.abs(v))} ${SUB[id]}`);
       }
-      if (flows.length) effects.push(`${flows.join(', ')} per sol`);
-      if (def.housing) effects.push(`🛏 ${def.housing} beds`);
-      if (def.steadyKw) effects.push(`⚛ ${def.steadyKw} kW day and night`);
-      if (def.researchPerSol) effects.push(`🔬 ${def.researchPerSol} research points per sol`);
+      if (flows.length) effects.push(t('{list} per sol', { list: flows.join(', ') }));
+      if (def.housing) effects.push(`🛏 ${tn(def.housing, '{n} bed', '{n} beds')}`);
+      if (def.steadyKw) effects.push(`⚛ ${t('{kw} kW day and night', { kw: def.steadyKw })}`);
+      if (def.researchPerSol) effects.push(`🔬 ${t('{n} research points per sol', { n: def.researchPerSol })}`);
       if (def.con) effects.push(`⚠ ${def.con}`);
       const stores = (Object.keys(def.storage) as ResourceId[]).length;
-      if (stores && def.buildable) effects.push('📦 more storage for every resource');
+      if (stores && def.buildable) effects.push(`📦 ${t('more storage for every resource')}`);
       const badge = h('span', { class: 'lock-badge' });
       const note = h('div', { class: 'card-note' });
       const root = h(
         'button',
         {
           class: 'build-card',
-          attrs: { type: 'button', 'aria-label': `Build ${def.name}` },
+          attrs: { type: 'button', 'aria-label': t('Build {name}', { name: def.name }) },
           on: { click: () => this.choose(type) },
         },
         [
@@ -96,17 +97,17 @@ export class ConstructionMenu implements Panel {
           h('div', { class: 'card-main' }, [
             h('div', { class: 'card-title' }, [h('span', { class: 'card-name', text: def.name }), badge]),
             def.requiresTech
-              ? h('div', { class: 'shadow-title' }, [h('span', { text: 'Unknown technology' })])
+              ? h('div', { class: 'shadow-title' }, [h('span', { text: t('Unknown technology') })])
               : null,
             def.requiresTech
               ? h('div', { class: 'shadow-note' }, [
                   h('span', { class: 'row-icon', html: MISC_ICONS.rp }),
-                  h('span', { text: `Invent it first: research “${TECH_BY_ID[def.requiresTech].name}”.` }),
+                  h('span', { text: t('Invent it first: research “{tech}”.', { tech: TECH_BY_ID[def.requiresTech].name }) }),
                 ])
               : null,
             h('div', { class: 'card-desc', text: def.description }),
             h('div', { class: 'card-effects', text: effects.join(' · ') }),
-            h('div', { class: 'card-foot' }, [costRow, h('span', { class: 'build-time', text: `⏱ ${def.buildTimeSols} sol` })]),
+            h('div', { class: 'card-foot' }, [costRow, h('span', { class: 'build-time', text: `⏱ ${tn(def.buildTimeSols, '{n} sol', '{n} sols')}` })]),
             note,
           ]),
         ],
@@ -122,7 +123,7 @@ export class ConstructionMenu implements Panel {
       costRow.append(
         h('span', { class: 'cost', title: RESOURCES[id].name, style: { ['--chip-color' as never]: RESOURCES[id].color } }, [
           h('span', { class: 'cost-icon', html: RESOURCE_ICONS[id] }),
-          `${amount} each`,
+          t('{n} each', { n: amount }),
         ]),
       );
     }
@@ -131,24 +132,24 @@ export class ConstructionMenu implements Panel {
       'button',
       {
         class: 'build-card road-card',
-        attrs: { type: 'button', 'aria-label': 'Build roads' },
+        attrs: { type: 'button', 'aria-label': t('Build roads') },
         on: {
           click: () => {
             const res = gameStore.getState().startRoadMode();
-            if (!res.ok) gameStore.getState().pushAlert({ key: 'cant-afford', level: 'warning', title: 'Not enough regolith for roads', message: res.reason });
+            if (!res.ok) gameStore.getState().pushAlert({ key: 'cant-afford', level: 'warning', title: t('Not enough regolith for roads'), message: res.reason });
           },
         },
       },
       [
         buildingIcon('card-icon', buildingThumbnail('road'), '🛣️'),
         h('div', { class: 'card-main' }, [
-          h('div', { class: 'card-title', text: 'Road (N)' }),
+          h('div', { class: 'card-title', text: t('Road (N)') }),
           h('div', {
             class: 'card-desc',
-            text: 'Rovers carry goods along roads. Lay pieces one by one from the Storage Depot to each building — without a road, its goods pile up and can’t reach the base.',
+            text: t('Rovers carry goods along roads. Lay pieces one by one from the Storage Depot to each building — without a road, its goods pile up and can’t reach the base.'),
           }),
-          h('div', { class: 'card-effects', text: 'Drag to lay road · click a piece to remove it' }),
-          h('div', { class: 'card-foot' }, [costRow, h('span', { class: 'build-time', text: '⏱ instant' })]),
+          h('div', { class: 'card-effects', text: t('Drag to lay road · click a piece to remove it') }),
+          h('div', { class: 'card-foot' }, [costRow, h('span', { class: 'build-time', text: `⏱ ${t('instant')}` })]),
           this.roadNote,
         ]),
       ],
@@ -164,7 +165,7 @@ export class ConstructionMenu implements Panel {
     }
     const res = gameStore.getState().startPlacement(type);
     if (!res.ok) {
-      gameStore.getState().pushAlert({ key: 'cant-afford', level: 'warning', title: `Not enough materials for ${BUILDINGS[type].name}`, message: res.reason });
+      gameStore.getState().pushAlert({ key: 'cant-afford', level: 'warning', title: t('Not enough materials for {name}', { name: BUILDINGS[type].name }), message: res.reason });
     }
   }
 
@@ -194,16 +195,25 @@ export class ConstructionMenu implements Panel {
       toggleClass(c.root, 'locked', locked);
       const unknown = !hasTech(s.research.completed, def.requiresTech);
       toggleClass(c.root, 'unresearched', unknown);
-      c.root.setAttribute('aria-label', unknown ? `Unknown technology — open research for ${TECH_BY_ID[def.requiresTech!].name}` : `Build ${def.name}`);
+      c.root.setAttribute('aria-label', unknown ? t('Unknown technology — open research for {tech}', { tech: TECH_BY_ID[def.requiresTech!].name }) : t('Build {name}', { name: def.name }));
       c.root.setAttribute('aria-disabled', String(!check.ok));
       for (const [id, el] of c.costs) {
         toggleClass(el, 'short', (cost[id] ?? 0) > stock[id] + 1e-9);
         setText(el.querySelector('.cost-n')!, `${cost[id] ?? 0}`);
       }
-      const reason = !check.ok ? check.reason : '';
-      const rankLocked = locked && reason.startsWith('Unlocks at rank');
-      setText(c.badge, !locked ? '' : rankLocked ? `🔒 ${rankById(def.unlockRank!).title}` : reason.startsWith('Needs research') ? '🔬 Research' : '📍 Site');
-      setText(c.note, check.ok ? '' : check.code === 'power' ? `⚡ ${check.reason}` : rankLocked ? `Earn XP to reach ${rankById(def.unlockRank!).title} — finish buildings, goals and missions.` : check.reason);
+      // Same order as BaseEnv's lock reasons: rank first, then research, then the site.
+      const rankLocked = locked && !hasRank(s.progression.level, def.unlockRank);
+      setText(c.badge, !locked ? '' : rankLocked ? `🔒 ${rankById(def.unlockRank!).title}` : unknown ? `🔬 ${t('Research')}` : `📍 ${t('Site')}`);
+      setText(
+        c.note,
+        check.ok
+          ? ''
+          : check.code === 'power'
+            ? `⚡ ${check.reason}`
+            : rankLocked
+              ? t('Earn XP to reach {rank} — finish buildings, goals and missions.', { rank: rankById(def.unlockRank!).title })
+              : check.reason,
+      );
       toggleClass(c.note, 'warn', !check.ok && check.code === 'power');
     }
   }

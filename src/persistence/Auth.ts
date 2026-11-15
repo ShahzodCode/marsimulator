@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { supabase, resetCloudUser } from './supabase';
 import { isNameAllowed } from '../data/usernameFilter';
+import { t } from '../i18n';
 
 /** A signed-in player with a real (email + password) account. Guests have no Account. */
 export interface Account {
@@ -31,29 +32,29 @@ function toAccount(session: Session | null): Account | null {
 /** Turns Supabase error text into short, kid-friendly messages. */
 function friendly(message: string): string {
   const m = message.toLowerCase();
-  if (m.includes('invalid login credentials')) return 'Wrong email or password.';
-  if (m.includes('already registered') || m.includes('already been registered')) return 'That email already has an account — try logging in.';
+  if (m.includes('invalid login credentials')) return t('Wrong email or password.');
+  if (m.includes('already registered') || m.includes('already been registered')) return t('That email already has an account — try logging in.');
   // Only happens if "Confirm email" is switched on in Supabase; the game expects it off.
-  if (m.includes('email not confirmed')) return 'Accounts are not set up correctly yet — please tell a grown-up.';
-  if (m.includes('password') && (m.includes('least') || m.includes('short') || m.includes('weak'))) return `Password needs at least ${PASSWORD_MIN} characters.`;
-  if (m.includes('rate limit') || m.includes('too many')) return 'Too many tries — wait a minute and try again.';
-  if (m.includes('fetch') || m.includes('network')) return 'Could not reach the server. Check your internet connection.';
+  if (m.includes('email not confirmed')) return t('Accounts are not set up correctly yet — please tell a grown-up.');
+  if (m.includes('password') && (m.includes('least') || m.includes('short') || m.includes('weak'))) return t('Password needs at least {n} characters.', { n: PASSWORD_MIN });
+  if (m.includes('rate limit') || m.includes('too many')) return t('Too many tries — wait a minute and try again.');
+  if (m.includes('fetch') || m.includes('network')) return t('Could not reach the server. Check your internet connection.');
   return message;
 }
 
 export function validateEmail(email: string): string | null {
-  return EMAIL_RE.test(email.trim()) ? null : 'Enter a valid email address.';
+  return EMAIL_RE.test(email.trim()) ? null : t('Enter a valid email address.');
 }
 
 export function validatePassword(password: string): string | null {
-  return password.length >= PASSWORD_MIN ? null : `Password needs at least ${PASSWORD_MIN} characters.`;
+  return password.length >= PASSWORD_MIN ? null : t('Password needs at least {n} characters.', { n: PASSWORD_MIN });
 }
 
 export function validateUsername(name: string): string | null {
   const n = name.trim();
-  if (n.length < USERNAME_MIN || n.length > USERNAME_MAX) return `Pick a name with ${USERNAME_MIN}–${USERNAME_MAX} characters.`;
-  if (!USERNAME_RE.test(n)) return 'Use only letters, numbers, spaces, - and _.';
-  if (!isNameAllowed(n)) return 'Other players will see this name — please pick a friendlier one.';
+  if (n.length < USERNAME_MIN || n.length > USERNAME_MAX) return t('Pick a name with {min}–{max} characters.', { min: USERNAME_MIN, max: USERNAME_MAX });
+  if (!USERNAME_RE.test(n)) return t('Use only letters, numbers, spaces, - and _.');
+  if (!isNameAllowed(n)) return t('Other players will see this name — please pick a friendlier one.');
   return null;
 }
 
@@ -111,7 +112,7 @@ class AuthService {
   }
 
   async signUp(email: string, password: string): Promise<AuthResult> {
-    if (!supabase) return { ok: false, error: 'Accounts are not available right now.' };
+    if (!supabase) return { ok: false, error: t('Accounts are not available right now.') };
     const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
     if (error) return { ok: false, error: friendly(error.message) };
     // Supabase hides "already registered" behind an empty identities list.
@@ -125,23 +126,23 @@ class AuthService {
       session = login.data.session;
     }
     const account = toAccount(session);
-    if (!account) return { ok: false, error: 'Could not create the account. Please try again.' };
+    if (!account) return { ok: false, error: t('Could not create the account. Please try again.') };
     this.set(account, 'signup');
     return { ok: true, account };
   }
 
   async logIn(email: string, password: string): Promise<AuthResult> {
-    if (!supabase) return { ok: false, error: 'Accounts are not available right now.' };
+    if (!supabase) return { ok: false, error: t('Accounts are not available right now.') };
     const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) return { ok: false, error: friendly(error.message) };
     const account = toAccount(data.session);
-    if (!account) return { ok: false, error: 'Could not log in. Please try again.' };
+    if (!account) return { ok: false, error: t('Could not log in. Please try again.') };
     this.set(account, 'login');
     return { ok: true, account };
   }
 
   async setUsername(name: string): Promise<AuthResult> {
-    if (!supabase || !this.account) return { ok: false, error: 'Log in first.' };
+    if (!supabase || !this.account) return { ok: false, error: t('Log in first.') };
     const { data, error } = await supabase.auth.updateUser({ data: { username: name.trim() } });
     if (error) return { ok: false, error: friendly(error.message) };
     const account: Account = { ...this.account, username: (data.user?.user_metadata as { username?: string }).username ?? name.trim() };

@@ -8,6 +8,7 @@ import { STARTING_BUILDINGS } from '../data/settlement';
 import { rankForXp } from '../data/progression';
 import { emptyResources } from '../data/resources';
 import { PowerManager } from '../simulation/PowerManager';
+import { LOG_LIMIT } from '../state/gameStore';
 
 /**
  * Versioned save format. Only durable game data is stored — transient UI state
@@ -175,7 +176,7 @@ export function fromSave(save: SaveData): GameState {
     research,
     pipelines: (st.pipelines ?? []).map((p) => ({ ...p, flow: { ...(p.flow ?? {}) }, working: p.working ?? false, faults: (p.faults ?? []).map((f) => ({ ...f })) })),
     shipments: (st.shipments ?? []).map((x) => ({ ...x, cargo: { ...x.cargo } })),
-    log: (st.log ?? []).map((x) => ({ ...x })),
+    log: (st.log ?? []).slice(-LOG_LIMIT).map((x) => ({ ...x })),
     timeSols: st.timeSols,
     speed: st.speed ?? 1,
     colony: { ...base.colony, ...(st.colony ?? {}), growth: st.colony?.growth ?? 0 },

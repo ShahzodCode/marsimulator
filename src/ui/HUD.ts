@@ -11,6 +11,7 @@ import { HUD_ICONS, ICONS } from './icons';
 import { ProfileDialog } from './ProfileDialog';
 import { rankBadgeSvg } from './RankBadge';
 import { Auth } from '../persistence/Auth';
+import { t } from '../i18n';
 
 /** Speeds the speed button steps through, in order. */
 const SPEEDS: SimSpeed[] = [1, 2, 4];
@@ -48,7 +49,7 @@ export class HUD {
     this.el = h('header', { class: 'topbar', attrs: { role: 'banner' } }, [
       this.brand(parent),
       // Resources on the right edge, with the clock and speed controls tucked under them.
-      h('div', { class: 'hud-right' }, [this.resources(), this.time()]),
+      h('div', { class: 'hud-right' }, [this.resources(), this.time(events)]),
     ]);
     parent.append(this.el);
     // A soft glow on a resource chip whenever a production cycle delivers to it.
@@ -74,8 +75,8 @@ export class HUD {
     this.badge = h('button', { class: 'brand-mark rank-badge', attrs: { type: 'button' }, on: { click: () => ProfileDialog.toggle(parent) } });
     const label = () => {
       const a = Auth.current;
-      this.badge.setAttribute('aria-label', `Open your profile${a?.username ? ` (${a.username})` : ''}`);
-      this.badge.title = a ? `${a.username ?? 'Commander'} — open profile` : 'Open your commander profile';
+      this.badge.setAttribute('aria-label', a?.username ? t('Open your profile ({name})', { name: a.username }) : t('Open your profile'));
+      this.badge.title = a ? t('{name} — open profile', { name: a.username ?? t('Commander') }) : t('Open your commander profile');
       setText(name, a ? (a.username ?? a.email.split('@')[0]) : SETTLEMENT.name);
     };
     Auth.onChange(label);
@@ -103,7 +104,7 @@ export class HUD {
   }
 
   private resources(): HTMLElement {
-    const wrap = h('div', { class: 'resources', attrs: { role: 'list', 'aria-label': 'Resources' } });
+    const wrap = h('div', { class: 'resources', attrs: { role: 'list', 'aria-label': t('Resources') } });
     for (const id of RESOURCE_IDS) {
       const def = RESOURCES[id];
       if (!def.hud) continue;
@@ -123,21 +124,21 @@ export class HUD {
     return wrap;
   }
 
-  private time(): HTMLElement {
+  private time(events: EventBus): HTMLElement {
     this.solEl = h('span', { class: 'sol' });
     this.clockEl = h('span', { class: 'clock' });
-    const group = h('div', { class: 'speed-group', attrs: { role: 'group', 'aria-label': 'Simulation speed' } });
+    const group = h('div', { class: 'speed-group', attrs: { role: 'group', 'aria-label': t('Simulation speed') } });
     this.pauseBtn = h('button', {
       class: 'speed-btn',
       html: ICONS.pause,
-      title: 'Pause / resume (Space)',
-      attrs: { type: 'button', 'aria-label': 'Pause / resume (Space)' },
+      title: t('Pause / resume (Space)'),
+      attrs: { type: 'button', 'aria-label': t('Pause / resume (Space)') },
       on: { click: () => gameStore.getState().togglePause() },
     });
     // One button that steps through the speeds: 1× → 2× → 4× → 1×.
     this.speedBtn = h('button', {
       class: 'speed-btn speed-cycle',
-      title: 'Change speed: 1× → 2× → 4× (keys 1, 2, 3)',
+      title: t('Change speed: 1× → 2× → 4× (keys 1, 2, 3)'),
       attrs: { type: 'button' },
       on: {
         click: () => {
@@ -147,8 +148,15 @@ export class HUD {
         },
       },
     });
-    group.append(this.pauseBtn, this.speedBtn);
-    return h('div', { class: 'timebox' }, [h('div', { class: 'time-readout', title: 'A sol is one Martian day — 24 hours and 39 minutes long.' }, [this.solEl, this.clockEl]), group]);
+    const menuBtn = h('button', {
+      class: 'speed-btn menu-btn',
+      html: ICONS.menu,
+      title: t('Game menu (Esc)'),
+      attrs: { type: 'button', 'aria-label': t('Game menu (Esc)') },
+      on: { click: () => events.emit('menu:open') },
+    });
+    group.append(this.pauseBtn, this.speedBtn, menuBtn);
+    return h('div', { class: 'timebox' }, [h('div', { class: 'time-readout', title: t('A sol is one Martian day — 24 hours and 39 minutes long.') }, [this.solEl, this.clockEl]), group]);
   }
 
   private render(s: GameStore): void {
@@ -168,8 +176,8 @@ export class HUD {
       toggleClass(c.root, 'low', def.vital && amt > 0.01 && left < def.warnSols);
       toggleClass(c.root, 'full', cap > 0 && amt >= cap - 0.5);
       const title = `${def.name}: ${def.description}
-In stock: ${formatAmount(amt)} ${def.unit} (${formatRate(rate)})
-Max storage: ${formatAmount(cap)} ${def.unit}`;
+${t('In stock: {amount} {unit} ({rate})', { amount: formatAmount(amt), unit: def.unit, rate: formatRate(rate) })}
+${t('Max storage: {amount} {unit}', { amount: formatAmount(cap), unit: def.unit })}`;
       if (c.root.title !== title) c.root.title = title;
     }
     const p = s.power;
@@ -180,26 +188,30 @@ Max storage: ${formatAmount(cap)} ${def.unit}`;
     toggleClass(this.energyChip, 'critical', p.unpowered > 0);
     toggleClass(this.energyChip, 'low', p.unpowered === 0 && (charge < 0.2 || p.plannedDemandKw > p.avgGenerationKw));
     toggleClass(this.energyChip, 'charging', p.generationKw > p.suppliedKw + 0.05 && charge < 0.999);
-    const tip = `Electricity (${day ? 'day' : 'night'})
-Current — buildings asking for: ${p.demandKw.toFixed(1)} kW
-Max — solar panels now: ${p.generationKw.toFixed(1)} kW
-Solar averaged over day and night: about ${p.avgGenerationKw.toFixed(0)} kW
-Buildings using: ${p.suppliedKw.toFixed(1)} kW${p.unpowered ? ` — ${p.unpowered} waiting for power` : ''}
-Batteries (bar): ${p.batteryKwh.toFixed(0)} / ${p.batteryCapacityKwh.toFixed(0)} kWh
-Spare for new buildings: ${Math.max(0, p.avgGenerationKw - p.plannedDemandKw).toFixed(1)} kW`;
+    const tip = [
+      day ? t('Electricity (day)') : t('Electricity (night)'),
+      t('Current — buildings asking for: {kw} kW', { kw: p.demandKw.toFixed(1) }),
+      t('Max — solar panels now: {kw} kW', { kw: p.generationKw.toFixed(1) }),
+      t('Solar averaged over day and night: about {kw} kW', { kw: p.avgGenerationKw.toFixed(0) }),
+      t('Buildings using: {kw} kW', { kw: p.suppliedKw.toFixed(1) }) + (p.unpowered ? t(' — {n} waiting for power', { n: p.unpowered }) : ''),
+      t('Batteries (bar): {now} / {max} kWh', { now: p.batteryKwh.toFixed(0), max: p.batteryCapacityKwh.toFixed(0) }),
+      t('Spare for new buildings: {kw} kW', { kw: Math.max(0, p.avgGenerationKw - p.plannedDemandKw).toFixed(1) }),
+    ].join('\n');
     if (this.energyChip.title !== tip) this.energyChip.title = tip;
 
     setText(this.popMax, String(s.colony.housing));
     setText(this.popCur, String(s.colony.colonists));
-    const popTip = `Crew
-Current — colonists living in the base: ${s.colony.colonists}
-Max — beds in habitats: ${s.colony.housing}`;
+    const popTip = [
+      t('Crew'),
+      t('Current — colonists living in the base: {n}', { n: s.colony.colonists }),
+      t('Max — beds in habitats: {n}', { n: s.colony.housing }),
+    ].join('\n');
     if (this.popChip.title !== popTip) this.popChip.title = popTip;
     toggleClass(this.popChip, 'low', s.colony.housing < s.colony.colonists);
 
-    const t = formatMarsTime(s.timeSols);
-    setText(this.solEl, `Sol ${t.sol}`);
-    setText(this.clockEl, t.clock);
+    const time = formatMarsTime(s.timeSols);
+    setText(this.solEl, t('Sol {n}', { n: time.sol }));
+    setText(this.clockEl, time.clock);
     toggleClass(this.pauseBtn, 'active', s.paused);
     const icon = s.paused ? 'play' : 'pause';
     if (this.pauseBtn.dataset.icon !== icon) {
@@ -207,7 +219,7 @@ Max — beds in habitats: ${s.colony.housing}`;
       this.pauseBtn.dataset.icon = icon;
     }
     setText(this.speedBtn, `${s.speed}×`);
-    this.speedBtn.setAttribute('aria-label', `Speed ${s.speed}×, click for ${SPEEDS[(SPEEDS.indexOf(s.speed) + 1) % SPEEDS.length]}×`);
+    this.speedBtn.setAttribute('aria-label', t('Speed {now}×, click for {next}×', { now: s.speed, next: SPEEDS[(SPEEDS.indexOf(s.speed) + 1) % SPEEDS.length] }));
     toggleClass(this.speedBtn, 'active', !s.paused);
 
     const rank = rankForXp(s.progression.xp);
@@ -227,7 +239,7 @@ Max — beds in habitats: ${s.colony.housing}`;
     const frac = next ? (s.progression.xp - rank.xp) / (next.xp - rank.xp) : 1;
     this.xpFill.style.transform = `scaleX(${Math.min(1, frac).toFixed(3)})`;
     this.levelEl.parentElement!.title = next
-      ? `${s.progression.xp} XP — ${next.xp - s.progression.xp} XP to ${next.title}`
-      : `${s.progression.xp} XP — highest rank!`;
+      ? t('{xp} XP — {left} XP to {rank}', { xp: s.progression.xp, left: next.xp - s.progression.xp, rank: next.title })
+      : t('{xp} XP — highest rank!', { xp: s.progression.xp });
   }
 }

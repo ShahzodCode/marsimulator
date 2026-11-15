@@ -2,6 +2,7 @@ import { gameStore, watch } from '../state/gameStore';
 import type { PanelId } from '../state/types';
 import { h, setText } from './dom';
 import { ICONS } from './icons';
+import { t } from '../i18n';
 
 export interface Panel {
   id: PanelId;
@@ -33,8 +34,8 @@ export class SidePanel {
         h('button', {
           class: 'icon-btn',
           html: ICONS.close,
-          title: 'Close (Esc)',
-          attrs: { 'aria-label': 'Close panel' },
+          title: t('Close (Esc)'),
+          attrs: { 'aria-label': t('Close panel') },
           on: { click: () => gameStore.getState().openPanel(null) },
         }),
       ]),

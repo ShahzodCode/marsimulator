@@ -5,6 +5,7 @@ import { angularDistance, MARS_RADIUS_KM, R, type LatLon } from '../planet/geo';
 import { describeCost, Logistics } from '../simulation/Logistics';
 import { gameStore } from '../state/gameStore';
 import type { BaseData } from '../state/types';
+import { t } from '../i18n';
 
 /** Camera height for joining bases: far enough out to see bases ~2,000 km apart. */
 export const LINK_ALTITUDE = 70;
@@ -76,7 +77,7 @@ export class LinkTools {
         const any = this.snapBase(hit);
         this.events.emit('placement:feedback', {
           valid: false,
-          message: any ? `${any.name} has no Pipeline Pump Station yet. Start from a base that has one.` : 'Start the drag on a base that has a Pump Station.',
+          message: any ? t('{name} has no Pipeline Pump Station yet. Start from a base that has one.', { name: any.name }) : t('Start the drag on a base that has a Pump Station.'),
         });
         return;
       }
@@ -107,7 +108,7 @@ export class LinkTools {
     if (!commit || !st?.to) return;
     const store = gameStore.getState();
     const res = store.buildPipeline(st.from.id, st.to.id);
-    if (!res.ok) store.pushAlert({ key: 'pipe-error', level: 'warning', title: 'Can’t lay this pipeline', message: res.reason });
+    if (!res.ok) store.pushAlert({ key: 'pipe-error', level: 'warning', title: t('Can’t lay this pipeline'), message: res.reason });
     else this.events.emit('placement:feedback', { valid: true, message: 'Pipeline laid! Drag between two more bases, or press Done.' });
   }
 
@@ -128,7 +129,7 @@ export class LinkTools {
     a.to = this.snapBase(hit, (b) => b.id !== home);
     if (a.to) this.view.showPreview(a.from, a.to, true);
     else if (hit) this.view.showPreview(a.from, hit, false);
-    return a.to ? { valid: true, label: `→ ${a.to.name}` } : { valid: false, label: 'Drop it on another base' };
+    return a.to ? { valid: true, label: `→ ${a.to.name}` } : { valid: false, label: t('Drop it on another base') };
   }
 
   garageDragEnd(): void {
@@ -138,6 +139,6 @@ export class LinkTools {
     if (!a?.to) return;
     const store = gameStore.getState();
     const res = store.setGarageTarget(a.garageId, a.to.id);
-    if (!res.ok) store.pushAlert({ key: 'garage-error', level: 'warning', title: 'Can’t send haulers there', message: res.reason });
+    if (!res.ok) store.pushAlert({ key: 'garage-error', level: 'warning', title: t('Can’t send haulers there'), message: res.reason });
   }
 }

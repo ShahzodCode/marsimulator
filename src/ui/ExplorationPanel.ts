@@ -10,6 +10,7 @@ import { clear, h, setText } from './dom';
 import { ICONS, RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
 import { SitesSection } from './SitesSection';
+import { t } from '../i18n';
 
 type Status = 'home' | 'explored' | 'expedition' | 'mapped' | 'scanning' | 'unknown';
 
@@ -31,12 +32,12 @@ function activeScan(s: GameStore, id: string): OrbitalScan | undefined {
 }
 
 const STATUS_TEXT: Record<Status, string> = {
-  home: 'Home region',
-  explored: 'Explored',
-  expedition: 'Crew on the way',
-  mapped: 'Mapped',
-  scanning: 'Mapping…',
-  unknown: 'Not mapped',
+  home: t('Home region'),
+  explored: t('Explored'),
+  expedition: t('Crew on the way'),
+  mapped: t('Mapped'),
+  scanning: t('Mapping…'),
+  unknown: t('Not mapped'),
 };
 
 /** Same colours as before: green explored, blue ready for the next step, orange busy. */
@@ -50,12 +51,12 @@ const STATUS_CLASS: Record<Status, string> = {
 };
 
 export const ACTIVITY_TEXT: Record<MissionActivity, string> = {
-  scanning: '📡 Photographing from orbit',
-  driving: '🚙 Driving',
-  night: '🌙 Parked for the night (no sun for the solar panels)',
-  storm: '🌪️ Waiting out a dust storm',
-  sampling: '🔬 Collecting samples',
-  done: '✔ Done',
+  scanning: `📡 ${t('Photographing from orbit')}`,
+  driving: `🚙 ${t('Driving')}`,
+  night: `🌙 ${t('Parked for the night (no sun for the solar panels)')}`,
+  storm: `🌪️ ${t('Waiting out a dust storm')}`,
+  sampling: `🔬 ${t('Collecting samples')}`,
+  done: `✔ ${t('Done')}`,
 };
 
 /** Earth years a number of sols lasts (S1: a sol is 24.6597 h). */
@@ -74,9 +75,9 @@ function stepTracker(s: GameStore, id: string, status: Status): HTMLElement {
     ]);
   const exp = s.expeditionCheck(id);
   return h('div', { class: 'step-tracker' }, [
-    step(1, 'Map from orbit', mapped, status === 'scanning', null),
-    step(2, 'Send a crew', explored, status === 'expedition', !mapped ? 'Map it from orbit first.' : exp.ok ? null : exp.reason),
-    canOutpost ? step(3, 'Build an outpost', hasOutpost, false, !explored ? 'Send a crew first.' : null) : step(3, 'Found a base (below)', false, false, null),
+    step(1, t('Map from orbit'), mapped, status === 'scanning', null),
+    step(2, t('Send a crew'), explored, status === 'expedition', !mapped ? t('Map it from orbit first.') : exp.ok ? null : exp.reason),
+    canOutpost ? step(3, t('Build an outpost'), hasOutpost, false, !explored ? t('Send a crew first.') : null) : step(3, t('Found a base (below)'), false, false, null),
   ]);
 }
 
@@ -97,8 +98,8 @@ function bestNextRegion(s: GameStore): string {
 /** Region browser: map regions from orbit, send crew expeditions, build outposts. Regions are the real USGS Mars Charts. */
 export class ExplorationPanel implements Panel {
   readonly id = 'exploration' as const;
-  readonly title = 'Exploration';
-  readonly subtitle = 'Explore like NASA: map a region from orbit, then send a crew rover to look up close.';
+  readonly title = t('Exploration');
+  readonly subtitle = t('Explore like NASA: map a region from orbit, then send a crew rover to look up close.');
   readonly el: HTMLElement;
   private detail: HTMLElement;
   private list: HTMLElement;
@@ -114,7 +115,7 @@ export class ExplorationPanel implements Panel {
     this.detail = h('div', { class: 'region-detail' });
     this.list = h('div', { class: 'region-list' });
     this.sites = new SitesSection(events);
-    this.el = h('div', { class: 'explore' }, [this.summary, this.detail, this.sites.el, h('h3', { class: 'section-title', text: 'All regions' }), this.list]);
+    this.el = h('div', { class: 'explore' }, [this.summary, this.detail, this.sites.el, h('h3', { class: 'section-title', text: t('All regions') }), this.list]);
   }
 
   show(): void {
@@ -162,7 +163,12 @@ export class ExplorationPanel implements Panel {
     const explored = REGIONS.filter((r) => s.exploredRegions[r.id]).length;
     clear(this.summary);
     this.summary.append(
-      h('div', { class: 'summary-row' }, [h('strong', { text: `${mapped} / ${REGIONS.length}` }), h('span', { text: ' mapped from orbit · ' }), h('strong', { text: `${explored}` }), h('span', { text: ' visited by crew' })]),
+      h('div', { class: 'summary-row' }, [
+        h('strong', { text: `${mapped} / ${REGIONS.length}` }),
+        h('span', { text: ` ${t('mapped from orbit')} · ` }),
+        h('strong', { text: `${explored}` }),
+        h('span', { text: ` ${t('visited by crew')}` }),
+      ]),
       h('div', { class: 'progress' }, [h('span', { class: 'progress-fill', style: { transform: `scaleX(${mapped / REGIONS.length})` } })]),
     );
   }
@@ -215,10 +221,10 @@ export class ExplorationPanel implements Panel {
       h('div', { class: 'region-head' }, [h('span', { class: 'region-code', text: r.id }), h('span', { class: `status-pill ${STATUS_CLASS[status]}`, text: STATUS_TEXT[status] })]),
       h('h3', { class: 'region-name', text: r.name }),
       h('p', { class: 'region-desc', text: r.description }),
-      h('ul', { class: 'highlights' }, r.highlights.map((t) => h('li', { text: t }))),
+      h('ul', { class: 'highlights' }, r.highlights.map((line) => h('li', { text: line }))),
       h('div', { class: 'region-meta' }, [
-        h('span', { text: `${r.latMin}° to ${r.latMax}° lat` }),
-        h('span', { text: status === 'home' ? 'Our base is here' : `${Math.round(plan.routeKm).toLocaleString()} km from base` }),
+        h('span', { text: t('{min}° to {max}° lat', { min: r.latMin, max: r.latMax }) }),
+        h('span', { text: status === 'home' ? t('Our base is here') : t('{n} km from base', { n: Math.round(plan.routeKm).toLocaleString() }) }),
       ]),
       h('div', { class: 'region-actions' }, [
         h(
@@ -234,7 +240,7 @@ export class ExplorationPanel implements Panel {
               },
             },
           },
-          [h('span', { class: 'btn-icon', html: ICONS.target }), 'Fly there'],
+          [h('span', { class: 'btn-icon', html: ICONS.target }), t('Fly there')],
         ),
       ]),
     );
@@ -243,15 +249,15 @@ export class ExplorationPanel implements Panel {
 
     // Step 1: map from orbit.
     if (status === 'unknown' || status === 'scanning') {
-      this.detail.append(h('h4', { class: 'step-title', text: 'Step 1 · Map it from orbit' }));
+      this.detail.append(h('h4', { class: 'step-title', text: t('Step 1 · Map it from orbit') }));
       const scan = activeScan(s, id);
       if (scan) {
         this.detail.append(
-          this.liveCard(ICONS.satellite, 'Orbiter mapping', (st, fill, eta, note) => {
+          this.liveCard(ICONS.satellite, t('Orbiter mapping'), (st, fill, eta, note) => {
             const m = st.missions.find((x) => x.id === scan.id);
             if (!m) return;
             fill.style.transform = `scaleX(${m.progress.toFixed(3)})`;
-            setText(eta, `${MissionManager.remainingSols(m).toFixed(1)} sols to go`);
+            setText(eta, t('{n} sols to go', { n: MissionManager.remainingSols(m).toFixed(1) }));
             setText(note, ACTIVITY_TEXT.scanning);
           }),
         );
@@ -259,35 +265,38 @@ export class ExplorationPanel implements Panel {
         const check = s.scanCheck(id);
         const sols = MissionManager.scanSols(regionManager, id);
         this.detail.append(
-          h('div', { class: 'region-actions' }, [this.button(`Map from orbit · ${sols.toFixed(1)} sols`, ICONS.satellite, check, () => gameStore.getState().launchScan(id), 'Can’t map it yet')]),
-          h('div', { class: 'survey-cost reward' }, [h('span', { class: 'label', text: 'Reward' }), h('span', { class: 'cost xp', style: { ['--chip-color' as never]: '#ffb03d' } }, [`★ +${ORBITAL_SCAN.xp} XP`])]),
+          h('div', { class: 'region-actions' }, [this.button(`${t('Map from orbit')} · ${t('{n} sols', { n: sols.toFixed(1) })}`, ICONS.satellite, check, () => gameStore.getState().launchScan(id), t('Can’t map it yet'))]),
+          h('div', { class: 'survey-cost reward' }, [h('span', { class: 'label', text: t('Reward') }), h('span', { class: 'cost xp', style: { ['--chip-color' as never]: '#ffb03d' } }, [`★ +${ORBITAL_SCAN.xp} ${t('XP')}`])]),
           ...(check.ok ? [] : [h('p', { class: 'reason', text: check.reason })]),
         );
       }
       const realSols = realScanSols(regionManager.areaFraction(id));
       this.detail.append(
         h('div', { class: 'fun-fact' }, [
-          h('strong', { text: 'Real NASA data: ' }),
-          `The Context Camera on NASA’s Mars Reconnaissance Orbiter, which circles Mars every ${NASA_ROVER_DATA.mroOrbitMinutes} minutes, took more than 10 years to photograph 99% of Mars. At that pace this region would take about ${Math.round(realSols)} sols. Our orbiter is sped up ${ORBITAL_SCAN.timeScale}×.`,
+          h('strong', { text: `${t('Real NASA data:')} ` }),
+          t(
+            'The Context Camera on NASA’s Mars Reconnaissance Orbiter, which circles Mars every {orbit} minutes, took more than 10 years to photograph 99% of Mars. At that pace this region would take about {sols} sols. Our orbiter is sped up {scale}×.',
+            { orbit: NASA_ROVER_DATA.mroOrbitMinutes, sols: Math.round(realSols), scale: ORBITAL_SCAN.timeScale },
+          ),
         ]),
       );
       return;
     }
 
-    this.detail.append(h('div', { class: 'fun-fact' }, [h('strong', { text: 'Orbit map: ' }), reward.hint]));
+    this.detail.append(h('div', { class: 'fun-fact' }, [h('strong', { text: `${t('Orbit map:')} ` }), reward.hint]));
 
     // Step 2: send the crew.
     if (status === 'mapped' || status === 'expedition') {
-      this.detail.append(h('h4', { class: 'step-title', text: 'Step 2 · Send a crew rover' }));
+      this.detail.append(h('h4', { class: 'step-title', text: t('Step 2 · Send a crew rover') }));
       const exp = activeExpedition(s, id);
       if (exp) {
         this.detail.append(
-          this.liveCard(ICONS.rover, exp.arrived ? 'Crew driving home' : 'Crew driving there', (st, fill, eta, note) => {
+          this.liveCard(ICONS.rover, exp.arrived ? t('Crew driving home') : t('Crew driving there'), (st, fill, eta, note) => {
             const m = st.missions.find((x) => x.id === exp.id);
             if (!m || m.type !== 'expedition') return;
             fill.style.transform = `scaleX(${m.progress.toFixed(3)})`;
-            setText(eta, `≈ ${MissionManager.remainingSols(m).toFixed(1)} sols to go`);
-            setText(note, `${ACTIVITY_TEXT[m.activity]} · ${Math.round(Math.min(m.drivenKm, m.legKm * 2)).toLocaleString()} of ${Math.round(m.legKm * 2).toLocaleString()} km`);
+            setText(eta, `≈ ${t('{n} sols to go', { n: MissionManager.remainingSols(m).toFixed(1) })}`);
+            setText(note, `${ACTIVITY_TEXT[m.activity]} · ${t('{done} of {total} km', { done: Math.round(Math.min(m.drivenKm, m.legKm * 2)).toLocaleString(), total: Math.round(m.legKm * 2).toLocaleString() })}`);
           }),
         );
       } else {
@@ -295,30 +304,33 @@ export class ExplorationPanel implements Panel {
         const { supplies } = MissionManager.supplies(plan);
         const rewardEls = [
           ...(Object.entries(reward.resources ?? {}) as [ResourceId, number][]).map(([rid, v]) => this.chip(rid, v, true)),
-          h('span', { class: 'cost xp', style: { ['--chip-color' as never]: '#ffb03d' } }, [`★ +${reward.xp} XP`]),
-          reward.outpost ? h('span', { class: 'cost', style: { ['--chip-color' as never]: RESOURCES[reward.outpost.resource].color } }, ['⛏️ outpost site']) : null,
+          h('span', { class: 'cost xp', style: { ['--chip-color' as never]: '#ffb03d' } }, [`★ +${reward.xp} ${t('XP')}`]),
+          reward.outpost ? h('span', { class: 'cost', style: { ['--chip-color' as never]: RESOURCES[reward.outpost.resource].color } }, [`⛏️ ${t('outpost site')}`]) : null,
         ];
         this.detail.append(
           h('ul', { class: 'route-facts' }, [
-            h('li', { text: `Route: ${Math.round(plan.routeKm).toLocaleString()} km, climbing ${Math.round(plan.climbM).toLocaleString()} m up and down` }),
-            h('li', { text: `There and back: about ${plan.totalSols.toFixed(1)} sols (longer if a dust storm hits)` }),
-            h('li', { text: `Crew: ${EXPEDITION.crew} astronauts. They pack food, water and oxygen for the trip plus 72 hours spare.` }),
+            h('li', { text: t('Route: {km} km, climbing {m} m up and down', { km: Math.round(plan.routeKm).toLocaleString(), m: Math.round(plan.climbM).toLocaleString() }) }),
+            h('li', { text: t('There and back: about {n} sols (longer if a dust storm hits)', { n: plan.totalSols.toFixed(1) }) }),
+            h('li', { text: t('Crew: {n} astronauts. They pack food, water and oxygen for the trip plus 72 hours spare.', { n: EXPEDITION.crew }) }),
           ]),
-          h('div', { class: 'region-actions' }, [this.button('Send crew rover', ICONS.rover, check, () => gameStore.getState().launchExpedition(id), 'Can’t send the crew')]),
+          h('div', { class: 'region-actions' }, [this.button(t('Send crew rover'), ICONS.rover, check, () => gameStore.getState().launchExpedition(id), t('Can’t send the crew'))]),
           h('div', { class: 'survey-cost' }, [
-            h('span', { class: 'label', text: 'Packs' }),
+            h('span', { class: 'label', text: t('Packs') }),
             ...(Object.entries(supplies) as [ResourceId, number][]).map(([rid, v]) => this.chip(rid, v)),
-            h('span', { class: 'cost', style: { ['--chip-color' as never]: '#ffd34d' }, title: 'Battery charge for the rover' }, [`🔋 ${EXPEDITION.energyKwh} kWh`]),
+            h('span', { class: 'cost', style: { ['--chip-color' as never]: '#ffd34d' }, title: t('Battery charge for the rover') }, [`🔋 ${EXPEDITION.energyKwh} ${t('kWh')}`]),
           ]),
-          h('div', { class: 'survey-cost reward' }, [h('span', { class: 'label', text: reward.rank ? `🔒 ${rankById(reward.rank).title}` : 'Reward' }), ...rewardEls]),
+          h('div', { class: 'survey-cost reward' }, [h('span', { class: 'label', text: reward.rank ? `🔒 ${rankById(reward.rank).title}` : t('Reward') }), ...rewardEls]),
           ...(check.ok ? [] : [h('p', { class: 'reason', text: check.reason })]),
         );
       }
       const perseveranceSols = (plan.routeKm * 1000) / NASA_ROVER_DATA.perseveranceRecordMPerSol;
       this.detail.append(
         h('div', { class: 'fun-fact' }, [
-          h('strong', { text: 'Real NASA data: ' }),
-          `NASA’s crew rover design drives about ${NASA_ROVER_DATA.sevSpeedKmh} km/h, and only in daylight here because it runs on solar power. The Perseverance robot drove its record ${NASA_ROVER_DATA.perseveranceRecordMPerSol} m in one sol; at that pace this trip would take it about ${Math.round(solsToYears(perseveranceSols))} years! Our crew rover is sped up ${EXPEDITION.timeScale}×.`,
+          h('strong', { text: `${t('Real NASA data:')} ` }),
+          t(
+            'NASA’s crew rover design drives about {speed} km/h, and only in daylight here because it runs on solar power. The Perseverance robot drove its record {record} m in one sol; at that pace this trip would take it about {years} years! Our crew rover is sped up {scale}×.',
+            { speed: NASA_ROVER_DATA.sevSpeedKmh, record: NASA_ROVER_DATA.perseveranceRecordMPerSol, years: Math.round(solsToYears(perseveranceSols)), scale: EXPEDITION.timeScale },
+          ),
         ]),
       );
       return;
@@ -326,10 +338,10 @@ export class ExplorationPanel implements Panel {
 
     // Step 3: explored. Show the report and the outpost.
     const done = [...s.missions].reverse().find((m): m is Expedition => m.type === 'expedition' && m.regionId === id && !!m.reward);
-    this.detail.append(h('div', { class: 'fun-fact' }, [h('strong', { text: 'Crew report: ' }), done?.reward?.find ?? reward.find]));
+    this.detail.append(h('div', { class: 'fun-fact' }, [h('strong', { text: `${t('Crew report:')} ` }), done?.reward?.find ?? reward.find]));
     const site = reward.outpost;
     if (!site) return;
-    this.detail.append(h('h4', { class: 'step-title', text: 'Step 3 · Build an outpost' }));
+    this.detail.append(h('h4', { class: 'step-title', text: t('Step 3 · Build an outpost') }));
     const outpost = s.outposts.find((o) => o.regionId === id);
     const res = RESOURCES[site.resource];
     if (outpost) {
@@ -340,26 +352,29 @@ export class ExplorationPanel implements Panel {
           if (st.timeSols < o.readySol) {
             const start = o.readySol - OUTPOST.setupSols - o.tripSols / 2;
             fill.style.transform = `scaleX(${Math.min(1, Math.max(0, (st.timeSols - start) / (o.readySol - start))).toFixed(3)})`;
-            setText(eta, `Ready in ${(o.readySol - st.timeSols).toFixed(1)} sols`);
-            setText(note, '🏗️ The kit is being driven there and set up.');
+            setText(eta, t('Ready in {n} sols', { n: (o.readySol - st.timeSols).toFixed(1) }));
+            setText(note, `🏗️ ${t('The kit is being driven there and set up.')}`);
           } else if (o.reserveLeft <= 0) {
             fill.style.transform = 'scaleX(1)';
-            setText(eta, 'Empty');
-            setText(note, 'This site has been mined out.');
+            setText(eta, t('Empty'));
+            setText(note, t('This site has been mined out.'));
           } else {
             const f = (st.timeSols - o.lastTripSol) / o.tripSols;
             fill.style.transform = `scaleX(${Math.min(1, Math.max(0, f)).toFixed(3)})`;
-            setText(eta, `Cargo in ${Math.max(0, o.lastTripSol + o.tripSols - st.timeSols).toFixed(1)} sols`);
-            setText(note, `🚚 Next load: ${Math.round(MissionManager.cargoLoad(o))} ${res.unit} ${res.name.toLowerCase()} · ${(o.reserveLeft / 1000).toFixed(1)} t left at the site`);
+            setText(eta, t('Cargo in {n} sols', { n: Math.max(0, o.lastTripSol + o.tripSols - st.timeSols).toFixed(1) }));
+            setText(
+              note,
+              `🚚 ${t('Next load: {n} {unit} {resource} · {left} t left at the site', { n: Math.round(MissionManager.cargoLoad(o)), unit: res.unit, resource: res.name.toLowerCase(), left: (o.reserveLeft / 1000).toFixed(1) })}`,
+            );
           }
         }),
       );
     } else {
       const check = s.outpostCheck(id);
       this.detail.append(
-        h('p', { class: 'region-desc', text: `${site.label}: about ${site.perSol} ${res.unit} of ${res.name.toLowerCase()} per sol. A cargo rover brings it home, up to ${OUTPOST.cargoPayloadKg} kg per trip (the payload of NASA’s crew rover design).` }),
-        h('div', { class: 'region-actions' }, [this.button('Build outpost', ICONS.target, check, () => gameStore.getState().buildOutpost(id), 'Can’t build the outpost')]),
-        h('div', { class: 'survey-cost' }, [h('span', { class: 'label', text: 'Needs' }), ...(Object.entries(OUTPOST.cost) as [ResourceId, number][]).map(([rid, v]) => this.chip(rid, v))]),
+        h('p', { class: 'region-desc', text: t('{site}: about {n} {unit} of {resource} per sol. A cargo rover brings it home, up to {kg} kg per trip (the payload of NASA’s crew rover design).', { site: site.label, n: site.perSol, unit: res.unit, resource: res.name.toLowerCase(), kg: OUTPOST.cargoPayloadKg }) }),
+        h('div', { class: 'region-actions' }, [this.button(t('Build outpost'), ICONS.target, check, () => gameStore.getState().buildOutpost(id), t('Can’t build the outpost'))]),
+        h('div', { class: 'survey-cost' }, [h('span', { class: 'label', text: t('Needs') }), ...(Object.entries(OUTPOST.cost) as [ResourceId, number][]).map(([rid, v]) => this.chip(rid, v))]),
         ...(check.ok ? [] : [h('p', { class: 'reason', text: check.reason })]),
       );
     }

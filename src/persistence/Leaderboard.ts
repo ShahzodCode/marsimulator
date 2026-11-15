@@ -2,6 +2,7 @@ import type { BuildingInstance } from '../state/types';
 import type { BuildingType } from '../data/buildings';
 import { supabase } from './supabase';
 import { Auth, type Account } from './Auth';
+import { t } from '../i18n';
 
 /**
  * The online leaderboard and other players' public profiles (Supabase functions in
@@ -12,10 +13,10 @@ import { Auth, type Account } from './Auth';
 export type LeaderboardSort = 'xp' | 'colonists' | 'buildings' | 'bases';
 
 export const SORTS: { id: LeaderboardSort; label: string; unit: string }[] = [
-  { id: 'xp', label: 'XP', unit: 'XP' },
-  { id: 'colonists', label: 'Crew', unit: 'crew' },
-  { id: 'buildings', label: 'Buildings', unit: 'buildings' },
-  { id: 'bases', label: 'Bases', unit: 'bases' },
+  { id: 'xp', label: t('XP'), unit: t('XP') },
+  { id: 'colonists', label: t('Crew'), unit: t('crew') },
+  { id: 'buildings', label: t('Buildings'), unit: t('buildings') },
+  { id: 'bases', label: t('Bases'), unit: t('bases') },
 ];
 
 export interface LeaderboardRow {
@@ -88,10 +89,10 @@ function fromError(error: { message?: string; code?: string } | null | undefined
   // The migration hasn't been run yet: the function or table doesn't exist.
   if (error?.code === 'PGRST202' || error?.code === 'PGRST205' || error?.code === '42883' || error?.code === '42P01' || msg.includes('could not find the function')) {
     console.warn('Leaderboard: the database is not set up. Run supabase/migrations/0002_leaderboard.sql once in the Supabase SQL Editor.', error);
-    return fail('unavailable', 'The leaderboard is not switched on yet — please tell a grown-up.');
+    return fail('unavailable', t('The leaderboard is not switched on yet — please tell a grown-up.'));
   }
-  if (msg.includes('fetch') || msg.includes('network')) return fail('offline', 'Could not reach the server. Check your internet connection.');
-  return fail('error', 'Something went wrong loading the leaderboard. Try again in a moment.');
+  if (msg.includes('fetch') || msg.includes('network')) return fail('offline', t('Could not reach the server. Check your internet connection.'));
+  return fail('error', t('Something went wrong loading the leaderboard. Try again in a moment.'));
 }
 
 async function cached<T>(key: string, fresh: boolean, load: () => Promise<Loaded<T>>): Promise<Loaded<T>> {
@@ -104,8 +105,8 @@ async function cached<T>(key: string, fresh: boolean, load: () => Promise<Loaded
 }
 
 function guardSignedIn(): Loaded<never> | null {
-  if (!supabase) return fail('unavailable', 'Online features are not available in this version.');
-  if (!Auth.current) return fail('guest', 'Log in to see the other commanders.');
+  if (!supabase) return fail('unavailable', t('Online features are not available in this version.'));
+  if (!Auth.current) return fail('guest', t('Log in to see the other commanders.'));
   return null;
 }
 
@@ -135,7 +136,7 @@ export function toColony(raw: unknown): PublicColony | null {
   const bases: PublicBase[] = list
     .map((b, i) => ({
       id: str(b.id, `base-${i}`),
-      name: str(b.name, i === 0 ? 'Jezero Base' : `Base ${i + 1}`),
+      name: str(b.name, i === 0 ? t('Jezero Base') : t('Base {n}', { n: i + 1 })),
       siteId: str(b.siteId, 'jezero'),
       lat: num(b.lat),
       lon: num(b.lon),
@@ -231,7 +232,7 @@ export const Leaderboard = {
 
   async setVisible(show: boolean): Promise<{ ok: boolean; message?: string }> {
     const account = Auth.current;
-    if (!supabase || !account) return { ok: false, message: 'Log in first.' };
+    if (!supabase || !account) return { ok: false, message: t('Log in first.') };
     // The profile row exists from sign-up, so only the switch changes (the name stays as it is).
     const { data, error } = await supabase
       .from('profiles')
@@ -245,11 +246,11 @@ export const Leaderboard = {
     }
     if (data?.length) return { ok: true };
     // No profile yet (database set up before automatic profiles): make one with the chosen name.
-    if (!account.username) return { ok: false, message: 'Pick your name first.' };
+    if (!account.username) return { ok: false, message: t('Pick your name first.') };
     const up = await supabase
       .from('profiles')
       .upsert({ user_id: account.id, username: account.username, show_on_leaderboard: show, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-    return up.error ? { ok: false, message: 'Could not change that right now.' } : { ok: true };
+    return up.error ? { ok: false, message: t('Could not change that right now.') } : { ok: true };
   },
 
   clearCache(): void {

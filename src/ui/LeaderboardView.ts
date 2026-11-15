@@ -3,6 +3,7 @@ import { Leaderboard, SORTS, type LeaderboardRow, type LeaderboardSort, type Loa
 import { h } from './dom';
 import { ICONS } from './icons';
 import { rankBadgeSvg } from './RankBadge';
+import { t } from '../i18n';
 
 export interface LeaderboardOptions {
   /** Rows to show (the full board shows up to 50). */
@@ -41,7 +42,7 @@ export class LeaderboardView {
   constructor(private opts: LeaderboardOptions) {
     this.sort = opts.full ? lastSort : 'xp';
     this.input = h('input', {
-      attrs: { type: 'search', placeholder: 'Search commanders…', maxlength: '20', 'aria-label': 'Search commanders by name', autocomplete: 'off', spellcheck: 'false' },
+      attrs: { type: 'search', placeholder: t('Search commanders…'), maxlength: '20', 'aria-label': t('Search commanders by name'), autocomplete: 'off', spellcheck: 'false' },
     });
     this.input.addEventListener('input', () => {
       window.clearTimeout(this.timer);
@@ -63,7 +64,7 @@ export class LeaderboardView {
     const sorts = opts.full
       ? h(
           'div',
-          { class: 'lb-sorts', attrs: { role: 'radiogroup', 'aria-label': 'Sort by' } },
+          { class: 'lb-sorts', attrs: { role: 'radiogroup', 'aria-label': t('Sort by') } },
           SORTS.map((s) => {
             const b = h('button', {
               class: 'lb-sort',
@@ -77,11 +78,11 @@ export class LeaderboardView {
         )
       : null;
 
-    this.list = h('ol', { class: 'lb-list', attrs: { 'aria-label': 'Leaderboard' } });
+    this.list = h('ol', { class: 'lb-list', attrs: { 'aria-label': t('Leaderboard') } });
     this.status = h('div', { class: 'lb-status', attrs: { role: 'status' } });
     this.pinned = h('div', { class: 'lb-pinned' });
     const more = opts.onShowAll
-      ? h('button', { class: 'link-btn lb-more', text: 'See the full leaderboard →', attrs: { type: 'button' }, on: { click: () => opts.onShowAll?.() } })
+      ? h('button', { class: 'link-btn lb-more', text: `${t('See the full leaderboard')} →`, attrs: { type: 'button' }, on: { click: () => opts.onShowAll?.() } })
       : null;
 
     this.el = h('div', { class: `lb ${opts.full ? 'full' : 'compact'}` }, [sorts, search, this.status, this.list, this.pinned, more]);
@@ -138,9 +139,9 @@ export class LeaderboardView {
       const msg = h('p', { text: result.message });
       const action =
         result.reason === 'guest' && this.opts.onLogin
-          ? h('button', { class: 'btn primary', attrs: { type: 'button' }, on: { click: () => this.opts.onLogin?.() } }, [h('span', { class: 'btn-icon', html: ICONS.user }), 'Log in / Sign up'])
+          ? h('button', { class: 'btn primary', attrs: { type: 'button' }, on: { click: () => this.opts.onLogin?.() } }, [h('span', { class: 'btn-icon', html: ICONS.user }), t('Log in / Sign up')])
           : result.reason === 'offline' || result.reason === 'error'
-            ? h('button', { class: 'btn', text: 'Try again', attrs: { type: 'button' }, on: { click: () => void this.reload() } })
+            ? h('button', { class: 'btn', text: t('Try again'), attrs: { type: 'button' }, on: { click: () => void this.reload() } })
             : null;
       this.status.replaceChildren(msg, ...(action ? [action] : []));
       this.status.className = `lb-status ${result.reason}`;
@@ -151,7 +152,7 @@ export class LeaderboardView {
     if (!rows.length) {
       this.list.replaceChildren();
       this.status.replaceChildren(
-        h('p', { text: this.term ? `No commander called “${this.term}” on the board.` : 'No commanders on the board yet — be the first!' }),
+        h('p', { text: this.term ? t('No commander called “{name}” on the board.', { name: this.term }) : t('No commanders on the board yet — be the first!') }),
       );
       return;
     }
@@ -166,7 +167,7 @@ export class LeaderboardView {
           h('span', { class: 'lb-pos', text: me.listed ? `#${me.position}` : '—' }),
           h('span', {
             class: 'lb-me-text',
-            text: me.listed ? `You · ${me.score.toLocaleString()} ${unit} · of ${me.total} commanders` : 'You are hidden from the board (see My profile).',
+            text: me.listed ? t('You · {score} {unit} · of {total} commanders', { score: me.score.toLocaleString(), unit, total: me.total }) : t('You are hidden from the board (see My profile).'),
           }),
         ]),
       );
@@ -177,23 +178,23 @@ export class LeaderboardView {
     const rank = rankForXp(r.xp);
     const sort = SORTS.find((s) => s.id === this.sort)!;
     const value = this.opts.full ? r.score : r.xp;
-    const unit = this.opts.full ? sort.unit : 'XP';
+    const unit = this.opts.full ? sort.unit : t('XP');
     const pos = r.position <= 3 ? MEDALS[r.position - 1] : `#${r.position}`;
     const btn = h(
       'button',
       {
         class: `lb-row${r.isMe ? ' me' : ''}${r.position <= 3 ? ` top top-${r.position}` : ''}`,
-        attrs: { type: 'button', 'aria-label': `${r.username}, place ${r.position}, ${rank.title}, ${value} ${unit}${r.online ? ', online now' : ''}` },
+        attrs: { type: 'button', 'aria-label': t('{name}, place {place}, {rank}, {value} {unit}', { name: r.username, place: r.position, rank: rank.title, value, unit }) + (r.online ? `, ${t('online now')}` : '') },
         on: { click: () => this.opts.onOpen(r.userId) },
       },
       [
         h('span', { class: 'lb-pos', text: pos }),
         h('span', { class: `rank-badge small rank-${rank.level}`, html: rankBadgeSvg(rank) }),
         h('span', { class: 'lb-name' }, [
-          h('strong', {}, [r.username, r.isMe ? h('span', { class: 'lb-you', text: 'you' }) : null]),
+          h('strong', {}, [r.username, r.isMe ? h('span', { class: 'lb-you', text: t('you') }) : null]),
           h('span', { class: 'muted', text: rank.title }),
         ]),
-        r.online ? h('span', { class: 'lb-online', title: 'Playing now' }) : null,
+        r.online ? h('span', { class: 'lb-online', title: t('Playing now') }) : null,
         h('span', { class: 'lb-score' }, [h('strong', { text: value.toLocaleString() }), h('span', { class: 'muted', text: unit })]),
       ],
     );

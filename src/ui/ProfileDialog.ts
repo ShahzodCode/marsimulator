@@ -9,6 +9,8 @@ import { rankBadgeSvg } from './RankBadge';
 import { Leaderboard } from '../persistence/Leaderboard';
 import { LeaderboardView } from './LeaderboardView';
 import { PlayerProfileView } from './PlayerProfileView';
+import { languagePicker } from './LanguagePicker';
+import { t } from '../i18n';
 
 type Tab = 'profile' | 'leaderboard';
 
@@ -69,7 +71,7 @@ export class ProfileDialog {
 
   private render(): void {
     this.dropViews();
-    const close = h('button', { class: 'icon-btn small auth-close', html: ICONS.close, attrs: { type: 'button', 'aria-label': 'Close' }, on: { click: () => this.close() } });
+    const close = h('button', { class: 'icon-btn small auth-close', html: ICONS.close, attrs: { type: 'button', 'aria-label': t('Close') }, on: { click: () => this.close() } });
     if (this.player) {
       const view = new PlayerProfileView(this.player, {
         onBack: () => this.showTab(this.tab),
@@ -101,12 +103,12 @@ export class ProfileDialog {
 
   private tabs(): HTMLElement {
     const names: [Tab, string][] = [
-      ['profile', 'My profile'],
-      ['leaderboard', 'Leaderboard'],
+      ['profile', t('My profile')],
+      ['leaderboard', t('Leaderboard')],
     ];
     const list = h(
       'div',
-      { class: 'profile-tabs', attrs: { role: 'tablist', 'aria-label': 'Profile sections' } },
+      { class: 'profile-tabs', attrs: { role: 'tablist', 'aria-label': t('Profile sections') } },
       names.map(([id, label]) =>
         h('button', {
           class: `profile-tab${this.tab === id ? ' on' : ''}`,
@@ -141,8 +143,8 @@ export class ProfileDialog {
       h('div', { class: 'lb-head' }, [
         h('span', { class: 'lb-head-icon', html: ICONS.trophy }),
         h('div', {}, [
-          h('h2', { text: 'Online leaderboard', attrs: { id: 'profile-title' } }),
-          h('p', { class: 'muted', text: 'Commanders from all over Earth. Tap one to see their profile and visit their bases.' }),
+          h('h2', { text: t('Online leaderboard'), attrs: { id: 'profile-title' } }),
+          h('p', { class: 'muted', text: t('Commanders from all over Earth. Tap one to see their profile and visit their bases.') }),
         ]),
       ]),
       this.board(true).el,
@@ -162,12 +164,12 @@ export class ProfileDialog {
     const error = h('p', { class: 'auth-error', attrs: { role: 'alert' } });
     const showPlace = async (fresh: boolean) => {
       const me = await Leaderboard.myPosition('xp', fresh);
-      setText(place, me.ok && me.data?.listed ? `You are #${me.data.position} of ${me.data.total} by XP` : '');
+      setText(place, me.ok && me.data?.listed ? t('You are #{place} of {total} by XP', { place: me.data.position, total: me.data.total }) : '');
     };
     void Leaderboard.myProfile()
       .then((p) => {
         box.checked = p?.visible ?? true;
-        if (!account.username && p?.username) setText(hint, `Other players see you as “${p.username}” until you pick your own name.`);
+        if (!account.username && p?.username) setText(hint, t('Other players see you as “{name}” until you pick your own name.', { name: p.username }));
       })
       .catch(() => (box.checked = true))
       .finally(() => (box.disabled = false));
@@ -179,14 +181,14 @@ export class ProfileDialog {
       box.disabled = false;
       if (!r.ok) {
         box.checked = !box.checked;
-        setText(error, r.message ?? 'Could not change that right now.');
+        setText(error, r.message ?? t('Could not change that right now.'));
         return;
       }
       void showPlace(true);
       for (const v of this.views) if (v instanceof LeaderboardView) void v.reload();
     });
     return h('div', { class: 'lb-switch-row' }, [
-      h('label', { class: 'lb-switch' }, [box, h('span', { class: 'lb-switch-track', attrs: { 'aria-hidden': 'true' } }), 'Show me on the leaderboard']),
+      h('label', { class: 'lb-switch' }, [box, h('span', { class: 'lb-switch-track', attrs: { 'aria-hidden': 'true' } }), t('Show me on the leaderboard')]),
       place,
       hint,
       error,
@@ -200,37 +202,39 @@ export class ProfileDialog {
     const next = nextLevel(rank.level);
     const frac = next ? Math.min(1, (s.progression.xp - rank.xp) / (next.xp - rank.xp)) : 1;
 
-    const name = account ? (account.username ?? 'New commander') : 'Guest commander';
+    const name = account ? (account.username ?? t('New commander')) : t('Guest commander');
     const header = h('div', { class: 'profile-head' }, [
       h('span', { class: `rank-badge large rank-${rank.level}`, html: rankBadgeSvg(rank) }),
       h('div', { class: 'profile-id' }, [
-        h('span', { class: 'eyebrow', text: 'Commander profile' }),
+        h('span', { class: 'eyebrow', text: t('Commander profile') }),
         this.editing && account ? this.nameForm(account.username ?? '') : h('h2', { text: name, attrs: { id: 'profile-title' } }),
-        h('p', { class: 'profile-email', text: account ? account.email : Auth.available ? 'Playing as a guest — not signed in' : 'Playing offline on this device' }),
+        h('p', { class: 'profile-email', text: account ? account.email : Auth.available ? t('Playing as a guest — not signed in') : t('Playing offline on this device') }),
       ]),
     ]);
 
     const rankBox = h('div', { class: 'profile-rank' }, [
       h('div', { class: 'profile-rank-row' }, [
         h('strong', { text: `${rank.icon} ${rank.title}` }),
-        h('span', { class: 'muted', text: `Rank ${rank.level} of ${RANKS.length}` }),
+        h('span', { class: 'muted', text: t('Rank {n} of {total}', { n: rank.level, total: RANKS.length }) }),
       ]),
       h('span', { class: 'xp-bar profile-xp' }, [h('span', { class: 'xp-fill', style: { transform: `scaleX(${frac.toFixed(3)})` } })]),
       h('p', {
         class: 'muted',
-        text: next ? `${s.progression.xp} XP — ${next.xp - s.progression.xp} XP to ${next.title}` : `${s.progression.xp} XP — you reached the highest rank!`,
+        text: next
+          ? t('{xp} XP — {left} XP to {rank}', { xp: s.progression.xp, left: next.xp - s.progression.xp, rank: next.title })
+          : t('{xp} XP — you reached the highest rank!', { xp: s.progression.xp }),
       }),
     ]);
 
     const regions = Object.values(s.discoveredRegions).filter(Boolean).length;
     const goalsDone = GOALS.filter((g) => s.progression.milestones.includes(g.id)).length;
     const stats = h('div', { class: 'profile-stats' }, [
-      stat('Sol', String(formatMarsTime(s.timeSols).sol)),
-      stat('Buildings', String(s.buildings.length)),
-      stat('Regions', String(regions)),
-      stat('Crew', String(s.colony.colonists)),
-      stat('Goals', `${goalsDone} / ${GOALS.length}`),
-      stat('XP', String(s.progression.xp)),
+      stat(t('Sol'), String(formatMarsTime(s.timeSols).sol)),
+      stat(t('Buildings'), String(s.buildings.length)),
+      stat(t('Regions'), String(regions)),
+      stat(t('Crew'), String(s.colony.colonists)),
+      stat(t('Goals'), `${goalsDone} / ${GOALS.length}`),
+      stat(t('XP'), String(s.progression.xp)),
     ]);
 
     const ladder = h(
@@ -242,7 +246,7 @@ export class ProfileDialog {
           h('span', { class: `rank-badge small rank-${r.level}`, html: rankBadgeSvg(r) }),
           h('div', { class: 'rank-step-text' }, [
             h('strong', { text: r.title }),
-            h('span', { class: 'muted', text: state === 'locked' ? `Unlocks at ${r.xp} XP` : state === 'current' ? 'Your rank' : 'Earned' }),
+            h('span', { class: 'muted', text: state === 'locked' ? t('Unlocks at {xp} XP', { xp: r.xp }) : state === 'current' ? t('Your rank') : t('Earned') }),
             h('span', { class: 'rank-perks', text: r.perks.join(' · ') }),
           ]),
         ]);
@@ -254,10 +258,11 @@ export class ProfileDialog {
       rankBox,
       stats,
       this.actions(),
-      h('h3', { class: 'section-title', text: 'Ranks' }),
+      h('div', { class: 'profile-lang' }, [h('span', { class: 'muted', text: t('Language') }), languagePicker()]),
+      h('h3', { class: 'section-title', text: t('Ranks') }),
       ladder,
       // The online leaderboard sits at the bottom of the profile: search bar on top of the best player.
-      h('h3', { class: 'section-title lb-title' }, [h('span', { class: 'lb-title-icon', html: ICONS.trophy }), 'Online leaderboard']),
+      h('h3', { class: 'section-title lb-title' }, [h('span', { class: 'lb-title-icon', html: ICONS.trophy }), t('Online leaderboard')]),
       this.boardSwitch(),
       this.board(false).el,
     ];
@@ -269,7 +274,7 @@ export class ProfileDialog {
     if (!Auth.available) return row;
     if (!account) {
       row.append(
-        h('button', { class: 'btn primary', attrs: { type: 'button' }, on: { click: () => this.openAuth('login') } }, [h('span', { class: 'btn-icon', html: ICONS.user }), 'Log in / Sign up']),
+        h('button', { class: 'btn primary', attrs: { type: 'button' }, on: { click: () => this.openAuth('login') } }, [h('span', { class: 'btn-icon', html: ICONS.user }), t('Log in / Sign up')]),
       );
       return row;
     }
@@ -277,7 +282,7 @@ export class ProfileDialog {
       row.append(
         h('button', {
           class: 'btn',
-          text: account.username ? 'Change name' : 'Pick your name',
+          text: account.username ? t('Change name') : t('Pick your name'),
           attrs: { type: 'button' },
           on: {
             click: () => {
@@ -292,7 +297,7 @@ export class ProfileDialog {
     row.append(
       h('button', {
         class: 'btn danger',
-        text: 'Log out',
+        text: t('Log out'),
         attrs: { type: 'button' },
         on: {
           click: async () => {
@@ -307,13 +312,13 @@ export class ProfileDialog {
 
   private nameForm(current: string): HTMLElement {
     const input = h('input', {
-      attrs: { type: 'text', name: 'username', autocomplete: 'nickname', maxlength: String(USERNAME_MAX), placeholder: 'Commander Nova', value: current, 'aria-label': 'Commander name', id: 'profile-title' },
+      attrs: { type: 'text', name: 'username', autocomplete: 'nickname', maxlength: String(USERNAME_MAX), placeholder: t('Commander Nova'), value: current, 'aria-label': t('Commander name'), id: 'profile-title' },
     });
     const error = h('p', { class: 'auth-error', attrs: { role: 'alert' } });
-    const save = h('button', { class: 'btn primary', text: 'Save', attrs: { type: 'submit' } });
+    const save = h('button', { class: 'btn primary', text: t('Save'), attrs: { type: 'submit' } });
     const cancel = h('button', {
       class: 'btn',
-      text: 'Cancel',
+      text: t('Cancel'),
       attrs: { type: 'button' },
       on: {
         click: () => {

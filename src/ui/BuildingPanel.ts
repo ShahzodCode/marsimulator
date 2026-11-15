@@ -10,15 +10,16 @@ import { buildingIcon, clear, h, setText, toggleClass } from './dom';
 import { buildingThumbnail } from '../settlement/buildings/thumbnails';
 import { BUILDING_ICONS, ICONS, RESOURCE_ICONS } from './icons';
 import { garageSection, pipelineSection, type PanelSection } from './LogisticsPanels';
+import { t, tn } from '../i18n';
 
 const STATUS: Record<BuildingStatus, { text: string; cls: string }> = {
-  operational: { text: 'Working', cls: 'explored' },
-  waiting_materials: { text: 'Waiting for materials', cls: 'warning' },
-  insufficient_power: { text: 'Not enough power', cls: 'critical' },
-  storage_full: { text: 'Storage full', cls: 'warning' },
-  under_construction: { text: 'Building…', cls: 'surveying' },
-  disabled: { text: 'Switched off', cls: 'disabled' },
-  no_road: { text: 'No road', cls: 'warning' },
+  operational: { text: t('Working'), cls: 'explored' },
+  waiting_materials: { text: t('Waiting for materials'), cls: 'warning' },
+  insufficient_power: { text: t('Not enough power'), cls: 'critical' },
+  storage_full: { text: t('Storage full'), cls: 'warning' },
+  under_construction: { text: t('Building…'), cls: 'surveying' },
+  disabled: { text: t('Switched off'), cls: 'disabled' },
+  no_road: { text: t('No road'), cls: 'warning' },
 };
 
 interface RecipeRow {
@@ -92,15 +93,15 @@ export class BuildingPanel {
       stats.append(h('div', { class: 'stat' }, [h('span', { class: 'stat-label', text: label }), v]));
     };
     const isStore = Object.keys(def.storage).length > 0;
-    if (def.solarPeakKw > 0) stat('solar', 'Solar power now');
-    if (maxPowerKw(b.type) > 0) stat('power', 'Electricity');
-    if (def.batteryKwh > 0) stat('battery', 'Settlement batteries');
-    for (const id of Object.keys(def.storage) as ResourceId[]) stat(`s-${id}`, `${RESOURCES[id].name} in storage`);
-    if (def.recipes.some((r) => RECIPES[r].deposit)) stat('ice', 'Ice left to mine');
-    if (def.housing) stat('housing', 'Beds');
-    if (!isStore && def.recipes.length) stat('road', 'Road');
-    if (def.recipes.length) stat('stored', 'Waiting for pickup');
-    stat('built', 'Started');
+    if (def.solarPeakKw > 0) stat('solar', t('Solar power now'));
+    if (maxPowerKw(b.type) > 0) stat('power', t('Electricity'));
+    if (def.batteryKwh > 0) stat('battery', t('Settlement batteries'));
+    for (const id of Object.keys(def.storage) as ResourceId[]) stat(`s-${id}`, t('{resource} in storage', { resource: RESOURCES[id].name }));
+    if (def.recipes.some((r) => RECIPES[r].deposit)) stat('ice', t('Ice left to mine'));
+    if (def.housing) stat('housing', t('Beds'));
+    if (!isStore && def.recipes.length) stat('road', t('Road'));
+    if (def.recipes.length) stat('stored', t('Waiting for pickup'));
+    stat('built', t('Started'));
 
     const recipes = h('div', { class: 'recipe-list' });
     for (const rid of def.recipes) {
@@ -112,14 +113,14 @@ export class BuildingPanel {
       const root = h('div', { class: 'recipe' }, [
         h('div', { class: 'recipe-head' }, [h('strong', { text: r.name }), state]),
         h('div', { class: 'recipe-flow' }, [
-          ...(ins.length ? ins : [h('span', { class: 'muted', text: r.deposit ? 'buried ice' : 'Martian air & soil' })]),
+          ...(ins.length ? ins : [h('span', { class: 'muted', text: r.deposit ? t('buried ice') : t('Martian air & soil') })]),
           h('span', { class: 'arrow', text: '→' }),
           ...outs,
         ]),
         h('div', { class: 'progress recipe-progress' }, [fill]),
         h('div', { class: 'recipe-foot' }, [
           h('span', { class: 'recipe-desc', text: r.description }),
-          h('span', { class: 'recipe-meta', text: `⚡ ${r.energyKw.toFixed(1)} kW · ${r.durationSols} sol` }),
+          h('span', { class: 'recipe-meta', text: `⚡ ${r.energyKw.toFixed(1)} ${t('kW')} · ${tn(r.durationSols, '{n} sol', '{n} sols')}` }),
         ]),
       ]);
       this.recipeRows.set(rid, { root, fill, state, last: 0 });
@@ -134,15 +135,15 @@ export class BuildingPanel {
         'button',
         {
           class: 'switch',
-          attrs: { type: 'button', role: 'switch', 'aria-label': 'Building power' },
-          title: 'Switch this building on or off. Switched-off buildings use no electricity and make nothing.',
+          attrs: { type: 'button', role: 'switch', 'aria-label': t('Building power') },
+          title: t('Switch this building on or off. Switched-off buildings use no electricity and make nothing.'),
           on: {
             click: () => {
               const st = gameStore.getState();
               const cur = st.buildings.find((x) => x.id === b.id);
               if (!cur) return;
               const res = st.setBuildingEnabled(b.id, !cur.enabled);
-              if (!res.ok) st.pushAlert({ key: 'switch-error', level: 'warning', title: 'Can’t switch it on', message: res.reason });
+              if (!res.ok) st.pushAlert({ key: 'switch-error', level: 'warning', title: t('Can’t switch it on'), message: res.reason });
             },
           },
         },
@@ -157,8 +158,8 @@ export class BuildingPanel {
         h('button', {
           class: 'icon-btn',
           html: ICONS.close,
-          title: 'Close',
-          attrs: { 'aria-label': 'Close building info' },
+          title: t('Close'),
+          attrs: { 'aria-label': t('Close building info') },
           on: { click: () => gameStore.getState().selectBuilding(null) },
         }),
       ]),
@@ -169,7 +170,7 @@ export class BuildingPanel {
       ...(b.type === 'storage_depot' ? [this.inventory()] : []),
       ...(this.extra ? [this.extra.el] : []),
       stats,
-      h('div', { class: 'fun-fact' }, [h('strong', { text: 'Did you know? ' }), def.funFact]),
+      h('div', { class: 'fun-fact' }, [h('strong', { text: `${t('Did you know?')} ` }), def.funFact]),
       h('div', { class: 'bp-actions' }, [
         h(
           'button',
@@ -178,9 +179,9 @@ export class BuildingPanel {
             attrs: { type: 'button' },
             on: { click: () => this.events.emit('camera:flyTo', { lat: b.latitude, lon: b.longitude, altitude: 0.28 }) },
           },
-          [h('span', { class: 'btn-icon', html: ICONS.target }), 'Zoom to building'],
+          [h('span', { class: 'btn-icon', html: ICONS.target }), t('Zoom to building')],
         ),
-        this.toggle ? h('span', { class: 'switch-row' }, [this.toggle, h('span', { text: 'Power on' })]) : null,
+        this.toggle ? h('span', { class: 'switch-row' }, [this.toggle, h('span', { text: t('Power on') })]) : null,
       ]),
       h('div', { class: 'bp-actions' }, [this.demolishControl(b)]),
     );
@@ -189,34 +190,34 @@ export class BuildingPanel {
   /** Demolish button (asks for a second click), or a note for the original base. */
   private demolishControl(b: BuildingInstance): HTMLElement {
     if (b.starter || b.type === 'storage_depot') {
-      return h('span', { class: 'muted bp-note', text: 'Part of the original base: it can’t be demolished.' });
+      return h('span', { class: 'muted bp-note', text: t('Part of the original base: it can’t be demolished.') });
     }
     const refund = (Object.entries(demolishRefund(b.type)) as [ResourceId, number][])
       .map(([id, v]) => `${v} ${RESOURCES[id].name.toLowerCase()}`)
       .join(', ');
     let armed = false;
     let timer = 0;
-    const label = h('span', { text: 'Demolish' });
+    const label = h('span', { text: t('Demolish') });
     const btn = h(
       'button',
       {
         class: 'btn danger',
-        title: `Get back half of what it cost${refund ? ` (${refund})` : ''}. Energy is not refunded.`,
+        title: refund ? t('Get back half of what it cost ({refund}). Energy is not refunded.', { refund }) : t('Get back half of what it cost. Energy is not refunded.'),
         attrs: { type: 'button' },
         on: {
           click: () => {
             if (!armed) {
               armed = true;
-              setText(label, refund ? `Click again: get back ${refund}` : 'Click again to demolish');
+              setText(label, refund ? t('Click again: get back {refund}', { refund }) : t('Click again to demolish'));
               timer = window.setTimeout(() => {
                 armed = false;
-                setText(label, 'Demolish');
+                setText(label, t('Demolish'));
               }, 4000);
               return;
             }
             window.clearTimeout(timer);
             const res = gameStore.getState().demolishBuilding(b.id);
-            if (!res.ok) gameStore.getState().pushAlert({ key: 'demolish-error', level: 'warning', title: 'Can’t demolish', message: res.reason });
+            if (!res.ok) gameStore.getState().pushAlert({ key: 'demolish-error', level: 'warning', title: t('Can’t demolish'), message: res.reason });
           },
         },
       },
@@ -249,14 +250,14 @@ export class BuildingPanel {
     this.live.set('grow', growth);
     this.live.set('grow-fill', growFill);
     return h('div', { class: 'inventory' }, [
-      h('h4', { class: 'step-title', text: `📦 ${gameStore.getState().base.name}: everything in storage` }),
+      h('h4', { class: 'step-title', text: `📦 ${t('{base}: everything in storage', { base: gameStore.getState().base.name })}` }),
       ...rows,
       this.baseList(),
-      h('h4', { class: 'step-title', text: '👪 Families' }),
-      h('div', { class: 'inv-row pop-row' }, [h('span', { text: '👥' }), h('span', { class: 'inv-name', text: 'Colonists / beds' }), pop, growth, h('div', { class: 'progress inv-bar' }, [growFill])]),
+      h('h4', { class: 'step-title', text: `👪 ${t('Families')}` }),
+      h('div', { class: 'inv-row pop-row' }, [h('span', { text: '👥' }), h('span', { class: 'inv-name', text: t('Colonists / beds') }), pop, growth, h('div', { class: 'progress inv-bar' }, [growFill])]),
       h('p', {
         class: 'muted',
-        text: 'Half of the colonists are women. With free beds the base grows by half every 90 sols, faster when beds stand empty. Real pregnancies take about 9 months: the game speeds families up.',
+        text: t('Half of the colonists are women. With free beds the base grows by half every 90 sols, faster when beds stand empty. Real pregnancies take about 9 months: the game speeds families up.'),
       }),
     ]);
   }
@@ -265,16 +266,16 @@ export class BuildingPanel {
   private baseList(): HTMLElement {
     const s = gameStore.getState();
     const others = s.otherBases;
-    if (!others.length) return h('p', { class: 'muted', text: 'Found more bases from the Exploration panel. Their depots will be listed here.' });
+    if (!others.length) return h('p', { class: 'muted', text: t('Found more bases from the Exploration panel. Their depots will be listed here.') });
     return h('div', { class: 'base-jump' }, [
-      h('h4', { class: 'step-title', text: '🏘️ Your other bases' }),
+      h('h4', { class: 'step-title', text: `🏘️ ${t('Your other bases')}` }),
       ...others.map((b) =>
         h(
           'button',
           {
             class: 'btn base-jump-btn',
             attrs: { type: 'button' },
-            title: `Switch to ${b.name} and open its Central Storage Depot`,
+            title: t('Switch to {base} and open its Central Storage Depot', { base: b.name }),
             on: {
               click: () => {
                 const st = gameStore.getState();
@@ -300,7 +301,7 @@ export class BuildingPanel {
         const el = this.live.get(`inv-${id}`);
         if (!el) break;
         setText(el, `${formatAmount(s.resources[id])} / ${formatAmount(cap)}`);
-        setText(this.live.get(`rate-${id}`)!, `${formatRate(s.rates[id])}/sol`);
+        setText(this.live.get(`rate-${id}`)!, `${formatRate(s.rates[id])}/${t('sol')}`);
         this.live.get(`fill-${id}`)!.style.transform = `scaleX(${cap > 0 ? Math.min(1, s.resources[id] / cap).toFixed(3) : '0'})`;
       }
       const c = s.colony;
@@ -308,16 +309,16 @@ export class BuildingPanel {
       setText(this.live.get('pop')!, `${c.colonists} / ${c.housing}`);
       setText(
         this.live.get('grow')!,
-        c.colonists >= c.housing ? 'All beds full: build a Habitat Dome' : next === null ? 'Not growing' : `Next baby in ~${Math.ceil(next)} sols`,
+        c.colonists >= c.housing ? t('All beds full: build a Habitat Dome') : next === null ? t('Not growing') : t('Next baby in ~{n} sols', { n: Math.ceil(next) }),
       );
       this.live.get('grow-fill')!.style.transform = `scaleX(${Math.min(1, c.growth).toFixed(3)})`;
     }
     const building = b.constructionProgress < 1;
     const st = STATUS[b.status] ?? STATUS.operational;
-    setText(this.status, building ? `Building… ${Math.floor(b.constructionProgress * 100)}%` : st.text);
+    setText(this.status, building ? `${t('Building…')} ${Math.floor(b.constructionProgress * 100)}%` : st.text);
     const cls = `status-pill ${st.cls}`;
     if (this.status.className !== cls) this.status.className = cls;
-    setText(this.note, building ? 'Construction robots are at work. Pausing the game pauses them too.' : (b.statusNote ?? ''));
+    setText(this.note, building ? t('Construction robots are at work. Pausing the game pauses them too.') : (b.statusNote ?? ''));
     this.note.style.display = this.note.textContent ? '' : 'none';
     const bar = this.progressFill?.parentElement;
     if (bar) bar.style.display = building ? '' : 'none';
@@ -338,7 +339,7 @@ export class BuildingPanel {
       } else row.fill.style.transform = `scaleX(${p.toFixed(3)})`;
       row.last = p;
       const running = b.isOperational && b.enabled && b.powered && b.status === 'operational' && !!rs?.loaded;
-      setText(row.state, !b.isOperational ? 'after construction' : running ? `${Math.floor(p * 100)}%` : st.text.toLowerCase());
+      setText(row.state, !b.isOperational ? t('after construction') : running ? `${Math.floor(p * 100)}%` : st.text.toLowerCase());
       toggleClass(row.root, 'running', running);
     }
 
@@ -346,13 +347,19 @@ export class BuildingPanel {
     const kw = maxPowerKw(b.type);
     const pEl = lv('power');
     if (pEl) {
-      setText(pEl, !b.isOperational ? `${kw.toFixed(1)} kW when built` : !b.enabled ? 'Off — 0 kW' : b.powered ? `✔ up to ${kw.toFixed(1)} kW` : `✖ needs ${kw.toFixed(1)} kW`);
+      setText(pEl, !b.isOperational
+          ? t('{kw} kW when built', { kw: kw.toFixed(1) })
+          : !b.enabled
+            ? t('Off — 0 kW')
+            : b.powered
+              ? `✔ ${t('up to {kw} kW', { kw: kw.toFixed(1) })}`
+              : `✖ ${t('needs {kw} kW', { kw: kw.toFixed(1) })}`);
       pEl.style.color = b.isOperational && b.enabled && !b.powered ? 'var(--bad)' : '';
     }
     const sEl = lv('solar');
-    if (sEl) setText(sEl, b.isOperational ? `${(def.solarPeakKw * s.power.sun).toFixed(1)} / ${def.solarPeakKw.toFixed(0)} kW${s.power.sun > 0 ? '' : ' · night'}` : 'when built');
+    if (sEl) setText(sEl, b.isOperational ? `${(def.solarPeakKw * s.power.sun).toFixed(1)} / ${def.solarPeakKw.toFixed(0)} ${t('kW')}${s.power.sun > 0 ? '' : ` · ${t('night')}`}` : t('when built'));
     const bEl = lv('battery');
-    if (bEl) setText(bEl, `${s.power.batteryKwh.toFixed(0)} / ${s.power.batteryCapacityKwh.toFixed(0)} kWh`);
+    if (bEl) setText(bEl, `${s.power.batteryKwh.toFixed(0)} / ${s.power.batteryCapacityKwh.toFixed(0)} ${t('kWh')}`);
     for (const id of Object.keys(def.storage) as ResourceId[]) {
       const el = lv(`s-${id}`);
       if (!el) continue;
@@ -361,21 +368,21 @@ export class BuildingPanel {
       el.style.color = full ? 'var(--warn)' : '';
     }
     const iEl = lv('ice');
-    if (iEl) setText(iEl, `${(s.deposits.ice / 1000).toFixed(1)} t`);
+    if (iEl) setText(iEl, t('{n} t', { n: (s.deposits.ice / 1000).toFixed(1) }));
     const rEl = lv('road');
     if (rEl) {
-      setText(rEl, b.connected ? '✔ Connected' : '✖ No road');
+      setText(rEl, b.connected ? `✔ ${t('Connected')}` : `✖ ${t('No road')}`);
       rEl.style.color = b.connected ? '' : 'var(--warn)';
     }
     const wEl = lv('stored');
     if (wEl) {
       const parts = (Object.entries(b.stored) as [ResourceId, number][]).filter(([, v]) => v >= 0.05).map(([id, v]) => `${v.toFixed(0)} ${RESOURCES[id].name.toLowerCase()}`);
-      setText(wEl, parts.length ? parts.join(', ') : 'nothing');
+      setText(wEl, parts.length ? parts.join(', ') : t('nothing'));
     }
     const hEl = lv('housing');
     if (hEl) setText(hEl, `${def.housing}`);
     const tEl = lv('built');
-    if (tEl) setText(tEl, `Sol ${formatMarsTime(b.placedAtSol).sol}`);
+    if (tEl) setText(tEl, t('Sol {n}', { n: formatMarsTime(b.placedAtSol).sol }));
     if (this.toggle) {
       toggleClass(this.toggle, 'on', b.enabled);
       this.toggle.setAttribute('aria-checked', String(b.enabled));

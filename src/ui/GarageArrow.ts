@@ -3,6 +3,7 @@ import type { ArrowFeedback } from '../core/LinkTools';
 import type { Terrain } from '../planet/Terrain';
 import { gameStore } from '../state/gameStore';
 import { h, setText, toggleClass } from './dom';
+import { t } from '../i18n';
 
 export interface GarageArrowHooks {
   /** World position of the garage (null when it isn't on screen's base). */
@@ -36,8 +37,8 @@ export class GarageArrow {
       'div',
       {
         class: 'garage-arrow hidden',
-        title: 'Drag me onto another base: that is where the haulers will drive',
-        attrs: { role: 'button', 'aria-label': 'Drag onto another base to choose where the haulers drive' },
+        title: t('Drag me onto another base: that is where the haulers will drive'),
+        attrs: { role: 'button', 'aria-label': t('Drag onto another base to choose where the haulers drive') },
       },
       [h('span', { class: 'garage-arrow-shaft' }), h('span', { class: 'garage-arrow-head' }), this.tag],
     );

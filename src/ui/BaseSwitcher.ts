@@ -1,6 +1,7 @@
 import { SITE_BY_ID, TRAITS, visibleTraits } from '../data/baseSites';
 import { gameStore } from '../state/gameStore';
 import { clear, h, setText } from './dom';
+import { t } from '../i18n';
 
 /**
  * Which base is on screen, its site traits, and a list to jump to another base.
@@ -21,7 +22,7 @@ export class BaseSwitcher {
       'button',
       {
         class: 'base-switch',
-        attrs: { type: 'button', 'aria-haspopup': 'menu', 'aria-label': 'Switch base' },
+        attrs: { type: 'button', 'aria-haspopup': 'menu', 'aria-label': t('Switch base') },
         on: {
           click: () => {
             if (this.list.hasAttribute('hidden')) this.list.removeAttribute('hidden');
@@ -47,14 +48,14 @@ export class BaseSwitcher {
     this.key = key;
     const traitIcons = (siteId: string) => {
       const site = SITE_BY_ID[siteId];
-      return site ? visibleTraits(site, s.research.completed).map((t) => TRAITS[t].icon).join('') : '';
+      return site ? visibleTraits(site, s.research.completed).map((id) => TRAITS[id].icon).join('') : '';
     };
     setText(this.name, s.base.name);
     setText(this.traits, traitIcons(s.base.siteId));
     const site = SITE_BY_ID[s.base.siteId];
     this.button.title = site
-      ? `${site.name}: ${visibleTraits(site, s.research.completed).map((t) => TRAITS[t].name).join(', ') || 'balanced site'}. Click to switch base.`
-      : 'Switch base';
+      ? `${site.name}: ${visibleTraits(site, s.research.completed).map((id) => TRAITS[id].name).join(', ') || t('balanced site')}. ${t('Click to switch base.')}`
+      : t('Switch base');
     this.button.classList.toggle('single', all.length < 2);
     clear(this.list);
     for (const b of all) {
@@ -76,6 +77,6 @@ export class BaseSwitcher {
         ),
       );
     }
-    if (all.length < 2) this.list.append(h('p', { class: 'muted base-hint', text: 'Map regions from orbit, then send a founding convoy from the Exploration panel to start a second base.' }));
+    if (all.length < 2) this.list.append(h('p', { class: 'muted base-hint', text: t('Map regions from orbit, then send a founding convoy from the Exploration panel to start a second base.') }));
   }
 }

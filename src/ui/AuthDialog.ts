@@ -1,6 +1,7 @@
 import { Auth, USERNAME_MAX, validateEmail, validatePassword, validateUsername, type Account } from '../persistence/Auth';
 import { h, setText } from './dom';
 import { ICONS } from './icons';
+import { t } from '../i18n';
 
 export type AuthMode = 'login' | 'signup' | 'username' | 'account';
 
@@ -45,7 +46,7 @@ export class AuthDialog {
 
   private render(mode: AuthMode): void {
     this.card.replaceChildren(
-      h('button', { class: 'icon-btn small auth-close', html: ICONS.close, attrs: { type: 'button', 'aria-label': 'Close' }, on: { click: () => this.close() } }),
+      h('button', { class: 'icon-btn small auth-close', html: ICONS.close, attrs: { type: 'button', 'aria-label': t('Close') }, on: { click: () => this.close() } }),
       ...this.content(mode),
     );
     this.card.querySelector<HTMLInputElement>('input')?.focus();
@@ -67,27 +68,27 @@ export class AuthDialog {
     const signup = mode === 'signup';
     const email = h('input', { attrs: { type: 'email', name: 'email', autocomplete: 'email', required: '', inputmode: 'email', placeholder: 'you@example.com' } });
     const password = h('input', {
-      attrs: { type: 'password', name: 'password', autocomplete: signup ? 'new-password' : 'current-password', required: '', placeholder: signup ? 'At least 6 characters' : '' },
+      attrs: { type: 'password', name: 'password', autocomplete: signup ? 'new-password' : 'current-password', required: '', placeholder: signup ? t('At least 6 characters') : '' },
     });
     const reveal = h('button', {
       class: 'auth-reveal',
-      text: 'Show',
-      attrs: { type: 'button', 'aria-label': 'Show password', 'aria-pressed': 'false' },
+      text: t('Show'),
+      attrs: { type: 'button', 'aria-label': t('Show password'), 'aria-pressed': 'false' },
       on: {
         click: () => {
           const show = password.type === 'password';
           password.type = show ? 'text' : 'password';
-          setText(reveal, show ? 'Hide' : 'Show');
+          setText(reveal, show ? t('Hide') : t('Show'));
           reveal.setAttribute('aria-pressed', String(show));
         },
       },
     });
     const error = h('p', { class: 'auth-error', attrs: { role: 'alert' } });
-    const submit = h('button', { class: 'btn primary big', text: signup ? 'Create account' : 'Log in', attrs: { type: 'submit' } });
+    const submit = h('button', { class: 'btn primary big', text: signup ? t('Create account') : t('Log in'), attrs: { type: 'submit' } });
 
     const form = h('form', { class: 'auth-form', attrs: { novalidate: '' } }, [
-      field('Email', email),
-      field('Password', h('div', { class: 'auth-password' }, [password, reveal])),
+      field(t('Email'), email),
+      field(t('Password'), h('div', { class: 'auth-password' }, [password, reveal])),
       error,
       submit,
     ]);
@@ -96,7 +97,7 @@ export class AuthDialog {
       const problem = validateEmail(email.value) ?? validatePassword(password.value);
       if (problem) return setText(error, problem);
       setText(error, '');
-      await busy(submit, signup ? 'Creating…' : 'Logging in…', async () => {
+      await busy(submit, signup ? t('Creating…') : t('Logging in…'), async () => {
         const r = signup ? await Auth.signUp(email.value, password.value) : await Auth.logIn(email.value, password.value);
         if (!r.ok) return setText(error, r.error);
         if (!r.account.username) return this.render('username');
@@ -105,38 +106,38 @@ export class AuthDialog {
     });
 
     return [
-      h('span', { class: 'eyebrow', text: signup ? 'New commander' : 'Welcome back' }),
-      h('h2', { text: signup ? 'Create your account' : 'Log in', attrs: { id: 'auth-title' } }),
-      h('p', { class: 'auth-lead', text: 'Your colony is saved to your account, so you can keep playing on any device.' }),
+      h('span', { class: 'eyebrow', text: signup ? t('New commander') : t('Welcome back') }),
+      h('h2', { text: signup ? t('Create your account') : t('Log in'), attrs: { id: 'auth-title' } }),
+      h('p', { class: 'auth-lead', text: t('Your colony is saved to your account, so you can keep playing on any device.') }),
       form,
       h('p', { class: 'auth-switch' }, [
-        signup ? 'Already have an account? ' : 'New here? ',
-        h('button', { class: 'link-btn', text: signup ? 'Log in' : 'Create an account', attrs: { type: 'button' }, on: { click: () => this.render(signup ? 'login' : 'signup') } }),
+        signup ? `${t('Already have an account?')} ` : `${t('New here?')} `,
+        h('button', { class: 'link-btn', text: signup ? t('Log in') : t('Create an account'), attrs: { type: 'button' }, on: { click: () => this.render(signup ? 'login' : 'signup') } }),
       ]),
     ];
   }
 
   private usernameForm(): HTMLElement[] {
     const current = Auth.current?.username ?? '';
-    const name = h('input', { attrs: { type: 'text', name: 'username', autocomplete: 'nickname', maxlength: String(USERNAME_MAX), placeholder: 'Commander Nova', value: current } });
+    const name = h('input', { attrs: { type: 'text', name: 'username', autocomplete: 'nickname', maxlength: String(USERNAME_MAX), placeholder: t('Commander Nova'), value: current } });
     const error = h('p', { class: 'auth-error', attrs: { role: 'alert' } });
-    const submit = h('button', { class: 'btn primary big', text: 'Save name', attrs: { type: 'submit' } });
-    const form = h('form', { class: 'auth-form', attrs: { novalidate: '' } }, [field('Commander name', name), error, submit]);
+    const submit = h('button', { class: 'btn primary big', text: t('Save name'), attrs: { type: 'submit' } });
+    const form = h('form', { class: 'auth-form', attrs: { novalidate: '' } }, [field(t('Commander name'), name), error, submit]);
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const problem = validateUsername(name.value);
       if (problem) return setText(error, problem);
       setText(error, '');
-      await busy(submit, 'Saving…', async () => {
+      await busy(submit, t('Saving…'), async () => {
         const r = await Auth.setUsername(name.value);
         if (!r.ok) return setText(error, r.error);
         this.close();
       });
     });
     return [
-      h('span', { class: 'eyebrow', text: current ? 'Your profile' : 'Account created 🎉' }),
-      h('h2', { text: current ? 'Change your name' : 'Pick your commander name', attrs: { id: 'auth-title' } }),
-      h('p', { class: 'auth-lead', text: 'This is the name your crew will call you. Don’t use your real full name.' }),
+      h('span', { class: 'eyebrow', text: current ? t('Your profile') : `${t('Account created')} 🎉` }),
+      h('h2', { text: current ? t('Change your name') : t('Pick your commander name'), attrs: { id: 'auth-title' } }),
+      h('p', { class: 'auth-lead', text: t('This is the name your crew will call you. Don’t use your real full name.') }),
       form,
     ];
   }
@@ -144,15 +145,15 @@ export class AuthDialog {
   private accountView(account: Account | null): HTMLElement[] {
     if (!account) return this.credentials('login');
     return [
-      h('span', { class: 'eyebrow', text: 'Signed in' }),
-      h('h2', { text: account.username ?? 'Commander', attrs: { id: 'auth-title' } }),
+      h('span', { class: 'eyebrow', text: t('Signed in') }),
+      h('h2', { text: account.username ?? t('Commander'), attrs: { id: 'auth-title' } }),
       h('p', { class: 'auth-lead', text: account.email }),
-      h('p', { class: 'muted', text: 'Your colony saves to this account automatically.' }),
+      h('p', { class: 'muted', text: t('Your colony saves to this account automatically.') }),
       h('div', { class: 'auth-actions' }, [
-        h('button', { class: 'btn', text: 'Change name', attrs: { type: 'button' }, on: { click: () => this.render('username') } }),
+        h('button', { class: 'btn', text: t('Change name'), attrs: { type: 'button' }, on: { click: () => this.render('username') } }),
         h('button', {
           class: 'btn danger',
-          text: 'Log out',
+          text: t('Log out'),
           attrs: { type: 'button' },
           on: {
             click: async () => {
@@ -191,8 +192,8 @@ export function accountButton(parent: HTMLElement, className = 'btn'): HTMLButto
   ]);
   const update = () => {
     const a = Auth.current;
-    setText(label, a ? (a.username ?? 'Set your name') : 'Log in / Sign up');
-    btn.title = a ? `Signed in as ${a.email}` : 'Log in to save your colony to your account';
+    setText(label, a ? (a.username ?? t('Set your name')) : t('Log in / Sign up'));
+    btn.title = a ? t('Signed in as {email}', { email: a.email }) : t('Log in to save your colony to your account');
   };
   Auth.onChange(update);
   Auth.ready.then(update);

@@ -3,6 +3,7 @@ import { orbiterFor } from '../data/research';
 import { gameStore, watch } from '../state/gameStore';
 import { h, setText } from './dom';
 import { ICONS } from './icons';
+import { t } from '../i18n';
 
 /**
  * The orbiter's radar ("X-ray") view: a toggle and a depth slider. Deeper views are dimmer
@@ -21,13 +22,13 @@ export class XrayControl {
     this.button = h('button', {
       class: 'map-btn xray-btn',
       html: ICONS.satellite,
-      title: 'Radar X-ray view: look under the surface (V)',
-      attrs: { type: 'button', 'aria-label': 'Radar X-ray view' },
+      title: t('Radar X-ray view: look under the surface (V)'),
+      attrs: { type: 'button', 'aria-label': t('Radar X-ray view') },
       on: { click: () => this.toggle() },
     });
     this.slider = h('input', {
       class: 'xray-slider',
-      attrs: { type: 'range', min: '0', max: '1000', value: String(this.frac * 1000), 'aria-label': 'Depth' },
+      attrs: { type: 'range', min: '0', max: '1000', value: String(this.frac * 1000), 'aria-label': t('Depth') },
       on: {
         input: () => {
           this.frac = Number(this.slider.value) / 1000;
@@ -39,18 +40,18 @@ export class XrayControl {
     this.orbiter = h('p', { class: 'xray-orbiter' });
     const chip = (color: string, text: string) => h('span', { class: 'xray-chip' }, [h('i', { style: { background: color } }), text]);
     this.panel = h('div', { class: 'xray-panel', attrs: { hidden: '' } }, [
-      h('div', { class: 'xray-head' }, [h('span', { text: '📡 Radar view' }), this.depth]),
-      h('div', { class: 'xray-scale' }, [h('span', { text: 'Surface' }), this.slider, h('span', { class: 'xray-max' })]),
+      h('div', { class: 'xray-head' }, [h('span', { text: `📡 ${t('Radar view')}` }), this.depth]),
+      h('div', { class: 'xray-scale' }, [h('span', { text: t('Surface') }), this.slider, h('span', { class: 'xray-max' })]),
       this.orbiter,
       h('div', { class: 'xray-legend' }, [
-        chip('#b3f2ff', 'Ground ice'),
-        chip('#8ce6ff', 'Glacier'),
-        chip('#ff5a33', 'Hematite'),
-        chip('#73ff8c', 'Clays'),
-        chip('#ff80ff', 'Lava tube'),
-        chip('#338cff', 'Deep water'),
+        chip('#b3f2ff', t('Ground ice')),
+        chip('#8ce6ff', t('Glacier')),
+        chip('#ff5a33', t('Hematite')),
+        chip('#73ff8c', t('Clays')),
+        chip('#ff80ff', t('Lava tube')),
+        chip('#338cff', t('Deep water')),
       ]),
-      h('p', { class: 'xray-note', text: 'Only regions mapped by the orbiter show data. The deeper you look, the dimmer and blurrier the radar picture gets.' }),
+      h('p', { class: 'xray-note', text: t('Only regions mapped by the orbiter show data. The deeper you look, the dimmer and blurrier the radar picture gets.') }),
     ]);
     parent.querySelector('.map-controls')?.append(this.button);
     parent.append(this.panel);
@@ -76,8 +77,8 @@ export class XrayControl {
     const o = orbiterFor(gameStore.getState().research.completed);
     // Squared slider: fine control near the surface, where most ice is.
     const depthKm = o.maxDepthKm * this.frac * this.frac;
-    setText(this.depth, depthKm < 1 ? `${Math.round(depthKm * 1000)} m down` : `${depthKm.toFixed(1)} km down`);
-    setText(this.panel.querySelector('.xray-max')!, `${o.maxDepthKm} km`);
+    setText(this.depth, depthKm < 1 ? t('{n} m down', { n: Math.round(depthKm * 1000) }) : t('{n} km down', { n: depthKm.toFixed(1) }));
+    setText(this.panel.querySelector('.xray-max')!, t('{n} km', { n: o.maxDepthKm }));
     setText(this.orbiter, `${o.name}: ${o.basis}`);
     this.events.emit('xray:set', { on: this.on, depthKm, maxDepthKm: o.maxDepthKm });
   }

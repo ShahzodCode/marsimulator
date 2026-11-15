@@ -1,8 +1,9 @@
 import type { PanelId } from '../state/types';
+import type { GraphicsSettings } from '../core/Graphics';
 
 /**
  * Small, non-critical player data kept in localStorage (camera view, last panel,
- * last-save summary, autosave toggle). Every access is guarded: storage can be
+ * last-save summary, autosave toggle, graphics settings). Every access is guarded: storage can be
  * blocked or empty, and the game must work without it.
  */
 export interface Prefs {
@@ -11,6 +12,10 @@ export interface Prefs {
   /** `owner` is the account id the save belongs to (null for a guest). */
   lastSave?: { savedAt: string; sol: number; cloud: boolean; owner?: string | null };
   autosave?: boolean;
+  /** Interface language (see i18n). */
+  lang?: 'en' | 'ru' | 'uz';
+  /** Graphics quality, frame-rate limit and FPS counter (see core/Graphics). */
+  graphics?: Partial<GraphicsSettings>;
 }
 
 const KEY = 'mars-colony:prefs:v1';

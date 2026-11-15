@@ -23,8 +23,10 @@ import type { ActiveProject } from '../state/types';
 import { buildingIcon, clear, h, setText, toggleClass } from './dom';
 import { BRANCH_ICONS, BUILDING_ICONS, ICONS, MISC_ICONS, RESOURCE_ICONS, STAGE_ICONS, TECH_ICONS } from './icons';
 import type { Panel } from './SidePanel';
+// `t` is used for technologies all through this file, so the translator goes by `tr`.
+import { t as tr, tn } from '../i18n';
 
-const TIER_NAMES = ['Basics', 'Advanced', 'Frontier'];
+const TIER_NAMES = [tr('Basics'), tr('Advanced'), tr('Frontier')];
 const TIERS = Math.max(...TECHS.map((t) => techTier(t.id))) + 1;
 
 type NodeState = 'done' | 'active' | 'open' | 'locked';
@@ -40,7 +42,7 @@ export function focusResearch(id: TechId): void {
 }
 
 function fmtSols(v: number): string {
-  return v < 1 ? 'under 1 sol' : `${Math.ceil(v)} sol${Math.ceil(v) === 1 ? '' : 's'}`;
+  return v < 1 ? tr('under 1 sol') : tn(Math.ceil(v), '{n} sol', '{n} sols');
 }
 
 /**
@@ -50,8 +52,8 @@ function fmtSols(v: number): string {
  */
 export class ResearchPanel implements Panel {
   readonly id = 'research' as const;
-  readonly title = 'Research';
-  readonly subtitle = 'Invent new technology, one development stage at a time. Every Research Lab runs its own project.';
+  readonly title = tr('Research');
+  readonly subtitle = tr('Invent new technology, one development stage at a time. Every Research Lab runs its own project.');
   readonly el = h('div', { class: 'research' });
   isOpen = false;
   private unsub: (() => void) | null = null;
@@ -144,7 +146,11 @@ export class ResearchPanel implements Panel {
       const bar = this.liveBars.get(p.id);
       if (bar) {
         bar.fill.style.transform = `scaleX(${f.toFixed(3)})`;
-        setText(bar.eta, p.awaiting ? 'Stage finished — waiting for materials' : share > 0 ? `${fmtSols((need - p.progress) / share)} left in this stage · ${fmtSols(left)} in all` : 'Paused — no working lab');
+        setText(bar.eta, p.awaiting
+            ? tr('Stage finished — waiting for materials')
+            : share > 0
+              ? tr('{stage} left in this stage · {all} in all', { stage: fmtSols((need - p.progress) / share), all: fmtSols(left) })
+              : tr('Paused — no working lab'));
       }
       this.livePips.get(p.id)?.[p.stage]?.style.setProperty('--fill', f.toFixed(3));
     }
@@ -164,10 +170,10 @@ export class ResearchPanel implements Panel {
     const o = orbiterFor(r.completed);
     this.el.append(
       h('div', { class: 'rs-strip' }, [
-        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: MISC_ICONS.rp }), h('div', {}, [h('strong', { text: `${rp}` }), h('span', { text: 'research points / sol' })])]),
-        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: ICONS.research }), h('div', {}, [h('strong', { text: `${r.active.length} / ${labCount}` }), h('span', { text: labCount === 1 ? 'lab busy' : 'labs busy' })])]),
-        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: ICONS.satellite }), h('div', {}, [h('strong', { text: o.name }), h('span', { text: `radar view to ${o.maxDepthKm} km` })])]),
-        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: MISC_ICONS.done }), h('div', {}, [h('strong', { text: `${r.completed.length} / ${TECHS.length}` }), h('span', { text: 'technologies' })])]),
+        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: MISC_ICONS.rp }), h('div', {}, [h('strong', { text: `${rp}` }), h('span', { text: tr('research points / sol') })])]),
+        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: ICONS.research }), h('div', {}, [h('strong', { text: `${r.active.length} / ${labCount}` }), h('span', { text: labCount === 1 ? tr('lab busy') : tr('labs busy') })])]),
+        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: ICONS.satellite }), h('div', {}, [h('strong', { text: o.name }), h('span', { text: tr('radar view to {n} km', { n: o.maxDepthKm }) })])]),
+        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: MISC_ICONS.done }), h('div', {}, [h('strong', { text: `${r.completed.length} / ${TECHS.length}` }), h('span', { text: tr('technologies') })])]),
       ]),
     );
 
@@ -178,8 +184,8 @@ export class ResearchPanel implements Panel {
         h('div', { class: 'lock-card' }, [
           h('span', { class: 'lock-icon', html: ICONS.lock }),
           h('div', {}, [
-            h('strong', { text: `Research Labs unlock at rank ${unlockAt.title}` }),
-            h('p', { text: `You have ${s.progression.xp} XP — ${unlockAt.xp - s.progression.xp} XP to go. You can already explore the tree below.` }),
+            h('strong', { text: tr('Research Labs unlock at rank {rank}', { rank: unlockAt.title }) }),
+            h('p', { text: tr('You have {xp} XP — {left} XP to go. You can already explore the tree below.', { xp: s.progression.xp, left: unlockAt.xp - s.progression.xp }) }),
           ]),
         ]),
       );
@@ -187,7 +193,7 @@ export class ResearchPanel implements Panel {
       this.el.append(
         h('div', { class: 'lock-card unlocked' }, [
           h('span', { class: 'lock-icon', html: ICONS.research }),
-          h('div', {}, [h('strong', { text: 'Build a Research Lab' }), h('p', { text: 'Labs make research points. Each lab can run one project, so more labs means more projects at once.' })]),
+          h('div', {}, [h('strong', { text: tr('Build a Research Lab') }), h('p', { text: tr('Labs make research points. Each lab can run one project, so more labs means more projects at once.') })]),
         ]),
       );
     }
@@ -202,7 +208,7 @@ export class ResearchPanel implements Panel {
             h('div', { class: 'rs-active rs-free-lab' }, [
               h('div', { class: 'rs-active-head' }, [
                 h('span', { class: 'rs-hex big', html: ICONS.research }),
-                h('div', { class: 'rs-active-title' }, [h('span', { class: 'rs-eyebrow', text: 'Free lab' }), h('span', { class: 'rs-stage-line', text: 'Pick a project in the tree below to start it here.' })]),
+                h('div', { class: 'rs-active-title' }, [h('span', { class: 'rs-eyebrow', text: tr('Free lab') }), h('span', { class: 'rs-stage-line', text: tr('Pick a project in the tree below to start it here.') })]),
               ]),
             ]),
           ),
@@ -216,7 +222,7 @@ export class ResearchPanel implements Panel {
     this.wires = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.wires.classList.add('rs-wires');
     tree.append(this.wires, h('div', { class: 'rs-corner' }));
-    for (let i = 0; i < TIERS; i++) tree.append(h('div', { class: 'rs-tier-head', text: `Tier ${i + 1} · ${TIER_NAMES[i] ?? ''}` }));
+    for (let i = 0; i < TIERS; i++) tree.append(h('div', { class: 'rs-tier-head', text: `${tr('Tier {n}', { n: i + 1 })} · ${TIER_NAMES[i] ?? ''}` }));
     BRANCHES.forEach((br, row) => {
       tree.append(
         h('div', { class: 'rs-branch', style: { gridRow: String(row + 2), ['--branch' as never]: br.color } }, [
@@ -262,9 +268,9 @@ export class ResearchPanel implements Panel {
           h('span', { class: 'rs-node-name', text: t.name }),
           h('span', { class: 'rs-node-kind' }, [
             h('span', { class: 'rs-kind-icon', html: builds ? MISC_ICONS.building : MISC_ICONS.upgrade }),
-            builds ? 'New building' : 'Upgrade',
+            builds ? tr('New building') : tr('Upgrade'),
             state === 'done' ? h('span', { class: 'rs-node-done', html: MISC_ICONS.done }) : null,
-            shelved ? h('span', { class: 'rs-node-hold', title: 'On hold — progress kept', html: MISC_ICONS.pause }) : null,
+            shelved ? h('span', { class: 'rs-node-hold', title: tr('On hold — progress kept'), html: MISC_ICONS.pause }) : null,
           ]),
           h('span', { class: 'rs-pips' }, pips),
         ]),
@@ -330,9 +336,9 @@ export class ResearchPanel implements Panel {
       h('div', { class: 'rs-active-head' }, [
         h('span', { class: 'rs-hex big', html: TECH_ICONS[t.id] }),
         h('div', { class: 'rs-active-title' }, [
-          h('span', { class: 'rs-eyebrow', text: p.awaiting ? 'Waiting for materials' : `Now researching · ${Math.round(share)} RP/sol` }),
+          h('span', { class: 'rs-eyebrow', text: p.awaiting ? tr('Waiting for materials') : tr('Now researching · {n} RP/sol', { n: Math.round(share) }) }),
           h('button', { class: 'rs-active-name', attrs: { type: 'button' }, text: t.name, on: { click: () => this.select(t.id) } }),
-          h('span', { class: 'rs-stage-line' }, [h('span', { class: 'rs-stage-icon', html: STAGE_ICONS[stage.id] }), `Stage ${p.stage + 1} of ${STAGES.length}: ${stage.name} · ${stage.trl}`]),
+          h('span', { class: 'rs-stage-line' }, [h('span', { class: 'rs-stage-icon', html: STAGE_ICONS[stage.id] }), `${tr('Stage {n} of {total}', { n: p.stage + 1, total: STAGES.length })}: ${stage.name} · ${stage.trl}`]),
         ]),
         this.pauseButton(t.id),
       ]),
@@ -348,10 +354,10 @@ export class ResearchPanel implements Panel {
       'button',
       {
         class: 'btn rs-pause',
-        attrs: { type: 'button', title: 'Put on hold — progress is kept and the lab is freed' },
+        attrs: { type: 'button', title: tr('Put on hold — progress is kept and the lab is freed') },
         on: { click: () => gameStore.getState().pauseResearch(id) },
       },
-      [h('span', { class: 'btn-icon', html: MISC_ICONS.pause }), 'Pause'],
+      [h('span', { class: 'btn-icon', html: MISC_ICONS.pause }), tr('Pause')],
     );
   }
 
@@ -365,7 +371,7 @@ export class ResearchPanel implements Panel {
     return h('div', { class: 'rs-advance' }, [
       h('span', { class: 'rs-stage-icon big', html: STAGE_ICONS[next.id] }),
       h('div', { class: 'rs-advance-main' }, [
-        h('strong', { text: `Ready for the ${next.name.toLowerCase()}` }),
+        h('strong', { text: tr('Ready for the {stage}', { stage: next.name.toLowerCase() }) }),
         h('p', { text: next.blurb }),
         this.costChips(cost, stock),
       ]),
@@ -377,11 +383,11 @@ export class ResearchPanel implements Panel {
           on: {
             click: () => {
               const res = gameStore.getState().advanceResearch(t.id);
-              if (!res.ok) gameStore.getState().pushAlert({ key: 'research-fail', level: 'warning', title: 'Not enough materials yet', message: res.reason });
+              if (!res.ok) gameStore.getState().pushAlert({ key: 'research-fail', level: 'warning', title: tr('Not enough materials yet'), message: res.reason });
             },
           },
         },
-        [h('span', { class: 'btn-icon', html: MISC_ICONS.materials }), ok ? 'Send materials' : 'Need more materials'],
+        [h('span', { class: 'btn-icon', html: MISC_ICONS.materials }), ok ? tr('Send materials') : tr('Need more materials')],
       ),
     ]);
   }
@@ -411,9 +417,9 @@ export class ResearchPanel implements Panel {
             h('div', { class: 'rs-step-head' }, [h('strong', { text: st.name }), h('span', { class: 'rs-trl', text: st.trl })]),
             h('p', { text: st.blurb }),
             h('div', { class: 'rs-step-cost' }, [
-              h('span', { class: 'rs-rp' }, [h('span', { class: 'row-icon', html: MISC_ICONS.rp }), `${stageRp(t, i)} RP`]),
+              h('span', { class: 'rs-rp' }, [h('span', { class: 'row-icon', html: MISC_ICONS.rp }), `${stageRp(t, i)} ${tr('RP')}`]),
               speed > 0 ? h('span', { class: 'rs-rp' }, [h('span', { class: 'row-icon', html: MISC_ICONS.time }), `~${fmtSols(stageRp(t, i) / speed)}`]) : null,
-              Object.keys(mats).length ? this.costChips(mats, status === 'todo' || (status === 'done' && i === p.stage + 1) ? stock : null) : h('span', { class: 'rs-free', text: 'no materials' }),
+              Object.keys(mats).length ? this.costChips(mats, status === 'todo' || (status === 'done' && i === p.stage + 1) ? stock : null) : h('span', { class: 'rs-free', text: tr('no materials') }),
             ]),
           ]),
         ]),
@@ -423,15 +429,15 @@ export class ResearchPanel implements Panel {
     // Main action.
     let action: HTMLElement;
     const msg = (text: string, icon = ICONS.lock) => h('div', { class: 'rs-action-note' }, [h('span', { class: 'row-icon', html: icon }), text]);
-    if (state === 'done') action = msg('Researched — in use at every base.', MISC_ICONS.done);
-    else if (state === 'locked' && needs.length) action = msg(`First research: ${needs.join(' and ')}.`);
-    else if (!hasRank(s.progression.level, RESEARCH_UNLOCK_RANK)) action = msg(`Research opens at rank ${rankById(RESEARCH_UNLOCK_RANK).title}.`);
-    else if (!hasRank(s.progression.level, t.rank)) action = msg(`Unlocks at rank ${rankById(t.rank!).title} — earn XP to be promoted.`);
-    else if (labCount === 0) action = msg('Build a Research Lab to start.', ICONS.research);
+    if (state === 'done') action = msg(tr('Researched — in use at every base.'), MISC_ICONS.done);
+    else if (state === 'locked' && needs.length) action = msg(tr('First research: {list}.', { list: needs.join(tr(' and ')) }));
+    else if (!hasRank(s.progression.level, RESEARCH_UNLOCK_RANK)) action = msg(tr('Research opens at rank {rank}.', { rank: rankById(RESEARCH_UNLOCK_RANK).title }));
+    else if (!hasRank(s.progression.level, t.rank)) action = msg(tr('Unlocks at rank {rank} — earn XP to be promoted.', { rank: rankById(t.rank!).title }));
+    else if (labCount === 0) action = msg(tr('Build a Research Lab to start.'), ICONS.research);
     else if (state === 'active') {
-      const note = p.awaiting ? msg('Stage finished — send the materials from the lab card above.', MISC_ICONS.materials) : msg('A lab is working on this.', MISC_ICONS.rp);
+      const note = p.awaiting ? msg(tr('Stage finished — send the materials from the lab card above.'), MISC_ICONS.materials) : msg(tr('A lab is working on this.'), MISC_ICONS.rp);
       action = h('div', { class: 'rs-action-row' }, [note, this.pauseButton(t.id)]);
-    } else if (full) action = msg(`All ${labCount} ${labCount === 1 ? 'lab is' : 'labs are'} busy. Pause a project or build another Research Lab.`, ICONS.research);
+    } else if (full) action = msg(tn(labCount, 'The lab is busy. Pause a project or build another Research Lab.', 'All {n} labs are busy. Pause a project or build another Research Lab.'), ICONS.research);
     else {
       const total = t.cost - rpDone(t, p.stage, p.progress);
       action = h(
@@ -442,18 +448,18 @@ export class ResearchPanel implements Panel {
           on: {
             click: () => {
               const res = gameStore.getState().startResearch(t.id);
-              if (!res.ok) gameStore.getState().pushAlert({ key: 'research-fail', level: 'warning', title: 'Can’t research that yet', message: res.reason });
+              if (!res.ok) gameStore.getState().pushAlert({ key: 'research-fail', level: 'warning', title: tr('Can’t research that yet'), message: res.reason });
             },
           },
         },
         [
           h('span', { class: 'btn-icon', html: MISC_ICONS.rp }),
-          shelved ? `Resume at stage ${p.stage + 1}` : 'Start research',
-          h('span', { class: 'rs-start-sub', text: `${Math.round(total)} RP${speed > 0 ? ` · ~${fmtSols(total / speed)}` : ''}` }),
+          shelved ? tr('Resume at stage {n}', { n: p.stage + 1 }) : tr('Start research'),
+          h('span', { class: 'rs-start-sub', text: `${Math.round(total)} ${tr('RP')}${speed > 0 ? ` · ~${fmtSols(total / speed)}` : ''}` }),
         ],
       );
     }
-    const sharing = state === 'open' && !full && working > 0 ? h('p', { class: 'rs-hint', text: `Labs share their points: each running project will get ${Math.round(speed)} RP/sol.` }) : null;
+    const sharing = state === 'open' && !full && working > 0 ? h('p', { class: 'rs-hint', text: tr('Labs share their points: each running project will get {n} RP/sol.', { n: Math.round(speed) }) }) : null;
 
     return h('section', { class: `rs-detail ${state}`, style: { ['--branch' as never]: br.color } }, [
       h('div', { class: 'rs-detail-head' }, [
@@ -461,15 +467,15 @@ export class ResearchPanel implements Panel {
         h('div', {}, [
           h('span', { class: 'rs-eyebrow' }, [
             h('span', { class: 'rs-eyebrow-icon', html: BRANCH_ICONS[br.id] }),
-            `${br.name} technology · Tier ${techTier(t.id) + 1}${t.rank ? ` · ${rankById(t.rank).icon} ${rankById(t.rank).title}` : ''}`,
+            `${tr('{branch} technology', { branch: br.name })} · ${tr('Tier {n}', { n: techTier(t.id) + 1 })}${t.rank ? ` · ${rankById(t.rank).icon} ${rankById(t.rank).title}` : ''}`,
           ]),
           h('h3', { text: t.name }),
           h('p', { class: 'rs-effect', text: t.effect }),
         ]),
       ]),
-      h('div', { class: 'rs-fact' }, [h('span', { class: 'rs-fact-label', text: 'Real science' }), h('p', { text: t.fact })]),
+      h('div', { class: 'rs-fact' }, [h('span', { class: 'rs-fact-label', text: tr('Real science') }), h('p', { text: t.fact })]),
       unlocks.length ? h('div', { class: 'rs-unlocks' }, unlocks.map((b) => this.unlockTile(b, state === 'done'))) : null,
-      h('h4', { class: 'rs-sub', text: 'Development stages' }),
+      h('h4', { class: 'rs-sub', text: tr('Development stages') }),
       track,
       h('div', { class: 'rs-actions' }, [action, sharing]),
     ]);
@@ -481,7 +487,7 @@ export class ResearchPanel implements Panel {
     const pic = known ? buildingIcon('rs-unlock-pic', buildingThumbnail(type), BUILDING_ICONS[type]) : buildingIcon('rs-unlock-pic shadow-icon', buildingSilhouette(type), BUILDING_ICONS[type]);
     const tile = h('div', { class: `rs-unlock${known ? ' known' : ''}` }, [
       pic,
-      h('div', {}, [h('span', { class: 'rs-eyebrow', text: known ? 'New building — in the Build menu' : 'Unlocks a new building' }), h('strong', { text: def.name })]),
+      h('div', {}, [h('span', { class: 'rs-eyebrow', text: known ? tr('New building — in the Build menu') : tr('Unlocks a new building') }), h('strong', { text: def.name })]),
     ]);
     toggleClass(tile, 'site-only', !!def.requiresTrait);
     return tile;

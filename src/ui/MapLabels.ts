@@ -5,6 +5,7 @@ import { gameStore } from '../state/gameStore';
 import type { EventBus } from '../core/EventBus';
 import type { Terrain } from '../planet/Terrain';
 import { h, toggleClass } from './dom';
+import { t } from '../i18n';
 
 interface Label {
   el: HTMLElement;
@@ -16,6 +17,9 @@ interface Label {
   name?: string;
   /** A landmark label hidden because a base or site pin sits on the same spot. */
   suppressed?: boolean;
+  /** Last transform and opacity written, to skip identical style writes. */
+  tf?: string;
+  op?: string;
   /** Smallest scale this label shrinks to as the camera pulls out (none: always full size). */
   minScale?: number;
 }
@@ -40,6 +44,9 @@ export class MapLabels {
   private labels: Label[] = [];
   /** Base and site pins, rebuilt when bases are founded or sites spotted. */
   private dynamic: Label[] = [];
+  private lastView = '';
+  /** Set when labels were shown, hidden or suppressed outside `update`. */
+  private dirty = true;
   private dynKey = '';
   private readonly v = new THREE.Vector3();
   private readonly toCam = new THREE.Vector3();
@@ -86,7 +93,7 @@ export class MapLabels {
           'button',
           {
             class: `map-label base${current ? '' : ' other'}`,
-            title: current ? `${b.name}: the base on screen. Click to fly there.` : `${b.name}: click to switch to this base.`,
+            title: current ? t('{base}: the base on screen. Click to fly there.', { base: b.name }) : t('{base}: click to switch to this base.', { base: b.name }),
             attrs: { type: 'button' },
             on: {
               click: () => {
@@ -112,7 +119,7 @@ export class MapLabels {
           'button',
           {
             class: 'map-label site',
-            title: `${site.name}: possible base site. ${site.blurb}`,
+            title: `${t('{site}: possible base site.', { site: site.name })} ${site.blurb}`,
             attrs: { type: 'button' },
             on: {
               click: () => {
@@ -135,6 +142,7 @@ export class MapLabels {
     for (const l of this.labels) {
       l.suppressed = this.dynamic.some((d) => (d.name !== undefined && d.name === l.name) || d.normal.dot(l.normal) > SAME_SPOT_DOT);
     }
+    this.dirty = true;
   }
 
   private add(el: HTMLElement, world: THREE.Vector3, minAlt: number, maxAlt: number, name?: string): void {
@@ -144,8 +152,19 @@ export class MapLabels {
   }
 
   update(camera: THREE.PerspectiveCamera, altitude: number, width: number, height: number): void {
+    // Nothing moved since the last frame (and no label came or went): leave the DOM alone.
+    const e = camera.matrixWorld.elements;
+    const key = `${e[12]}|${e[13]}|${e[14]}|${e[0]}|${e[1]}|${e[2]}|${e[4]}|${e[5]}|${e[6]}|${width}|${height}|${this.labels.length}|${this.dynamic.length}`;
+    if (key === this.lastView && !this.dirty) return;
+    this.lastView = key;
+    this.dirty = false;
     const t = THREE.MathUtils.clamp((altitude - SHRINK_FROM) / (SHRINK_TO - SHRINK_FROM), 0, 1);
-    for (const l of [...this.labels, ...this.dynamic]) {
+    this.place(this.labels, camera, altitude, width, height, t);
+    this.place(this.dynamic, camera, altitude, width, height, t);
+  }
+
+  private place(list: Label[], camera: THREE.PerspectiveCamera, altitude: number, width: number, height: number, t: number): void {
+    for (const l of list) {
       this.toCam.copy(camera.position).sub(l.world).normalize();
       const facing = this.toCam.dot(l.normal);
       const show = !l.suppressed && facing > 0.18 && altitude >= l.minAlt && altitude <= l.maxAlt;
@@ -153,14 +172,16 @@ export class MapLabels {
         this.v.copy(l.world).project(camera);
         const x = (this.v.x * 0.5 + 0.5) * width;
         const y = (-this.v.y * 0.5 + 0.5) * height;
-        l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)${l.minScale === undefined ? '' : ` scale(${(1 - t * (1 - l.minScale)).toFixed(3)})`}`;
+        const tf = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)${l.minScale === undefined ? '' : ` scale(${(1 - t * (1 - l.minScale)).toFixed(3)})`}`;
+        if (tf !== l.tf) l.el.style.transform = l.tf = tf;
         const fade = Math.min(1, (facing - 0.18) / 0.25) * Math.min(1, (altitude - l.minAlt) / Math.max(1, l.minAlt * 0.5));
-        l.el.style.opacity = fade.toFixed(2);
+        const op = fade.toFixed(2);
+        if (op !== l.op) l.el.style.opacity = l.op = op;
       }
       if (show !== l.visible) {
         l.visible = show;
         toggleClass(l.el, 'hidden', !show);
-        if (!show) l.el.style.opacity = '0';
+        if (!show) l.el.style.opacity = l.op = '0';
       }
     }
   }

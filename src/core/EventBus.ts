@@ -20,6 +20,8 @@ export interface GameEvents {
   'game:saved': { ok: boolean; message: string };
   /** Orbiter radar view toggled or its depth changed. */
   'xray:set': { on: boolean; depthKm: number; maxDepthKm: number };
+  /** Open the pause menu (top-bar menu button). */
+  'menu:open': void;
 }
 
 type Handler<T> = (payload: T) => void;

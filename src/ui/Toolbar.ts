@@ -5,6 +5,7 @@ import { gameStore, watch } from '../state/gameStore';
 import type { PanelId } from '../state/types';
 import { h, setText, toggleClass } from './dom';
 import { ICONS } from './icons';
+import { t } from '../i18n';
 
 /** Bottom dock with the main game sections. */
 export class Toolbar {
@@ -12,13 +13,13 @@ export class Toolbar {
   private buttons = new Map<PanelId, HTMLButtonElement>();
 
   constructor(parent: HTMLElement) {
-    this.el = h('nav', { class: 'dock', attrs: { 'aria-label': 'Main menu' } });
+    this.el = h('nav', { class: 'dock', attrs: { 'aria-label': t('Main menu') } });
     const items: [PanelId, string, string, string][] = [
-      ['construction', 'Build', ICONS.build, 'B'],
-      ['exploration', 'Explore', ICONS.explore, 'X'],
-      ['missions', 'Missions', ICONS.missions, 'M'],
-      ['research', 'Research', ICONS.research, 'T'],
-      ['settlement', 'Base', ICONS.settlement, 'I'],
+      ['construction', t('Build'), ICONS.build, 'B'],
+      ['exploration', t('Explore'), ICONS.explore, 'X'],
+      ['missions', t('Missions'), ICONS.missions, 'M'],
+      ['research', t('Research'), ICONS.research, 'T'],
+      ['settlement', t('Base'), ICONS.settlement, 'I'],
     ];
     for (const [id, label, icon, key] of items) {
       const b = h(
@@ -60,12 +61,12 @@ export class PlacementHint {
   constructor(parent: HTMLElement, events: EventBus) {
     this.title = h('strong');
     this.feedback = h('span', { class: 'feedback' });
-    const keys = h('span', { class: 'ph-keys', text: 'Click to build · R rotate · Esc cancel' });
+    const keys = h('span', { class: 'ph-keys', text: t('Click to build · R rotate · Esc cancel') });
     const rotate = h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => gameStore.getState().rotatePlacement() } }, [
       h('span', { class: 'btn-icon', html: ICONS.rotate }),
-      'Rotate',
+      t('Rotate'),
     ]);
-    const cancelLabel = h('span', { text: 'Cancel' });
+    const cancelLabel = h('span', { text: t('Cancel') });
     const cancel = h(
       'button',
       {
@@ -90,28 +91,28 @@ export class PlacementHint {
         toggleClass(this.el, 'open', !!mode);
         rotate.style.display = mode === 'road' || mode === 'pipe' ? 'none' : '';
         if (mode === 'pipe') {
-          setText(this.title, 'Laying pipelines');
-          setText(keys, 'Press on a base with a Pump Station · drag onto another base · let go to build · scroll to zoom · Esc done');
-          setText(this.feedback, 'Both bases need a Pipeline Pump Station for goods to flow.');
-          setText(cancelLabel, 'Done');
+          setText(this.title, t('Laying pipelines'));
+          setText(keys, t('Press on a base with a Pump Station · drag onto another base · let go to build · scroll to zoom · Esc done'));
+          setText(this.feedback, t('Both bases need a Pipeline Pump Station for goods to flow.'));
+          setText(cancelLabel, t('Done'));
           this.feedback.className = 'feedback';
         } else if (mode === 'road') {
-          setText(this.title, 'Laying roads');
-          setText(keys, 'Drag from a building, the Storage Depot or a road · let go to build · click a piece to remove · WASD move · Esc done');
-          setText(this.feedback, 'Start in front of a building, the Storage Depot or a road — link it back to the depot to deliver goods.');
-          setText(cancelLabel, 'Done');
+          setText(this.title, t('Laying roads'));
+          setText(keys, t('Drag from a building, the Storage Depot or a road · let go to build · click a piece to remove · WASD move · Esc done'));
+          setText(this.feedback, t('Start in front of a building, the Storage Depot or a road — link it back to the depot to deliver goods.'));
+          setText(cancelLabel, t('Done'));
           this.feedback.className = 'feedback';
         } else if (mode) {
-          setText(this.title, `Placing: ${BUILDINGS[mode].name}`);
-          setText(keys, 'Click to build · R rotate · Esc cancel');
-          setText(this.feedback, 'Move the pointer over the base.');
-          setText(cancelLabel, 'Cancel');
+          setText(this.title, t('Placing: {name}', { name: BUILDINGS[mode].name }));
+          setText(keys, t('Click to build · R rotate · Esc cancel'));
+          setText(this.feedback, t('Move the pointer over the base.'));
+          setText(cancelLabel, t('Cancel'));
           this.feedback.className = 'feedback';
         }
       },
     );
     events.on('placement:feedback', (f) => {
-      setText(this.feedback, f.valid ? '✔ Good spot!' : f.message ?? '');
+      setText(this.feedback, f.valid ? `✔ ${t('Good spot!')}` : f.message ?? '');
       this.feedback.className = `feedback ${f.valid ? 'ok' : 'bad'}`;
     });
   }

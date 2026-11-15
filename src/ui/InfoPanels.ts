@@ -17,6 +17,7 @@ import { buildingIcon, clear, h, setText, toggleClass } from './dom';
 import { buildingThumbnail } from '../settlement/buildings/thumbnails';
 import { BUILDING_ICONS, ICONS, RESOURCE_ICONS } from './icons';
 import type { Panel } from './SidePanel';
+import { t, tn } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Missions
@@ -24,8 +25,8 @@ import type { Panel } from './SidePanel';
 
 export class MissionsPanel implements Panel {
   readonly id = 'missions' as const;
-  readonly title = 'Missions & Goals';
-  readonly subtitle = 'Your rank, goals to reach, and orbiters and rovers out exploring.';
+  readonly title = t('Missions & Goals');
+  readonly subtitle = t('Your rank, goals to reach, and orbiters and rovers out exploring.');
   readonly el = h('div', { class: 'missions' });
   private unsub: (() => void) | null = null;
   private bars = new Map<string, { fill: HTMLElement; eta: HTMLElement; note: HTMLElement }>();
@@ -51,7 +52,7 @@ export class MissionsPanel implements Panel {
           h('div', { class: 'progress' }, [fill]),
           h('span', { class: 'goal-hint', text: g.hint }),
         ]),
-        h('span', { class: 'goal-xp', text: `+${g.xp} XP` }),
+        h('span', { class: 'goal-xp', text: `+${g.xp} ${t('XP')}` }),
       ]);
       this.goalRows.set(g.id, { root, fill, count });
       goals.append(root);
@@ -61,7 +62,7 @@ export class MissionsPanel implements Panel {
         this.rankIcon,
         h('div', { class: 'rank-main' }, [h('div', { class: 'rank-head' }, [this.rankTitle, this.rankXp]), h('div', { class: 'progress' }, [this.rankFill]), this.rankNext]),
       ]),
-      h('h3', { class: 'section-title', text: 'Goals' }),
+      h('h3', { class: 'section-title', text: t('Goals') }),
       goals,
       this.missionBox,
     );
@@ -85,9 +86,11 @@ export class MissionsPanel implements Panel {
     const next = nextLevel(rank.level);
     setText(this.rankIcon, rank.icon);
     setText(this.rankTitle, rank.title);
-    setText(this.rankXp, `${s.progression.xp} XP`);
+    setText(this.rankXp, `${s.progression.xp} ${t('XP')}`);
     this.rankFill.style.transform = `scaleX(${(next ? Math.min(1, (s.progression.xp - rank.xp) / (next.xp - rank.xp)) : 1).toFixed(3)})`;
-    setText(this.rankNext, next ? `${next.xp - s.progression.xp} XP to ${next.icon} ${next.title}: ${next.perks.join(' · ')}` : 'Highest rank reached — the whole settlement salutes you!');
+    setText(this.rankNext, next
+        ? t('{left} XP to {rank}: {perks}', { left: next.xp - s.progression.xp, rank: `${next.icon} ${next.title}`, perks: next.perks.join(' · ') })
+        : t('Highest rank reached — the whole settlement salutes you!'));
 
     // Open goals first, finished ones at the bottom (re-ordered only when one is reached).
     const doneKey = GOALS.filter((g) => s.progression.milestones.includes(g.id)).map((g) => g.id).join(',');
@@ -100,7 +103,7 @@ export class MissionsPanel implements Panel {
       const done = s.progression.milestones.includes(g.id);
       const { current, target } = ProgressionManager.goalProgress(s, g);
       row.fill.style.transform = `scaleX(${Math.min(1, current / target).toFixed(3)})`;
-      setText(row.count, done ? '✔ Done' : `${Math.floor(Math.min(current, target))} / ${target}`);
+      setText(row.count, done ? `✔ ${t('Done')}` : `${Math.floor(Math.min(current, target))} / ${target}`);
       toggleClass(row.root, 'done', done);
       if (reorder) list.append(row.root);
     }
@@ -113,12 +116,12 @@ export class MissionsPanel implements Panel {
       clear(box);
       const active = s.missions.filter((m) => m.status === 'active');
       const done = s.missions.filter((m) => m.status === 'complete').slice(-8).reverse();
-      box.append(h('h3', { class: 'section-title', text: `Missions under way (${active.length})` }));
+      box.append(h('h3', { class: 'section-title', text: t('Missions under way ({n})', { n: active.length }) }));
       if (!active.length) {
         box.append(
           h('div', { class: 'empty' }, [
-            h('p', { text: 'Nothing is out right now. Map a region from orbit, then send a crew rover to explore it!' }),
-            h('button', { class: 'btn primary', text: 'Open Exploration', attrs: { type: 'button' }, on: { click: () => gameStore.getState().openPanel('exploration') } }),
+            h('p', { text: t('Nothing is out right now. Map a region from orbit, then send a crew rover to explore it!') }),
+            h('button', { class: 'btn primary', text: t('Open Exploration'), attrs: { type: 'button' }, on: { click: () => gameStore.getState().openPanel('exploration') } }),
           ]),
         );
       }
@@ -128,7 +131,8 @@ export class MissionsPanel implements Panel {
         const eta = h('span', { class: 'eta' });
         const note = h('div', { class: 'mission-note' });
         this.bars.set(m.id, { fill, eta, note });
-        const title = m.type === 'orbital' ? `Orbit map: ${r?.name ?? m.regionId}` : `Crew ${m.arrived ? 'returning from' : 'driving to'} ${r?.name ?? m.regionId}`;
+        const where = r?.name ?? m.regionId;
+        const title = m.type === 'orbital' ? t('Orbit map: {region}', { region: where }) : m.arrived ? t('Crew returning from {region}', { region: where }) : t('Crew driving to {region}', { region: where });
         box.append(
           h('div', { class: 'mission-card live' }, [
             h('div', { class: 'mission-head' }, [h('span', { class: 'btn-icon rover-bob', html: m.type === 'orbital' ? ICONS.satellite : ICONS.rover }), h('strong', { text: title }), eta]),
@@ -137,16 +141,16 @@ export class MissionsPanel implements Panel {
           ]),
         );
       }
-      box.append(h('h3', { class: 'section-title', text: 'Completed' }));
-      if (!done.length) box.append(h('p', { class: 'muted', text: 'No completed missions yet.' }));
+      box.append(h('h3', { class: 'section-title', text: t('Completed') }));
+      if (!done.length) box.append(h('p', { class: 'muted', text: t('No completed missions yet.') }));
       for (const m of done) {
         const r = REGION_BY_ID[m.regionId];
         const reward = m.type === 'expedition' ? m.reward : undefined;
         box.append(
           h('div', { class: 'mission-done', title: reward?.find ?? '' }, [
             h('span', { text: '✔' }),
-            h('span', { text: `${r?.name ?? m.regionId} ${m.type === 'orbital' ? 'mapped' : 'explored'}` }),
-            h('span', { class: 'muted', text: `+${m.type === 'orbital' ? ORBITAL_SCAN.xp : (reward?.xp ?? 0)} XP` }),
+            h('span', { text: m.type === 'orbital' ? t('{region} mapped', { region: r?.name ?? m.regionId }) : t('{region} explored', { region: r?.name ?? m.regionId }) }),
+            h('span', { class: 'muted', text: `+${m.type === 'orbital' ? ORBITAL_SCAN.xp : (reward?.xp ?? 0)} ${t('XP')}` }),
           ]),
         );
       }
@@ -155,7 +159,7 @@ export class MissionsPanel implements Panel {
       const bar = this.bars.get(m.id);
       if (!bar) continue;
       bar.fill.style.transform = `scaleX(${m.progress.toFixed(3)})`;
-      setText(bar.eta, `${m.type === 'expedition' ? '≈ ' : ''}${MissionManager.remainingSols(m).toFixed(1)} sols left`);
+      setText(bar.eta, `${m.type === 'expedition' ? '≈ ' : ''}${t('{n} sols left', { n: MissionManager.remainingSols(m).toFixed(1) })}`);
       setText(bar.note, ACTIVITY_TEXT[m.activity]);
     }
   }
@@ -170,7 +174,7 @@ export { ResearchPanel } from './ResearchPanel';
 export class SettlementPanel implements Panel {
   readonly id = 'settlement' as const;
   readonly title = SETTLEMENT.name;
-  readonly subtitle = 'Settlement overview';
+  readonly subtitle = t('Settlement overview');
   readonly el = h('div', { class: 'settlement' });
   private unsub: (() => void) | null = null;
   private rows = new Map<string, { amount: HTMLElement; rate: HTMLElement; left: HTMLElement }>();
@@ -191,7 +195,7 @@ export class SettlementPanel implements Panel {
     const home = REGION_BY_ID[HOME_REGION_ID];
     this.stats = h('div', { class: 'stat-grid' });
     const table = h('div', { class: 'res-table' }, [
-      h('div', { class: 'res-row head' }, [h('span', { text: 'Resource' }), h('span', { text: 'Stock' }), h('span', { text: 'Per sol' }), h('span', { text: 'Lasts' })]),
+      h('div', { class: 'res-row head' }, [h('span', { text: t('Resource') }), h('span', { text: t('Stock') }), h('span', { text: t('Per sol') }), h('span', { text: t('Lasts') })]),
     ]);
     for (const id of RESOURCE_IDS) {
       const amount = h('span');
@@ -210,28 +214,28 @@ export class SettlementPanel implements Panel {
     this.buildingList = h('div', { class: 'building-list' });
     this.saveStatus = h('p', { class: 'muted save-status' });
     this.el.append(
-      h('p', { class: 'location', text: `📍 Jezero Crater · ${SETTLEMENT.lat.toFixed(1)}°N ${SETTLEMENT.lon.toFixed(1)}°E · ${home.name} (${home.id})` }),
+      h('p', { class: 'location', text: `📍 ${t('Jezero Crater')} · ${SETTLEMENT.lat.toFixed(1)}°${t('N')} ${SETTLEMENT.lon.toFixed(1)}°${t('E')} · ${home.name} (${home.id})` }),
       this.stats,
-      h('h3', { class: 'section-title', text: 'Resources' }),
+      h('h3', { class: 'section-title', text: t('Resources') }),
       table,
-      h('h3', { class: 'section-title', text: 'Buildings' }),
+      h('h3', { class: 'section-title', text: t('Buildings') }),
       this.buildingList,
-      h('h3', { class: 'section-title', text: 'Game' }),
+      h('h3', { class: 'section-title', text: t('Game') }),
       h('div', { class: 'region-actions' }, [
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => this.events.emit('camera:home') } }, [h('span', { class: 'btn-icon', html: ICONS.home }), 'Fly to base']),
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => this.save() } }, [h('span', { class: 'btn-icon', html: ICONS.save }), 'Save']),
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => this.load() } }, [h('span', { class: 'btn-icon', html: ICONS.load }), 'Load']),
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => this.events.emit('camera:home') } }, [h('span', { class: 'btn-icon', html: ICONS.home }), t('Fly to base')]),
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => this.save() } }, [h('span', { class: 'btn-icon', html: ICONS.save }), t('Save')]),
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => this.load() } }, [h('span', { class: 'btn-icon', html: ICONS.load }), t('Load')]),
       ]),
       this.saveStatus,
     );
     if (Auth.available) {
       const note = h('p', { class: 'muted' });
       const update = () =>
-        setText(note, Auth.current ? `Saving to ${Auth.current.email}.` : 'Playing as a guest. Log in or sign up to keep your colony safe on any device.');
+        setText(note, Auth.current ? t('Saving to {email}.', { email: Auth.current.email }) : t('Playing as a guest. Log in or sign up to keep your colony safe on any device.'));
       Auth.onChange(update);
       Auth.ready.then(update);
       update();
-      this.el.append(h('h3', { class: 'section-title', text: 'Account' }), note, h('div', { class: 'region-actions' }, [accountButton(document.getElementById('ui-root') ?? document.body)]));
+      this.el.append(h('h3', { class: 'section-title', text: t('Account') }), note, h('div', { class: 'region-actions' }, [accountButton(document.getElementById('ui-root') ?? document.body)]));
     }
   }
 
@@ -239,10 +243,10 @@ export class SettlementPanel implements Panel {
     try {
       const r = await this.saves.save(gameStore.getState());
       const time = new Date(r.data.savedAt).toLocaleTimeString();
-      setText(this.saveStatus, r.cloud ? `Saved to the cloud at ${time}.` : `Saved on this device at ${time} (cloud unavailable).`);
-      this.events.emit('game:saved', { ok: true, message: r.cloud ? 'Game saved to the cloud' : 'Game saved on this device' });
+      setText(this.saveStatus, r.cloud ? t('Saved to the cloud at {time}.', { time }) : t('Saved on this device at {time} (cloud unavailable).', { time }));
+      this.events.emit('game:saved', { ok: true, message: r.cloud ? t('Game saved to the cloud') : t('Game saved on this device') });
     } catch (e) {
-      setText(this.saveStatus, `Could not save: ${(e as Error).message}`);
+      setText(this.saveStatus, t('Could not save: {error}', { error: (e as Error).message }));
     }
   }
 
@@ -250,14 +254,14 @@ export class SettlementPanel implements Panel {
     try {
       const state = await this.saves.load();
       if (!state) {
-        setText(this.saveStatus, 'No saved game yet.');
+        setText(this.saveStatus, t('No saved game yet.'));
         return;
       }
       gameStore.getState().replaceState(state);
       this.onLoaded();
-      setText(this.saveStatus, 'Game loaded — press ▶ to continue.');
+      setText(this.saveStatus, t('Game loaded — press ▶ to continue.'));
     } catch (e) {
-      setText(this.saveStatus, `Could not load: ${(e as Error).message}`);
+      setText(this.saveStatus, t('Could not load: {error}', { error: (e as Error).message }));
     }
   }
 
@@ -266,10 +270,12 @@ export class SettlementPanel implements Panel {
     this.render();
     this.unsub = gameStore.subscribe(() => this.render());
     const cached = this.saves.cachedInfo();
-    if (cached && !this.saveStatus.textContent)
-      setText(this.saveStatus, `Last save: Sol ${cached.sol}, ${new Date(cached.savedAt).toLocaleString()}${cached.cloud ? ' ☁️' : ''}`);
+    const lastSave = (sol: number, at: string) => t('Last save: Sol {n}, {when}', { n: sol, when: new Date(at).toLocaleString() });
+    if (cached && !this.saveStatus.textContent) setText(this.saveStatus, lastSave(cached.sol, cached.savedAt) + (cached.cloud ? ' ☁️' : ''));
+    const shown = this.saveStatus.textContent;
     this.saves.info().then((i) => {
-      if (i && (!this.saveStatus.textContent || this.saveStatus.textContent.startsWith('Last save'))) setText(this.saveStatus, `Last save: Sol ${i.sol}, ${new Date(i.savedAt).toLocaleString()}`);
+      // Only replace the "last save" line written above, never a save/load result.
+      if (i && (!this.saveStatus.textContent || this.saveStatus.textContent === shown)) setText(this.saveStatus, lastSave(i.sol, i.savedAt));
     });
   }
 
@@ -288,12 +294,12 @@ export class SettlementPanel implements Panel {
     const stat = (label: string, value: string, hint?: string) =>
       h('div', { class: 'stat', title: hint ?? '' }, [h('span', { class: 'stat-label', text: label }), h('strong', { text: value })]);
     this.stats.append(
-      stat('Crew', `${s.colony.colonists} / ${s.colony.housing} beds`),
-      stat('Power', `${s.power.generationKw.toFixed(0)} / ${s.power.demandKw.toFixed(0)} kW`, 'Solar now / buildings using'),
-      stat('Batteries', `${s.power.batteryKwh.toFixed(0)} / ${s.power.batteryCapacityKwh.toFixed(0)} kWh`),
-      stat('Ice to mine', `${(s.deposits.ice / 1000).toFixed(1)} t`),
-      stat('Rank', `${lvl.icon} ${lvl.title}`, next ? `${next.xp - s.progression.xp} XP to ${next.title}` : 'Highest rank'),
-      stat('Explored', `${mapped} mapped · ${explored} visited`, 'Regions mapped from orbit · regions your crew has visited'),
+      stat(t('Crew'), `${s.colony.colonists} / ${tn(s.colony.housing, '{n} bed', '{n} beds')}`),
+      stat(t('Power'), `${s.power.generationKw.toFixed(0)} / ${s.power.demandKw.toFixed(0)} ${t('kW')}`, t('Solar now / buildings using')),
+      stat(t('Batteries'), `${s.power.batteryKwh.toFixed(0)} / ${s.power.batteryCapacityKwh.toFixed(0)} ${t('kWh')}`),
+      stat(t('Ice to mine'), t('{n} t', { n: (s.deposits.ice / 1000).toFixed(1) })),
+      stat(t('Rank'), `${lvl.icon} ${lvl.title}`, next ? t('{left} XP to {rank}', { left: next.xp - s.progression.xp, rank: next.title }) : t('Highest rank')),
+      stat(t('Explored'), t('{mapped} mapped · {visited} visited', { mapped, visited: explored }), t('Regions mapped from orbit · regions your crew has visited')),
     );
     for (const id of RESOURCE_IDS) {
       const r = this.rows.get(id)!;
@@ -301,7 +307,7 @@ export class SettlementPanel implements Panel {
       setText(r.rate, formatRate(s.rates[id]));
       r.rate.className = s.rates[id] > 0.05 ? 'up' : s.rates[id] < -0.05 ? 'down' : '';
       const left = ResourceManager.solsRemaining(s.resources[id], s.rates[id]);
-      setText(r.left, left === Infinity ? '∞' : `${Math.floor(left)} sols`);
+      setText(r.left, left === Infinity ? '∞' : tn(Math.floor(left), '{n} sol', '{n} sols'));
     }
     const key = s.buildings.map((b) => `${b.id}:${b.isOperational}`).join(',');
     if (key !== this.lastBuildingsKey) {
@@ -318,7 +324,7 @@ export class SettlementPanel implements Panel {
             {
               class: 'building-row',
               attrs: { type: 'button' },
-              title: 'Select and show on the map',
+              title: t('Select and show on the map'),
               on: {
                 click: () => {
                   const b = list[0];
@@ -327,7 +333,7 @@ export class SettlementPanel implements Panel {
                 },
               },
             },
-            [buildingIcon('row-icon', buildingThumbnail(def.id), BUILDING_ICONS[def.id]), h('span', { class: 'row-name', text: def.name }), h('span', { class: 'row-status', text: `×${list.length}${building ? ` (${building} building)` : ''}` })],
+            [buildingIcon('row-icon', buildingThumbnail(def.id), BUILDING_ICONS[def.id]), h('span', { class: 'row-name', text: def.name }), h('span', { class: 'row-status', text: `×${list.length}${building ? ` (${t('{n} being built', { n: building })})` : ''}` })],
           ),
         );
       }

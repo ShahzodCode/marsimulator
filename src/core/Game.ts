@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EventBus } from './EventBus';
 import { SimulationRunner } from './SimulationRunner';
 import { GameLoop } from './GameLoop';
+import { GraphicsController } from './Graphics';
 import { InputController } from './InputController';
 import { Terrain } from '../planet/Terrain';
 import { Mars } from '../planet/Mars';
@@ -37,8 +38,11 @@ import { MapControls } from '../ui/MapControls';
 import { MapLabels } from '../ui/MapLabels';
 import { WorldPopups } from '../ui/WorldPopups';
 import { LoadingScreen, WelcomeScreen } from '../ui/Screens';
+import { PauseMenu } from '../ui/PauseMenu';
+import { FpsCounter } from '../ui/FpsCounter';
 import { Spectator } from './Spectator';
 import { Visits } from './Visits';
+import { onBeforeLanguageChange, t } from '../i18n';
 
 const GLOBE_ALTITUDE = 235;
 const BASE_ALTITUDE = 0.75;
@@ -78,7 +82,13 @@ export class Game {
   /** Visiting another player's colony (spectate mode). */
   private spectator!: Spectator;
   private xray!: XrayControl;
-  private loop = new GameLoop((dt, t) => this.frame(dt, t));
+  private graphics!: GraphicsController;
+  private loop = new GameLoop(
+    (dt, t) => this.frame(dt, t),
+    () => this.graphics?.frameInterval ?? 0,
+  );
+  private pauseMenu!: PauseMenu;
+  private readonly lastLightDir = new THREE.Vector3();
   private width = 1;
   private height = 1;
   private lastRegionHover = -2;
@@ -98,14 +108,13 @@ export class Game {
       terrain = await Terrain.load((f, label) => loading.progress(f * 0.92, label));
     } catch (err) {
       console.error(err);
-      loading.error('Could not generate the planet. Please reload the page.');
+      loading.error(t('Could not generate the planet. Please reload the page.'));
       return;
     }
     loading.progress(0.95, 'Building the settlement');
     await nextFrame();
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
@@ -119,7 +128,6 @@ export class Game {
     // like a classic shaded-relief map) plus a warm sky / dark ground fill.
     this.scene.add(new THREE.HemisphereLight('#ffe2c4', '#2a140c', 0.85));
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera;
     sc.left = sc.bottom = -0.55;
     sc.right = sc.top = 0.55;
@@ -128,6 +136,8 @@ export class Game {
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.0012;
     this.scene.add(this.sun, this.sun.target);
+    // Pixel ratio, shadow map size and shadows on/off come from the graphics settings.
+    this.graphics = new GraphicsController(this.renderer, this.sun);
 
     loading.progress(0.96, 'Unpacking building models');
     await loadBuildingModels(this.renderer, (f) => loading.progress(0.96 + f * 0.03, 'Unpacking building models'));
@@ -226,6 +236,8 @@ export class Game {
     new BuildingPanel(ui, this.events);
     new PlacementHint(ui, this.events);
     new Toolbar(ui);
+    new FpsCounter(ui);
+    this.pauseMenu = new PauseMenu(ui, this.events);
     this.mapControls = new MapControls(ui, this.events, this.camera);
     this.xray = new XrayControl(ui, this.events);
     this.garageArrow = new GarageArrow(ui, terrain, {
@@ -315,6 +327,8 @@ export class Game {
       this.onAccountChange(account?.id ?? null, change).catch((e) => console.warn('Account switch failed', e));
     });
     window.setInterval(() => this.autosave(), AUTOSAVE_SECONDS * 1000);
+    // Switching language reloads the page: save first so nothing is lost.
+    onBeforeLanguageChange(() => this.autosave());
     const flush = () => {
       this.rememberCamera();
       this.autosave();
@@ -387,7 +401,7 @@ export class Game {
       gameStore.getState().replaceState({ ...createInitialState(), started: true });
       this.afterLoad();
       this.events.emit('camera:home');
-      gameStore.getState().pushAlert({ key: 'account', level: 'info', title: 'Logged out', message: 'You are playing as a guest. Log in to save your colony.' });
+      gameStore.getState().pushAlert({ key: 'account', level: 'info', title: t('Logged out'), message: t('You are playing as a guest. Log in to save your colony.') });
       return;
     }
 
@@ -399,12 +413,12 @@ export class Game {
       this.events.emit('camera:home');
     }
     await this.autosave();
-    const name = Auth.current?.username ?? 'your account';
+    const name = Auth.current?.username ?? t('your account');
     gameStore.getState().pushAlert({
       key: 'account',
       level: 'success',
-      title: change === 'signup' ? 'Account created' : `Welcome back, ${name}!`,
-      message: saved ? `Loaded the colony saved to ${name}.` : `Your colony now saves to ${name}.`,
+      title: change === 'signup' ? t('Account created') : t('Welcome back, {name}!', { name }),
+      message: saved ? t('Loaded the colony saved to {name}.', { name }) : t('Your colony now saves to {name}.', { name }),
     });
   }
 
@@ -525,6 +539,11 @@ export class Game {
   private handleKey(key: string, e: KeyboardEvent): boolean {
     const s = gameStore.getState();
     if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    // The pause menu owns the keyboard while it is open.
+    if (this.pauseMenu.isOpen) {
+      if (key === 'escape') this.pauseMenu.close();
+      return true;
+    }
     if (this.spectator.active) {
       if (key === 'escape') Visits.stop();
       else if (key === 'h') this.events.emit('camera:home');
@@ -534,7 +553,11 @@ export class Game {
     }
     switch (key) {
       case 'escape':
-        return this.handleCancel();
+        // Something else (the mission log) already used this Escape.
+        if (e.defaultPrevented) return true;
+        if (this.handleCancel()) return true;
+        if (s.started && !document.querySelector('.auth-modal, .welcome')) this.pauseMenu.open();
+        return true;
       case ' ':
         if (s.started) s.togglePause();
         return true;
@@ -555,14 +578,14 @@ export class Game {
         if (s.roadMode) s.stopRoadMode();
         else {
           const res = s.startRoadMode();
-          if (!res.ok) s.pushAlert({ key: 'cant-afford', level: 'warning', title: 'Not enough regolith for roads', message: res.reason });
+          if (!res.ok) s.pushAlert({ key: 'cant-afford', level: 'warning', title: t('Not enough regolith for roads'), message: res.reason });
         }
         return true;
       case 'p':
         if (s.pipelineMode) s.stopPipelineMode();
         else {
           const res = s.startPipelineMode();
-          if (!res.ok) s.pushAlert({ key: 'pipe-error', level: 'warning', title: 'Can’t lay a pipeline yet', message: res.reason });
+          if (!res.ok) s.pushAlert({ key: 'pipe-error', level: 'warning', title: t('Can’t lay a pipeline yet'), message: res.reason });
         }
         return true;
       case 'h':
@@ -595,6 +618,7 @@ export class Game {
   }
 
   private frame(dt: number, time: number): void {
+    this.graphics.sample(dt);
     this.sim.frame(dt);
 
     this.input.update(dt);
@@ -656,7 +680,12 @@ export class Game {
     this.sun.position.copy(c).addScaledVector(this.lightDir, 4);
     this.sun.target.updateMatrixWorld();
     const nearBase = alt < 6 && this.settlement.distanceFrom(this.tmp.copy(this.camera.camera.position)) < 4;
-    if (nearBase) this.renderer.shadowMap.needsUpdate = true;
+    if (!nearBase) return;
+    // Redraw the shadow map when the light turned with the camera; while it is still, only
+    // as often as the graphics tier asks (for animated parts).
+    const moved = this.lastLightDir.distanceToSquared(this.lightDir) > 1e-8;
+    this.lastLightDir.copy(this.lightDir);
+    if (this.graphics.shadowsDue(moved)) this.renderer.shadowMap.needsUpdate = true;
   }
 }
 

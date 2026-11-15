@@ -4,6 +4,7 @@ import { gameStore } from '../state/gameStore';
 import { MARS_RADIUS_KM, R } from '../planet/geo';
 import { h, setText } from './dom';
 import { ICONS } from './icons';
+import { t } from '../i18n';
 
 export interface CameraView {
   readonly alt: number;
@@ -26,10 +27,10 @@ export class MapControls {
     const btn = (icon: string, title: string, fn: () => void) =>
       h('button', { class: 'map-btn', html: icon, title, attrs: { type: 'button', 'aria-label': title }, on: { click: fn } });
     const controls = h('div', { class: 'map-controls' }, [
-      btn(ICONS.plus, 'Zoom in (+)', () => cam.zoomAt(0.6)),
-      btn(ICONS.minus, 'Zoom out (−)', () => cam.zoomAt(1.6)),
-      btn(ICONS.home, 'Fly to the base (H)', () => events.emit('camera:home')),
-      btn(ICONS.globe, 'Show the whole planet (G)', () => events.emit('camera:globe')),
+      btn(ICONS.plus, t('Zoom in (+)'), () => cam.zoomAt(0.6)),
+      btn(ICONS.minus, t('Zoom out (−)'), () => cam.zoomAt(1.6)),
+      btn(ICONS.home, t('Fly to the base (H)'), () => events.emit('camera:home')),
+      btn(ICONS.globe, t('Show the whole planet (G)'), () => events.emit('camera:globe')),
     ]);
     this.coords = h('span', { class: 'coords-ll', text: '—' });
     this.region = h('span', { class: 'coords-region' });
@@ -44,12 +45,12 @@ export class MapControls {
         setText(this.region, '');
         return;
       }
-      const ns = p.lat >= 0 ? 'N' : 'S';
-      const ew = p.lon >= 0 ? 'E' : 'W';
+      const ns = p.lat >= 0 ? t('N') : t('S');
+      const ew = p.lon >= 0 ? t('E') : t('W');
       setText(this.coords, `${Math.abs(p.lat).toFixed(2)}°${ns}  ${Math.abs(p.lon).toFixed(2)}°${ew}`);
       const r = REGION_BY_ID[p.regionId];
       const known = gameStore.getState().discoveredRegions[p.regionId];
-      setText(this.region, r ? `${r.id} ${r.name}${known ? '' : ' · not mapped'}` : '');
+      setText(this.region, r ? `${r.id} ${r.name}${known ? '' : ` · ${t('not mapped')}`}` : '');
     });
   }
 
@@ -67,7 +68,7 @@ export class MapControls {
     const nice = niceNumber(targetKm);
     const px = (nice / kmPerUnit) * pxPerUnit;
     this.scaleBar.style.width = `${px.toFixed(0)}px`;
-    setText(this.scaleLabel, nice >= 1 ? `${nice.toLocaleString()} km` : `${Math.round(nice * 1000)} m`);
+    setText(this.scaleLabel, nice >= 1 ? t('{n} km', { n: nice.toLocaleString() }) : t('{n} m', { n: Math.round(nice * 1000) }));
   }
 }
 

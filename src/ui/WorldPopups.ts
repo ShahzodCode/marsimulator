@@ -8,6 +8,7 @@ import { footprintRect, rectCenter } from '../settlement/PlacementRules';
 import { MissionManager } from '../simulation/MissionManager';
 import { gameStore, regionManager } from '../state/gameStore';
 import { h, setText, toggleClass } from './dom';
+import { t } from '../i18n';
 
 interface Popup {
   el: HTMLElement;
@@ -126,7 +127,7 @@ export class WorldPopups {
       this.terrain.surfacePoint(p.lat, p.lon, 0, r.normal);
       r.normal.normalize();
       this.terrain.surfacePoint(p.lat, p.lon, ROVER_LABEL_LIFT * Math.max(1, altitude / 60), r.world);
-      setText(r.eta, `${ACTIVITY_ICON[m.activity]} ${MissionManager.remainingSols(m).toFixed(1)} sols`);
+      setText(r.eta, `${ACTIVITY_ICON[m.activity]} ${t('{n} sols', { n: MissionManager.remainingSols(m).toFixed(1) })}`);
     }
     for (const [id, r] of this.rovers) {
       if (active.has(id)) continue;

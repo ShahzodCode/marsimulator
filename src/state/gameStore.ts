@@ -37,7 +37,7 @@ export function getRouteHeight(): HeightSampler | undefined {
 }
 
 /** Most messages the mission log keeps (oldest drop off). */
-export const LOG_LIMIT = 500;
+export const LOG_LIMIT = 30;
 
 function appendLog(log: LogEntry[], a: Omit<Alert, 'id' | 'sol' | 'persistent'> & { where: string }, sol: number): LogEntry[] {
   const entry: LogEntry = { id: makeId('log'), key: a.key, level: a.level, title: a.title, message: a.message, sol, where: a.where };

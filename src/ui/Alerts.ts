@@ -2,6 +2,7 @@ import { formatMarsTime } from '../core/GameClock';
 import { gameStore, watch } from '../state/gameStore';
 import type { Alert, AlertLevel, LogEntry } from '../state/types';
 import { clear, h, setText, toggleClass } from './dom';
+import { t } from '../i18n';
 
 const LEVEL_ICON: Record<AlertLevel, string> = {
   info: 'ℹ️',
@@ -11,10 +12,10 @@ const LEVEL_ICON: Record<AlertLevel, string> = {
 };
 
 const LEVEL_NAME: Record<AlertLevel, string> = {
-  info: 'Update',
-  success: 'Success',
-  warning: 'Warning',
-  critical: 'Critical',
+  info: t('Update'),
+  success: t('Success'),
+  warning: t('Warning'),
+  critical: t('Critical'),
 };
 
 const CHEVRON = '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg>';
@@ -24,23 +25,15 @@ const PEEK = 2;
 
 type Filter = 'all' | 'alerts' | 'success' | 'info';
 const FILTERS: { id: Filter; label: string; test: (l: AlertLevel) => boolean }[] = [
-  { id: 'all', label: 'All', test: () => true },
-  { id: 'alerts', label: 'Warnings', test: (l) => l === 'warning' || l === 'critical' },
-  { id: 'success', label: 'Successes', test: (l) => l === 'success' },
-  { id: 'info', label: 'Updates', test: (l) => l === 'info' },
+  { id: 'all', label: t('All'), test: () => true },
+  { id: 'alerts', label: t('Warnings'), test: (l) => l === 'warning' || l === 'critical' },
+  { id: 'success', label: t('Successes'), test: (l) => l === 'success' },
+  { id: 'info', label: t('Updates'), test: (l) => l === 'info' },
 ];
 
 function when(sol: number): string {
-  const t = formatMarsTime(sol);
-  return `Sol ${t.sol}, ${t.clock}`;
-}
-
-function ago(now: number, sol: number): string {
-  const d = now - sol;
-  if (d < 0.04) return 'just now';
-  if (d < 1) return `${Math.round(d * 24.6)} h ago`;
-  const n = Math.floor(d);
-  return `${n} sol${n === 1 ? '' : 's'} ago`;
+  const time = formatMarsTime(sol);
+  return t('Sol {n}, {clock}', { n: time.sol, clock: time.clock });
 }
 
 /**
@@ -70,7 +63,7 @@ export class Alerts {
           {
             class: `warning-item ${a.level}`,
             attrs: { type: 'button' },
-            title: 'Open settlement overview',
+            title: t('Open settlement overview'),
             on: { click: () => gameStore.getState().openPanel('settlement') },
           },
           [
@@ -78,7 +71,7 @@ export class Alerts {
             h('span', { class: 'warning-text' }, [
               h('strong', { text: a.title }),
               h('span', { class: 'warning-msg', text: a.message }),
-              h('span', { class: 'msg-meta', text: `📍 ${a.where ?? ''} · since ${when(a.sol)}` }),
+              h('span', { class: 'msg-meta', text: `📍 ${a.where ?? ''} · ${t('since {when}', { when: when(a.sol) })}` }),
             ]),
           ],
         ),
@@ -94,22 +87,22 @@ class MessageFeed {
   private unreadEl: HTMLElement;
   private empty: HTMLElement;
   private chips = new Map<Filter, HTMLElement>();
-  private rows = new Map<string, { el: HTMLElement; ago: HTMLElement; entry: LogEntry }>();
+  private rows = new Map<string, { el: HTMLElement; entry: LogEntry }>();
   private open = false;
   private filter: Filter = 'all';
   private seen = 0;
-  private firstId: string | undefined;
+  private newestId: string | undefined;
   private ready = false;
 
   constructor() {
     this.count = h('span', { class: 'feed-count' });
     this.unreadEl = h('span', { class: 'feed-unread' });
-    this.empty = h('p', { class: 'feed-empty', text: 'No messages yet. News from your bases, crews and labs will show up here.' });
+    this.empty = h('p', { class: 'feed-empty', text: t('No messages yet. News from your bases, crews and labs will show up here.') });
     this.list = h('ol', { class: 'feed-list', attrs: { 'aria-live': 'polite' } });
     const head = h(
       'button',
       { class: 'feed-head', attrs: { type: 'button', 'aria-expanded': 'false' }, on: { click: () => this.toggle() } },
-      [h('span', { class: 'feed-dot' }), h('span', { class: 'feed-title', text: 'Mission log' }), this.count, this.unreadEl, h('span', { class: 'feed-chevron', html: CHEVRON })],
+      [h('span', { class: 'feed-dot' }), h('span', { class: 'feed-title', text: t('Mission log') }), this.count, this.unreadEl, h('span', { class: 'feed-chevron', html: CHEVRON })],
     );
     const filters = h(
       'div',
@@ -120,13 +113,16 @@ class MessageFeed {
         return chip;
       }),
     );
-    this.el = h('section', { class: 'feed', attrs: { 'aria-label': 'Mission log' } }, [head, filters, this.list, this.empty]);
+    this.el = h('section', { class: 'feed', attrs: { 'aria-label': t('Mission log') } }, [head, filters, this.list, this.empty]);
     // Folded up, a click anywhere opens the full log.
     this.list.addEventListener('click', () => {
       if (!this.open) this.toggle();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.open) this.toggle();
+      if (e.key !== 'Escape' || !this.open) return;
+      // Tells the game this Escape is used up (it would open the pause menu otherwise).
+      e.preventDefault();
+      this.toggle();
     });
     // Panels in the same corner sit above the folded log.
     new ResizeObserver(() => {
@@ -137,8 +133,6 @@ class MessageFeed {
       (s) => s.log,
       (log) => this.render(log),
     );
-    // Keeps "3 h ago" up to date.
-    window.setInterval(() => this.refreshAgo(), 2000);
   }
 
   private toggle(): void {
@@ -183,30 +177,27 @@ class MessageFeed {
   private updateCount(log: LogEntry[]): void {
     setText(this.count, `${log.length}`);
     const unread = this.open ? 0 : Math.max(0, log.length - this.seen);
-    setText(this.unreadEl, unread ? `${unread} new` : '');
+    setText(this.unreadEl, unread ? t('{n} new', { n: unread }) : '');
     toggleClass(this.unreadEl, 'on', unread > 0);
   }
 
-  private row(e: LogEntry, now: number): HTMLElement {
-    const agoEl = h('span', { class: 'msg-ago', text: ago(now, e.sol) });
+  private row(e: LogEntry): HTMLElement {
     const el = h('li', { class: `msg ${e.level}` }, [
       h('span', { class: 'msg-badge', text: LEVEL_ICON[e.level], title: LEVEL_NAME[e.level] }),
       h('div', { class: 'msg-body' }, [
-        h('div', { class: 'msg-top' }, [h('strong', { class: 'msg-title', text: e.title }), agoEl]),
+        h('strong', { class: 'msg-title', text: e.title }),
         e.message ? h('p', { class: 'msg-text', text: e.message }) : null,
-        h('div', { class: 'msg-meta' }, [h('span', { text: `📍 ${e.where}` }), h('span', { text: `🕒 ${when(e.sol)}` })]),
+        h('div', { class: 'msg-meta' }, [h('span', { text: `📍 ${e.where}` })]),
       ]),
     ]);
     toggleClass(el, 'hidden', !FILTERS.find((x) => x.id === this.filter)!.test(e.level));
-    this.rows.set(e.id, { el, ago: agoEl, entry: e });
+    this.rows.set(e.id, { el, entry: e });
     return el;
   }
 
   private render(log: LogEntry[]): void {
-    const now = gameStore.getState().timeSols;
-    // A new game or a loaded save: start over without animations.
-    if (log[0]?.id !== this.firstId || log.length < this.rows.size) {
-      this.firstId = log[0]?.id;
+    // A new game or a loaded save (the newest message shown is gone): start over without animations.
+    if ((this.newestId && !log.some((e) => e.id === this.newestId)) || log.length < this.rows.size) {
       this.rows.clear();
       clear(this.list);
       this.ready = false;
@@ -214,7 +205,7 @@ class MessageFeed {
     const fresh: HTMLElement[] = [];
     for (const e of log) {
       if (this.rows.has(e.id)) continue;
-      const el = this.row(e, now);
+      const el = this.row(e);
       // Newest on top.
       this.list.prepend(el);
       if (this.ready) fresh.push(el);
@@ -228,6 +219,7 @@ class MessageFeed {
         this.rows.delete(id);
       }
     }
+    this.newestId = log[log.length - 1]?.id;
     if (!this.ready) this.seen = log.length;
     this.ready = true;
     for (const el of fresh) {
@@ -240,8 +232,4 @@ class MessageFeed {
     this.fit();
   }
 
-  private refreshAgo(): void {
-    const now = gameStore.getState().timeSols;
-    for (const r of this.rows.values()) setText(r.ago, ago(now, r.entry.sol));
-  }
 }
