@@ -482,7 +482,6 @@ export const RU: Record<string, string> = {
   'You are #{place} of {total} by XP': 'Ты на {place}-м месте из {total} по XP',
   'Other players see you as “{name}” until you pick your own name.': 'Другие игроки видят тебя как «{name}», пока ты не выберешь своё имя.',
   'Show me on the leaderboard': 'Показывать меня в таблице лидеров',
-  'Guest commander': 'Командир-гость',
   'Playing as a guest — not signed in': 'Игра в гостевом режиме — вход не выполнен',
   'Playing offline on this device': 'Игра без интернета на этом устройстве',
   '{xp} XP — you reached the highest rank!': '{xp} XP — у тебя высшее звание!',
@@ -661,4 +660,5 @@ export const RU: Record<string, string> = {
   'Now: {fps} FPS · {quality} · {res}% resolution': 'Сейчас: {fps} FPS · {quality} · разрешение {res}%',
   'Graphics card: {gpu}': 'Видеокарта: {gpu}',
   'This is the built-in graphics chip. If your computer also has a gaming card (NVIDIA or AMD), open Windows Settings → System → Display → Graphics, choose your browser, set it to “High performance”, and restart the browser.': 'Это встроенный графический чип. Если в компьютере есть игровая видеокарта (NVIDIA или AMD), откройте Параметры Windows → Система → Дисплей → Графика, выберите свой браузер, поставьте «Высокая производительность» и перезапустите браузер.',
+  Guest: 'Гость',
 };

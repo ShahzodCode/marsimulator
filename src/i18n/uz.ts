@@ -484,7 +484,6 @@ export const UZ: Record<string, string> = {
   'You are #{place} of {total} by XP': 'XP boʻyicha {total} kishi ichida {place}-oʻrindasan',
   'Other players see you as “{name}” until you pick your own name.': 'Oʻz isming tanlamaguningcha boshqa oʻyinchilar seni “{name}” deb koʻradi.',
   'Show me on the leaderboard': 'Meni peshqadamlar jadvalida koʻrsatish',
-  'Guest commander': 'Mehmon qoʻmondon',
   'Playing as a guest — not signed in': 'Mehmon rejimida oʻynayapti — hisobga kirilmagan',
   'Playing offline on this device': 'Bu qurilmada internetsiz oʻynayapti',
   '{xp} XP — you reached the highest rank!': '{xp} XP — sen eng yuqori unvonga erishding!',
@@ -662,4 +661,5 @@ export const UZ: Record<string, string> = {
   'Now: {fps} FPS · {quality} · {res}% resolution': 'Hozir: {fps} FPS · {quality} · ruxsat {res}%',
   'Graphics card: {gpu}': 'Videokarta: {gpu}',
   'This is the built-in graphics chip. If your computer also has a gaming card (NVIDIA or AMD), open Windows Settings → System → Display → Graphics, choose your browser, set it to “High performance”, and restart the browser.': 'Bu ichki grafik chip. Agar kompyuteringizda oʻyin videokartasi (NVIDIA yoki AMD) ham boʻlsa, Windows Sozlamalari → Tizim → Displey → Grafika boʻlimini oching, brauzeringizni tanlang, “Yuqori unumdorlik”ni belgilang va brauzerni qayta ishga tushiring.',
+  Guest: 'Mehmon',
 };

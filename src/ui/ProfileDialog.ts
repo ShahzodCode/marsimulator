@@ -202,7 +202,7 @@ export class ProfileDialog {
     const next = nextLevel(rank.level);
     const frac = next ? Math.min(1, (s.progression.xp - rank.xp) / (next.xp - rank.xp)) : 1;
 
-    const name = account ? (account.username ?? t('New commander')) : t('Guest commander');
+    const name = account ? (account.username ?? t('New commander')) : t('Guest');
     const header = h('div', { class: 'profile-head' }, [
       h('span', { class: `rank-badge large rank-${rank.level}`, html: rankBadgeSvg(rank) }),
       h('div', { class: 'profile-id' }, [

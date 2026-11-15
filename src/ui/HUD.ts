@@ -1,7 +1,6 @@
 import { RESOURCES, RESOURCE_IDS, formatAmount, formatRate, type ResourceId } from '../data/resources';
 import { rankForXp, nextLevel } from '../data/progression';
 import type { EventBus } from '../core/EventBus';
-import { SETTLEMENT } from '../data/settlement';
 import { formatMarsTime } from '../core/GameClock';
 import { ResourceManager } from '../simulation/ResourceManager';
 import { gameStore, type GameStore } from '../state/gameStore';
@@ -69,8 +68,8 @@ export class HUD {
   private brand(parent: HTMLElement): HTMLElement {
     this.levelEl = h('span', { class: 'level-title' });
     this.xpFill = h('span', { class: 'xp-fill' });
-    // The player's name once they're signed in; the base name for guests.
-    const name = h('strong', { text: SETTLEMENT.name });
+    // The player's name once they're signed in; "Guest" until then.
+    const name = h('strong', { text: t('Guest') });
     // The rank emblem changes as the player ranks up.
     this.badge = h('span', { class: 'brand-mark rank-badge', attrs: { 'aria-hidden': 'true' } });
     // The whole box (emblem, name, rank and progress) opens the profile and leaderboard.
@@ -85,7 +84,7 @@ export class HUD {
       const a = Auth.current;
       box.setAttribute('aria-label', a?.username ? t('Open your profile ({name})', { name: a.username }) : t('Open your profile'));
       box.title = a ? t('{name} — open profile', { name: a.username ?? t('Commander') }) : t('Open your commander profile');
-      setText(name, a ? (a.username ?? a.email.split('@')[0]) : SETTLEMENT.name);
+      setText(name, a ? (a.username ?? a.email.split('@')[0]) : t('Guest'));
     };
     Auth.onChange(label);
     Auth.ready.then(label);
