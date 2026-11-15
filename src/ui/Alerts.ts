@@ -20,7 +20,7 @@ const LEVEL_NAME: Record<AlertLevel, string> = {
 const CHEVRON = '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg>';
 
 /** Messages visible while the log is folded up. */
-const PEEK = 3;
+const PEEK = 2;
 
 type Filter = 'all' | 'alerts' | 'success' | 'info';
 const FILTERS: { id: Filter; label: string; test: (l: AlertLevel) => boolean }[] = [
@@ -45,7 +45,7 @@ function ago(now: number, sol: number): string {
 
 /**
  * Persistent warnings (conditions such as low oxygen, shown at the left until they clear)
- * and the mission log in the bottom-right corner: the newest three messages, and every
+ * and the mission log in the bottom-right corner: the newest two messages, and every
  * message of the game when it is opened.
  */
 export class Alerts {
@@ -163,7 +163,7 @@ class MessageFeed {
     this.fit();
   }
 
-  /** Folded: exactly the newest three messages. Open: a tall scrolling list (CSS). */
+  /** Folded: exactly the newest two messages. Open: a tall scrolling list (CSS). */
   private fit(): void {
     if (this.open) {
       this.list.style.maxHeight = '';
