@@ -86,7 +86,8 @@ function fail(reason: 'guest' | 'unavailable' | 'offline' | 'error', message: st
 function fromError(error: { message?: string; code?: string } | null | undefined): Loaded<never> {
   const msg = (error?.message ?? '').toLowerCase();
   // The migration hasn't been run yet: the function or table doesn't exist.
-  if (error?.code === 'PGRST202' || error?.code === '42883' || error?.code === '42P01' || msg.includes('could not find the function')) {
+  if (error?.code === 'PGRST202' || error?.code === 'PGRST205' || error?.code === '42883' || error?.code === '42P01' || msg.includes('could not find the function')) {
+    console.warn('Leaderboard: the database is not set up. Run supabase/migrations/0002_leaderboard.sql once in the Supabase SQL Editor.', error);
     return fail('unavailable', 'The leaderboard is not switched on yet — please tell a grown-up.');
   }
   if (msg.includes('fetch') || msg.includes('network')) return fail('offline', 'Could not reach the server. Check your internet connection.');
@@ -122,7 +123,7 @@ export function toRow(r: Record<string, unknown>): LeaderboardRow {
     bases: num(r.bases),
     online: r.online === true,
     score: num(r.score),
-    position: num(r.position),
+    position: num(r.place),
     isMe: r.is_me === true,
   };
 }
@@ -193,7 +194,7 @@ export const Leaderboard = {
         const { data, error } = await supabase!.rpc('get_my_position', { sort });
         if (error) return fromError(error);
         const r = ((data ?? []) as Record<string, unknown>[])[0];
-        return { ok: true, data: r ? { position: num(r.position), score: num(r.score), total: num(r.total), listed: r.listed === true } : null };
+        return { ok: true, data: r ? { position: num(r.place), score: num(r.score), total: num(r.total), listed: r.listed === true } : null };
       } catch (e) {
         return fromError(e as Error);
       }

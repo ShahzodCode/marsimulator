@@ -20,7 +20,7 @@ describe('username filter', () => {
 
 describe('leaderboard data', () => {
   it('maps a board row and survives odd values', () => {
-    const row = toRow({ user_id: 'u1', username: 'Nova', xp: '120', sol: 4, colonists: null, buildings: 9, bases: 1, online: true, score: 120, position: 2, is_me: false });
+    const row = toRow({ user_id: 'u1', username: 'Nova', xp: '120', sol: 4, colonists: null, buildings: 9, bases: 1, online: true, score: 120, place: 2, is_me: false });
     expect(row).toMatchObject({ userId: 'u1', username: 'Nova', xp: 120, colonists: 0, position: 2, online: true, isMe: false });
   });
 

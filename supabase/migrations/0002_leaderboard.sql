@@ -127,26 +127,26 @@ revoke all on function public.leaderboard_rows(text) from public, anon, authenti
 -- Top players (or the players whose name contains `search`), with their place on the whole board.
 create or replace function public.get_leaderboard(sort text default 'xp', max_rows integer default 50, search text default null)
 returns table (user_id uuid, username text, xp bigint, sol integer, colonists integer, buildings integer,
-               bases integer, online boolean, score bigint, position bigint, is_me boolean)
+               bases integer, online boolean, score bigint, place bigint, is_me boolean)
 language sql stable security definer set search_path = '' as $$
   with ranked as (
-    select r.*, rank() over (order by r.score desc, r.xp desc) as position
+    select r.*, rank() over (order by r.score desc, r.xp desc) as place
     from public.leaderboard_rows(sort) r
   ), q as (
     select nullif(left(lower(btrim(coalesce(search, ''))), 20), '') as term
   )
   select r.user_id, r.username, r.xp, r.sol, r.colonists, r.buildings, r.bases,
-         r.saved_at > now() - interval '3 minutes', r.score, r.position, r.user_id = auth.uid()
+         r.saved_at > now() - interval '3 minutes', r.score, r.place, r.user_id = auth.uid()
   from ranked r, q
   where q.term is null
      or r.username_lower like '%' || replace(replace(replace(q.term, '\', '\\'), '%', '\%'), '_', '\_') || '%'
-  order by r.position, r.username_lower
+  order by r.place, r.username_lower
   limit least(greatest(coalesce(max_rows, 50), 1), 100)
 $$;
 
 -- The caller's own place: shown in the profile and pinned under the board.
 create or replace function public.get_my_position(sort text default 'xp')
-returns table (position bigint, score bigint, total bigint, listed boolean)
+returns table (place bigint, score bigint, total bigint, listed boolean)
 language sql stable security definer set search_path = '' as $$
   with me as (
     select case sort when 'colonists' then s.colonists when 'buildings' then s.building_count when 'bases' then s.base_count else s.xp end::bigint as score,
@@ -212,6 +212,9 @@ revoke all on function public.get_public_colony(uuid) from public, anon;
 grant execute on function public.get_leaderboard(text, integer, text) to authenticated;
 grant execute on function public.get_my_position(text) to authenticated;
 grant execute on function public.get_public_colony(uuid) to authenticated;
+
+-- Make the API see the new table and functions right away.
+notify pgrst, 'reload schema';
 
 -- ---------------------------------------------------------------------------
 -- Quick check (optional): signed in as player B in the SQL editor's "Run as" role,
