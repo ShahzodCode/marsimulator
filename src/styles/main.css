@@ -3236,6 +3236,62 @@ svg {
   animation: rs-pulse 2.2s ease-in-out infinite;
 }
 
+/* One card per Research Lab: running projects, then free labs */
+.rs-labs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.rs-labs .rs-active {
+  margin-bottom: 0;
+}
+
+.rs-active-head .rs-active-title {
+  flex: 1;
+}
+
+.rs-active-name {
+  all: unset;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rs-active-name:hover,
+.rs-active-name:focus-visible {
+  text-decoration: underline;
+}
+
+.rs-free-lab {
+  --branch: var(--text-faint);
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: transparent;
+  opacity: 0.75;
+}
+
+.rs-pause {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.rs-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 @keyframes rs-pulse {
   50% {
     box-shadow: 0 0 0 1px var(--branch), 0 0 22px color-mix(in srgb, var(--branch) 30%, transparent);

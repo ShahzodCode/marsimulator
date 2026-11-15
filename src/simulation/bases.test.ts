@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BASE_SITES, SITE_BY_ID, sitesIn, TRAITS } from '../data/baseSites';
 import { FOUNDING } from '../data/missions';
 import { REGIONS } from '../data/regions';
-import { STAGES, TECHS, TECH_BY_ID, stageMaterials, stageRp } from '../data/research';
+import { labSlots, STAGES, TECHS, TECH_BY_ID, stageMaterials, stageRp } from '../data/research';
 import { RegionManager } from '../planet/RegionManager';
 import { fromSave, toSave, SAVE_VERSION } from '../persistence/SaveSchema';
 import { createInitialState, makeBuilding, switchBase } from '../state/factory';
@@ -168,17 +168,29 @@ describe('Research', () => {
   it('labs take a project through its stages, pausing for test materials', () => {
     const s0 = createInitialState();
     const lab = makeBuilding('research_lab', 14, 14, 0, true, 0);
-    let s: GameState = { ...s0, buildings: [...s0.buildings, lab], research: { ...s0.research, active: 'better_drills' } };
+    let s: GameState = { ...s0, buildings: [...s0.buildings, lab], research: { ...s0.research, active: [{ id: 'better_drills', stage: 0, progress: 0, awaiting: false }] } };
     s = run(s, 10);
     // The concept study is done; the lab prototype waits for its materials.
-    expect(s.research).toMatchObject({ active: 'better_drills', stage: 0, awaiting: true });
+    expect(s.research.active).toEqual([expect.objectContaining({ id: 'better_drills', stage: 0, awaiting: true })]);
     expect(stageMaterials(TECH_BY_ID.better_drills, 1)).toMatchObject({ iron: expect.any(Number), regolith: expect.any(Number) });
     for (let i = 0; i < STAGES.length && !s.research.completed.includes('better_drills'); i++) {
-      if (s.research.awaiting) s = { ...s, research: { ...s.research, stage: s.research.stage + 1, progress: 0, awaiting: false } };
+      s = { ...s, research: { ...s.research, active: s.research.active.map((p) => (p.awaiting ? { ...p, stage: p.stage + 1, progress: 0, awaiting: false } : p)) } };
       s = run(s, 10);
     }
     expect(s.research.completed).toContain('better_drills');
-    expect(s.research.active).toBeNull();
+    expect(s.research.active).toEqual([]);
+  });
+
+  it('several labs run several projects at once, sharing their points', () => {
+    const s0 = createInitialState();
+    const labs = [makeBuilding('research_lab', 14, 14, 0, true, 0), makeBuilding('research_lab', 18, 14, 0, true, 0)];
+    expect(labSlots([[...s0.buildings, ...labs]])).toBe(2);
+    const start = (id: 'better_drills' | 'hydroponics' | 'dust_cleaning') => ({ id, stage: 0, progress: 0, awaiting: false });
+    let s: GameState = { ...s0, buildings: [...s0.buildings, ...labs], research: { ...s0.research, active: [start('better_drills'), start('hydroponics')] } };
+    s = run(s, 1);
+    const [a, b] = s.research.active;
+    expect(a.progress).toBeGreaterThan(0);
+    expect(a.progress).toBeCloseTo(b.progress, 5);
   });
 
   it('stages add up to the full project cost', () => {
@@ -189,9 +201,23 @@ describe('Research', () => {
 describe('Saves', () => {
   it('round-trips several bases and research; old saves load as one base', () => {
     const s0 = createInitialState();
-    const st: GameState = { ...s0, research: { completed: ['hydroponics'], active: 'big_dome', stage: 1, progress: 40, awaiting: false, shelved: { fission: { stage: 2, progress: 5, awaiting: true } } } };
+    const st: GameState = {
+      ...s0,
+      research: {
+        completed: ['hydroponics', 'dust_cleaning'],
+        active: [
+          { id: 'big_dome', stage: 1, progress: 40, awaiting: false },
+          { id: 'better_drills', stage: 0, progress: 18, awaiting: true },
+        ],
+        shelved: { fission: { stage: 2, progress: 5, awaiting: true } },
+      },
+    };
     const back = fromSave(toSave(st));
     expect(back.research).toEqual(st.research);
+    // Saves from the one-project-at-a-time days load with that project running.
+    const single = toSave(s0);
+    single.state.research = { completed: [], active: 'big_dome', stage: 1, progress: 40, awaiting: false, shelved: {} } as never;
+    expect(fromSave(single).research.active).toEqual([{ id: 'big_dome', stage: 1, progress: 40, awaiting: false }]);
     expect(back.base.siteId).toBe('jezero');
     const old = toSave(s0);
     old.version = 3;

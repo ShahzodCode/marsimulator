@@ -19,6 +19,7 @@ import { buildingSilhouette, buildingThumbnail } from '../settlement/buildings/t
 import { Logistics } from '../simulation/Logistics';
 import { ResourceManager, type Cost } from '../simulation/ResourceManager';
 import { gameStore, type GameStore } from '../state/gameStore';
+import type { ActiveProject } from '../state/types';
 import { buildingIcon, clear, h, setText, toggleClass } from './dom';
 import { BRANCH_ICONS, BUILDING_ICONS, ICONS, MISC_ICONS, RESOURCE_ICONS, STAGE_ICONS, TECH_ICONS } from './icons';
 import type { Panel } from './SidePanel';
@@ -50,14 +51,14 @@ function fmtSols(v: number): string {
 export class ResearchPanel implements Panel {
   readonly id = 'research' as const;
   readonly title = 'Research';
-  readonly subtitle = 'Invent new technology, one development stage at a time. Labs at every base work together.';
+  readonly subtitle = 'Invent new technology, one development stage at a time. Every Research Lab runs its own project.';
   readonly el = h('div', { class: 'research' });
   isOpen = false;
   private unsub: (() => void) | null = null;
   private key = '';
   private selected: TechId | null = null;
-  private liveBar: { fill: HTMLElement; eta: HTMLElement } | null = null;
-  private livePips: HTMLElement[] = [];
+  private liveBars = new Map<TechId, { fill: HTMLElement; eta: HTMLElement }>();
+  private livePips = new Map<TechId, HTMLElement[]>();
   private tree: HTMLElement | null = null;
   private wires: SVGSVGElement | null = null;
   private resize = new ResizeObserver(() => this.drawWires());
@@ -102,24 +103,23 @@ export class ResearchPanel implements Panel {
 
   private stateOf(s: GameStore, t: TechDefinition): NodeState {
     if (s.research.completed.includes(t.id)) return 'done';
-    if (s.research.active === t.id) return 'active';
+    if (s.research.active.some((p) => p.id === t.id)) return 'active';
     return canResearch(s.research.completed, t.id) ? 'open' : 'locked';
   }
 
   /** Stage and progress of any project, wherever it is (active, on hold or not started). */
   private progressOf(s: GameStore, id: TechId): { stage: number; progress: number; awaiting: boolean } {
     if (s.research.completed.includes(id)) return { stage: STAGES.length, progress: 0, awaiting: false };
-    if (s.research.active === id) return s.research;
-    return s.research.shelved[id] ?? { stage: 0, progress: 0, awaiting: false };
+    return s.research.active.find((p) => p.id === id) ?? s.research.shelved[id] ?? { stage: 0, progress: 0, awaiting: false };
   }
 
   private render(): void {
     const s = gameStore.getState();
     const { rp, count } = this.labs(s);
     const r = s.research;
-    const nextCost = r.active && r.awaiting ? stageMaterials(TECH_BY_ID[r.active], r.stage + 1) : {};
-    const affordable = ResourceManager.canAfford(Logistics.pooledResources(s), nextCost);
-    const key = [s.progression.level, r.completed.join(','), r.active, r.stage, r.awaiting, Object.keys(r.shelved).join(','), rp, count, this.selected, affordable].join('|');
+    const stock = Logistics.pooledResources(s);
+    const running = r.active.map((p) => `${p.id}:${p.stage}:${p.awaiting ? (ResourceManager.canAfford(stock, stageMaterials(TECH_BY_ID[p.id], p.stage + 1)) ? 'a' : 'w') : ''}`);
+    const key = [s.progression.level, r.completed.join(','), running.join(','), Object.keys(r.shelved).join(','), rp, count, this.selected].join('|');
     if (key !== this.key) {
       this.key = key;
       this.build(s, rp, count);
@@ -127,29 +127,37 @@ export class ResearchPanel implements Panel {
     this.updateLive(s, rp);
   }
 
+  /** Research points per sol each running project gets (projects waiting for materials get none). */
+  private static share(s: GameStore, rp: number): number {
+    const working = s.research.active.filter((p) => !p.awaiting).length;
+    return working ? rp / working : 0;
+  }
+
   /** Cheap per-tick updates: progress bars and time left. */
   private updateLive(s: GameStore, rp: number): void {
-    const r = s.research;
-    if (!r.active) return;
-    const t = TECH_BY_ID[r.active];
-    const need = stageRp(t, r.stage);
-    const f = Math.min(1, r.progress / need);
-    const left = (t.cost - rpDone(t, r.stage, r.progress)) / Math.max(rp, 1e-9);
-    if (this.liveBar) {
-      this.liveBar.fill.style.transform = `scaleX(${f.toFixed(3)})`;
-      setText(this.liveBar.eta, r.awaiting ? 'Stage finished — waiting for materials' : rp > 0 ? `${fmtSols((need - r.progress) / rp)} left in this stage · ${fmtSols(left)} in all` : 'Paused — no working lab');
+    const share = ResearchPanel.share(s, rp);
+    for (const p of s.research.active) {
+      const t = TECH_BY_ID[p.id];
+      const need = stageRp(t, p.stage);
+      const f = Math.min(1, p.progress / need);
+      const left = (t.cost - rpDone(t, p.stage, p.progress)) / Math.max(share, 1e-9);
+      const bar = this.liveBars.get(p.id);
+      if (bar) {
+        bar.fill.style.transform = `scaleX(${f.toFixed(3)})`;
+        setText(bar.eta, p.awaiting ? 'Stage finished — waiting for materials' : share > 0 ? `${fmtSols((need - p.progress) / share)} left in this stage · ${fmtSols(left)} in all` : 'Paused — no working lab');
+      }
+      this.livePips.get(p.id)?.[p.stage]?.style.setProperty('--fill', f.toFixed(3));
     }
-    this.livePips[r.stage]?.style.setProperty('--fill', f.toFixed(3));
   }
 
   private build(s: GameStore, rp: number, labCount: number): void {
     clear(this.el);
-    this.liveBar = null;
-    this.livePips = [];
+    this.liveBars.clear();
+    this.livePips.clear();
     this.resize.disconnect();
     const r = s.research;
     if (!this.selected || !TECH_BY_ID[this.selected]) {
-      this.selected = r.active ?? TECHS.find((t) => this.stateOf(s, t) === 'open')?.id ?? TECHS[0].id;
+      this.selected = r.active[0]?.id ?? TECHS.find((t) => this.stateOf(s, t) === 'open')?.id ?? TECHS[0].id;
     }
 
     // Status strip.
@@ -157,7 +165,7 @@ export class ResearchPanel implements Panel {
     this.el.append(
       h('div', { class: 'rs-strip' }, [
         h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: MISC_ICONS.rp }), h('div', {}, [h('strong', { text: `${rp}` }), h('span', { text: 'research points / sol' })])]),
-        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: ICONS.research }), h('div', {}, [h('strong', { text: `${labCount}` }), h('span', { text: labCount === 1 ? 'Research Lab' : 'Research Labs' })])]),
+        h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: ICONS.research }), h('div', {}, [h('strong', { text: `${r.active.length} / ${labCount}` }), h('span', { text: labCount === 1 ? 'lab busy' : 'labs busy' })])]),
         h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: ICONS.satellite }), h('div', {}, [h('strong', { text: o.name }), h('span', { text: `radar view to ${o.maxDepthKm} km` })])]),
         h('div', { class: 'rs-stat' }, [h('span', { class: 'rs-stat-icon', html: MISC_ICONS.done }), h('div', {}, [h('strong', { text: `${r.completed.length} / ${TECHS.length}` }), h('span', { text: 'technologies' })])]),
       ]),
@@ -178,12 +186,28 @@ export class ResearchPanel implements Panel {
       this.el.append(
         h('div', { class: 'lock-card unlocked' }, [
           h('span', { class: 'lock-icon', html: ICONS.research }),
-          h('div', {}, [h('strong', { text: 'Build a Research Lab' }), h('p', { text: 'Labs make research points. Pick a project here, and every working lab at every base helps.' })]),
+          h('div', {}, [h('strong', { text: 'Build a Research Lab' }), h('p', { text: 'Labs make research points. Each lab can run one project, so more labs means more projects at once.' })]),
         ]),
       );
     }
 
-    if (r.active) this.el.append(this.activeCard(s, TECH_BY_ID[r.active]));
+    if (labCount > 0 && s.progression.level >= RESEARCH_UNLOCK_LEVEL) {
+      const share = ResearchPanel.share(s, rp);
+      const free = Math.max(0, labCount - r.active.length);
+      this.el.append(
+        h('div', { class: 'rs-labs' }, [
+          ...r.active.map((p) => this.activeCard(s, p, share)),
+          ...Array.from({ length: free }, () =>
+            h('div', { class: 'rs-active rs-free-lab' }, [
+              h('div', { class: 'rs-active-head' }, [
+                h('span', { class: 'rs-hex big', html: ICONS.research }),
+                h('div', { class: 'rs-active-title' }, [h('span', { class: 'rs-eyebrow', text: 'Free lab' }), h('span', { class: 'rs-stage-line', text: 'Pick a project in the tree below to start it here.' })]),
+              ]),
+            ]),
+          ),
+        ]),
+      );
+    }
 
     // The tree.
     const tree = h('div', { class: 'rs-tree', style: { ['--tiers' as never]: String(TIERS) } });
@@ -245,7 +269,7 @@ export class ResearchPanel implements Panel {
         ]),
       ],
     );
-    if (state === 'active') this.livePips = pips;
+    if (state === 'active') this.livePips.set(t.id, pips);
     return el;
   }
 
@@ -293,35 +317,48 @@ export class ResearchPanel implements Panel {
     return row;
   }
 
-  /** The project the labs are on right now. */
-  private activeCard(s: GameStore, t: TechDefinition): HTMLElement {
-    const r = s.research;
+  /** A project one of the labs is running right now. */
+  private activeCard(s: GameStore, p: ActiveProject, share: number): HTMLElement {
+    const t = TECH_BY_ID[p.id];
     const br = BRANCHES.find((b) => b.id === t.branch)!;
-    const stage = STAGES[r.stage];
+    const stage = STAGES[p.stage];
     const fill = h('span', { class: 'progress-fill' });
     const eta = h('span', { class: 'rs-eta' });
-    this.liveBar = { fill, eta };
+    this.liveBars.set(p.id, { fill, eta });
     const children: (HTMLElement | null)[] = [
       h('div', { class: 'rs-active-head' }, [
         h('span', { class: 'rs-hex big', html: TECH_ICONS[t.id] }),
         h('div', { class: 'rs-active-title' }, [
-          h('span', { class: 'rs-eyebrow', text: 'Now researching' }),
-          h('strong', { text: t.name }),
-          h('span', { class: 'rs-stage-line' }, [h('span', { class: 'rs-stage-icon', html: STAGE_ICONS[stage.id] }), `Stage ${r.stage + 1} of ${STAGES.length}: ${stage.name} · ${stage.trl}`]),
+          h('span', { class: 'rs-eyebrow', text: p.awaiting ? 'Waiting for materials' : `Now researching · ${Math.round(share)} RP/sol` }),
+          h('button', { class: 'rs-active-name', attrs: { type: 'button' }, text: t.name, on: { click: () => this.select(t.id) } }),
+          h('span', { class: 'rs-stage-line' }, [h('span', { class: 'rs-stage-icon', html: STAGE_ICONS[stage.id] }), `Stage ${p.stage + 1} of ${STAGES.length}: ${stage.name} · ${stage.trl}`]),
         ]),
+        this.pauseButton(t.id),
       ]),
       h('div', { class: 'progress' }, [fill]),
       eta,
     ];
-    if (r.awaiting) children.push(this.advanceBox(s, t));
-    return h('div', { class: `rs-active${r.awaiting ? ' awaiting' : ''}`, style: { ['--branch' as never]: br.color } }, children);
+    if (p.awaiting) children.push(this.advanceBox(s, p));
+    return h('div', { class: `rs-active${p.awaiting ? ' awaiting' : ''}`, style: { ['--branch' as never]: br.color } }, children);
+  }
+
+  private pauseButton(id: TechId): HTMLElement {
+    return h(
+      'button',
+      {
+        class: 'btn rs-pause',
+        attrs: { type: 'button', title: 'Put on hold — progress is kept and the lab is freed' },
+        on: { click: () => gameStore.getState().pauseResearch(id) },
+      },
+      [h('span', { class: 'btn-icon', html: MISC_ICONS.pause }), 'Pause'],
+    );
   }
 
   /** "Send the materials" step between stages. */
-  private advanceBox(s: GameStore, t: TechDefinition): HTMLElement {
-    const r = s.research;
-    const next = STAGES[r.stage + 1];
-    const cost = stageMaterials(t, r.stage + 1);
+  private advanceBox(s: GameStore, p: ActiveProject): HTMLElement {
+    const t = TECH_BY_ID[p.id];
+    const next = STAGES[p.stage + 1];
+    const cost = stageMaterials(t, p.stage + 1);
     const stock = Logistics.pooledResources(s);
     const ok = ResourceManager.canAfford(stock, cost);
     return h('div', { class: 'rs-advance' }, [
@@ -338,7 +375,7 @@ export class ResearchPanel implements Panel {
           attrs: { type: 'button', ...(ok ? {} : { 'aria-disabled': 'true' }) },
           on: {
             click: () => {
-              const res = gameStore.getState().advanceResearch();
+              const res = gameStore.getState().advanceResearch(t.id);
               if (!res.ok) gameStore.getState().pushAlert({ key: 'research-fail', level: 'warning', title: 'Not enough materials yet', message: res.reason });
             },
           },
@@ -357,6 +394,10 @@ export class ResearchPanel implements Panel {
     const unlocks = BUILDING_TYPES.filter((b) => BUILDINGS[b].requiresTech === t.id);
     const needs = t.requires.filter((x) => !s.research.completed.includes(x)).map((x) => TECH_BY_ID[x].name);
     const stock = Logistics.pooledResources(s);
+    // Points per sol this project gets: its share now, or the share it would get if started.
+    const working = s.research.active.filter((x) => !x.awaiting).length;
+    const speed = state === 'active' ? ResearchPanel.share(s, rp) : rp / (working + 1);
+    const full = s.research.active.length >= labCount;
 
     const track = h('ol', { class: 'rs-track' });
     STAGES.forEach((st, i) => {
@@ -370,7 +411,7 @@ export class ResearchPanel implements Panel {
             h('p', { text: st.blurb }),
             h('div', { class: 'rs-step-cost' }, [
               h('span', { class: 'rs-rp' }, [h('span', { class: 'row-icon', html: MISC_ICONS.rp }), `${stageRp(t, i)} RP`]),
-              rp > 0 ? h('span', { class: 'rs-rp' }, [h('span', { class: 'row-icon', html: MISC_ICONS.time }), `~${fmtSols(stageRp(t, i) / rp)}`]) : null,
+              speed > 0 ? h('span', { class: 'rs-rp' }, [h('span', { class: 'row-icon', html: MISC_ICONS.time }), `~${fmtSols(stageRp(t, i) / speed)}`]) : null,
               Object.keys(mats).length ? this.costChips(mats, status === 'todo' || (status === 'done' && i === p.stage + 1) ? stock : null) : h('span', { class: 'rs-free', text: 'no materials' }),
             ]),
           ]),
@@ -385,7 +426,10 @@ export class ResearchPanel implements Panel {
     else if (state === 'locked') action = msg(`First research: ${needs.join(' and ')}.`);
     else if (s.progression.level < RESEARCH_UNLOCK_LEVEL) action = msg('Research opens at rank Settlement Commander.');
     else if (labCount === 0) action = msg('Build a Research Lab to start.', ICONS.research);
-    else if (state === 'active') action = s.research.awaiting ? msg('Stage finished — send the materials above to go on.', MISC_ICONS.materials) : msg('Your labs are working on this.', MISC_ICONS.rp);
+    else if (state === 'active') {
+      const note = p.awaiting ? msg('Stage finished — send the materials from the lab card above.', MISC_ICONS.materials) : msg('A lab is working on this.', MISC_ICONS.rp);
+      action = h('div', { class: 'rs-action-row' }, [note, this.pauseButton(t.id)]);
+    } else if (full) action = msg(`All ${labCount} ${labCount === 1 ? 'lab is' : 'labs are'} busy. Pause a project or build another Research Lab.`, ICONS.research);
     else {
       const total = t.cost - rpDone(t, p.stage, p.progress);
       action = h(
@@ -403,11 +447,11 @@ export class ResearchPanel implements Panel {
         [
           h('span', { class: 'btn-icon', html: MISC_ICONS.rp }),
           shelved ? `Resume at stage ${p.stage + 1}` : 'Start research',
-          h('span', { class: 'rs-start-sub', text: `${Math.round(total)} RP${rp > 0 ? ` · ~${fmtSols(total / rp)}` : ''}` }),
+          h('span', { class: 'rs-start-sub', text: `${Math.round(total)} RP${speed > 0 ? ` · ~${fmtSols(total / speed)}` : ''}` }),
         ],
       );
     }
-    const switching = state === 'open' && s.research.active ? h('p', { class: 'rs-hint', text: `${TECH_BY_ID[s.research.active].name} will be put on hold. Its progress is kept.` }) : null;
+    const sharing = state === 'open' && !full && working > 0 ? h('p', { class: 'rs-hint', text: `Labs share their points: each running project will get ${Math.round(speed)} RP/sol.` }) : null;
 
     return h('section', { class: `rs-detail ${state}`, style: { ['--branch' as never]: br.color } }, [
       h('div', { class: 'rs-detail-head' }, [
@@ -422,7 +466,7 @@ export class ResearchPanel implements Panel {
       unlocks.length ? h('div', { class: 'rs-unlocks' }, unlocks.map((b) => this.unlockTile(b, state === 'done'))) : null,
       h('h4', { class: 'rs-sub', text: 'Development stages' }),
       track,
-      h('div', { class: 'rs-actions' }, [action, switching]),
+      h('div', { class: 'rs-actions' }, [action, sharing]),
     ]);
   }
 

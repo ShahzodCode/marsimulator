@@ -1,4 +1,5 @@
-import type { BaseData, BaseMeta, BuildingInstance, GameState, Mission, ResearchState } from '../state/types';
+import type { ActiveProject, BaseData, BaseMeta, BuildingInstance, GameState, Mission, ResearchState } from '../state/types';
+import type { TechId } from '../data/research';
 import { createInitialState, makeBuilding } from '../state/factory';
 import { starterRoads } from '../settlement/RoadRules';
 import { checkPlacement } from '../settlement/PlacementRules';
@@ -60,6 +61,20 @@ function copyBase(b: BaseData): BaseData {
   };
 }
 
+/** Older saves ran one project at a time, stored as `active: id` with its stage beside it. */
+function loadActiveResearch(r: ResearchState | LegacyResearch): ActiveProject[] {
+  if (Array.isArray(r.active)) return r.active.map((p) => ({ ...p }));
+  const old = r as LegacyResearch;
+  return old.active ? [{ id: old.active, stage: old.stage ?? 0, progress: old.progress ?? 0, awaiting: old.awaiting ?? false }] : [];
+}
+
+interface LegacyResearch {
+  active: TechId | null;
+  stage?: number;
+  progress?: number;
+  awaiting?: boolean;
+}
+
 export function toSave(state: GameState): SaveData {
   return {
     version: SAVE_VERSION,
@@ -82,7 +97,7 @@ export function toSave(state: GameState): SaveData {
       base: { ...state.base },
       otherBases: state.otherBases.map(copyBase),
       sitesSeen: { ...state.sitesSeen },
-      research: { ...state.research, completed: [...state.research.completed], shelved: { ...state.research.shelved } },
+      research: { completed: [...state.research.completed], active: state.research.active.map((p) => ({ ...p })), shelved: { ...state.research.shelved } },
       pipelines: state.pipelines.map((p) => ({ ...p, flow: { ...p.flow }, faults: p.faults.map((f) => ({ ...f })) })),
       shipments: state.shipments.map((x) => ({ ...x, cargo: { ...x.cargo } })),
     },
@@ -148,7 +163,7 @@ export function fromSave(save: SaveData): GameState {
   const activeBase: BaseMeta = st.base ? { ...st.base } : { ...base.base };
   // Saves from before staged research count old progress towards the concept study.
   const research: ResearchState = st.research
-    ? { ...base.research, ...st.research, completed: [...st.research.completed], shelved: { ...(st.research.shelved ?? {}) } }
+    ? { completed: [...st.research.completed], active: loadActiveResearch(st.research), shelved: { ...(st.research.shelved ?? {}) } }
     : base.research;
   return {
     ...base,

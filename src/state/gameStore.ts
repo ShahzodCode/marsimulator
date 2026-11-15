@@ -9,7 +9,7 @@ import { ProgressionManager } from '../simulation/ProgressionManager';
 import { ROAD_COST, ROAD_PROBLEM_TEXT, canRemoveRoad, checkRoad, roadKey } from '../settlement/RoadRules';
 import { RegionManager } from '../planet/RegionManager';
 import { SITE_BY_ID } from '../data/baseSites';
-import { canResearch, STAGES, TECH_BY_ID, stageMaterials, type TechId } from '../data/research';
+import { canResearch, labSlots, STAGES, TECH_BY_ID, stageMaterials, type TechId } from '../data/research';
 import { envOf } from '../simulation/BaseEnv';
 import { createInitialState, gridToLatLon, makeId, switchBase } from './factory';
 import type { Alert, GameState, PanelId, SimSpeed } from './types';
@@ -90,10 +90,12 @@ export interface GameActions {
   foundingCheck(siteId: string): ActionResult;
   /** Make another base the one on screen. */
   switchBase(id: string): ActionResult;
-  /** Point the Research Labs at a project; the old one is put on hold with its progress kept. */
+  /** Start (or resume) a project in a free lab slot; one slot per Research Lab. */
   startResearch(id: TechId): ActionResult;
-  /** Pay the test materials for the next development stage of the active project. */
-  advanceResearch(): ActionResult;
+  /** Put a running project on hold, keeping its progress, to free a lab slot. */
+  pauseResearch(id: TechId): ActionResult;
+  /** Pay the test materials for the next development stage of a running project. */
+  advanceResearch(id: TechId): ActionResult;
   pushAlert(alert: Omit<Alert, 'id' | 'sol' | 'persistent'>): void;
   dismissAlert(id: string): void;
   setPersistentAlerts(alerts: Omit<Alert, 'id' | 'sol' | 'persistent'>[]): void;
@@ -445,25 +447,37 @@ export const gameStore = createStore<GameStore>()((set, get) => ({
       const need = TECH_BY_ID[id].requires.filter((r) => !s.research.completed.includes(r)).map((r) => TECH_BY_ID[r].name);
       return { ok: false, reason: `Research ${need.join(' and ')} first.` };
     }
-    if (s.research.active === id) return { ok: true };
+    if (s.research.active.some((p) => p.id === id)) return { ok: true };
+    const slots = labSlots([s.buildings, ...s.otherBases.map((b) => b.buildings)]);
+    if (s.research.active.length >= slots) {
+      return { ok: false, reason: `All ${slots} ${slots === 1 ? 'lab is' : 'labs are'} busy. Pause a project or build another Research Lab.` };
+    }
     const shelved = { ...s.research.shelved };
-    const resume = shelved[id];
+    const from = shelved[id] ?? { stage: 0, progress: 0, awaiting: false };
     delete shelved[id];
-    if (s.research.active) shelved[s.research.active] = { stage: s.research.stage, progress: s.research.progress, awaiting: s.research.awaiting };
-    const from = resume ?? { stage: 0, progress: 0, awaiting: false };
-    set({ research: { ...s.research, ...from, active: id, shelved } });
+    set({ research: { ...s.research, active: [...s.research.active, { id, ...from }], shelved } });
     return { ok: true };
   },
 
-  advanceResearch() {
+  pauseResearch(id) {
+    const s = get();
+    const p = s.research.active.find((x) => x.id === id);
+    if (!p) return { ok: false, reason: 'That project is not running.' };
+    const { id: _, ...kept } = p;
+    set({ research: { ...s.research, active: s.research.active.filter((x) => x.id !== id), shelved: { ...s.research.shelved, [id]: kept } } });
+    return { ok: true };
+  },
+
+  advanceResearch(id) {
     const s = get();
     const r = s.research;
-    if (!r.active || !r.awaiting) return { ok: false, reason: 'The current stage is not finished yet.' };
-    const tech = TECH_BY_ID[r.active];
-    const cost = stageMaterials(tech, r.stage + 1);
+    const p = r.active.find((x) => x.id === id);
+    if (!p || !p.awaiting) return { ok: false, reason: 'The current stage is not finished yet.' };
+    const cost = stageMaterials(TECH_BY_ID[id], p.stage + 1);
     const paid = Logistics.payFromNetwork(s, cost);
-    if (!paid) return { ok: false, reason: `The ${STAGES[r.stage + 1].name.toLowerCase()} needs ${describeCost(cost)}.` };
-    set({ resources: paid.resources, otherBases: paid.otherBases, research: { ...r, stage: r.stage + 1, progress: 0, awaiting: false } });
+    if (!paid) return { ok: false, reason: `The ${STAGES[p.stage + 1].name.toLowerCase()} needs ${describeCost(cost)}.` };
+    const active = r.active.map((x) => (x.id === id ? { ...x, stage: x.stage + 1, progress: 0, awaiting: false } : x));
+    set({ resources: paid.resources, otherBases: paid.otherBases, research: { ...r, active } });
     return { ok: true };
   },
 
