@@ -167,28 +167,37 @@ svg {
   gap: 7px;
   padding: 4px 12px 4px 6px;
   min-width: 0;
+  border: 0;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+/* The whole box is the profile button. */
+.topbar > .brand:hover {
+  background: rgba(30, 33, 42, 0.8);
+}
+
+.brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.brand-text {
+  display: block;
+  min-width: 0;
 }
 
 .brand-mark {
   width: 38px;
   height: 38px;
   margin: -2px 0;
-  padding: 0;
-  border: 0;
   border-radius: 50%;
-  background: none;
   flex: none;
-  cursor: pointer;
   transition: transform 0.15s ease;
 }
 
-.brand-mark:hover {
+.brand:hover .brand-mark {
   transform: scale(1.08);
-}
-
-.brand-mark:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .brand-mark.promoted {

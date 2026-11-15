@@ -41,7 +41,7 @@ export class HUD {
   private clockEl!: HTMLElement;
   private levelEl!: HTMLElement;
   private xpFill!: HTMLElement;
-  private badge!: HTMLButtonElement;
+  private badge!: HTMLElement;
   private pauseBtn!: HTMLButtonElement;
   private speedBtn!: HTMLButtonElement;
 
@@ -71,24 +71,26 @@ export class HUD {
     this.xpFill = h('span', { class: 'xp-fill' });
     // The player's name once they're signed in; the base name for guests.
     const name = h('strong', { text: SETTLEMENT.name });
-    // The player's profile button: a rank emblem that changes as they rank up.
-    this.badge = h('button', { class: 'brand-mark rank-badge', attrs: { type: 'button' }, on: { click: () => ProfileDialog.toggle(parent) } });
+    // The rank emblem changes as the player ranks up.
+    this.badge = h('span', { class: 'brand-mark rank-badge', attrs: { 'aria-hidden': 'true' } });
+    // The whole box (emblem, name, rank and progress) opens the profile and leaderboard.
+    const box = h('button', { class: 'brand', attrs: { type: 'button' }, on: { click: () => ProfileDialog.toggle(parent) } }, [
+      this.badge,
+      h('span', { class: 'brand-text' }, [
+        name,
+        h('span', { class: 'level' }, [this.levelEl, h('span', { class: 'xp-bar' }, [this.xpFill])]),
+      ]),
+    ]);
     const label = () => {
       const a = Auth.current;
-      this.badge.setAttribute('aria-label', a?.username ? t('Open your profile ({name})', { name: a.username }) : t('Open your profile'));
-      this.badge.title = a ? t('{name} — open profile', { name: a.username ?? t('Commander') }) : t('Open your commander profile');
+      box.setAttribute('aria-label', a?.username ? t('Open your profile ({name})', { name: a.username }) : t('Open your profile'));
+      box.title = a ? t('{name} — open profile', { name: a.username ?? t('Commander') }) : t('Open your commander profile');
       setText(name, a ? (a.username ?? a.email.split('@')[0]) : SETTLEMENT.name);
     };
     Auth.onChange(label);
     Auth.ready.then(label);
     label();
-    return h('div', { class: 'brand' }, [
-      this.badge,
-      h('div', { class: 'brand-text' }, [
-        name,
-        h('div', { class: 'level' }, [this.levelEl, h('span', { class: 'xp-bar' }, [this.xpFill])]),
-      ]),
-    ]);
+    return box;
   }
 
   /** One resource readout: icon, current, then max — like `🜨 320  500`. */
