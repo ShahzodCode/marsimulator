@@ -216,25 +216,40 @@ export const Leaderboard = {
     });
   },
 
-  /** Whether the signed-in player shows up on the board (default: yes). */
-  async visible(): Promise<boolean> {
+  /**
+   * The signed-in player's public profile: the name others see (a placeholder such as
+   * "Commander 4821" until they pick one) and whether they show on the board (default: yes).
+   * Every account gets one automatically (migration 0003); null if it doesn't exist.
+   */
+  async myProfile(): Promise<{ username: string; visible: boolean } | null> {
     const account = Auth.current;
-    if (!supabase || !account) return false;
-    const { data } = await supabase.from('profiles').select('show_on_leaderboard').eq('user_id', account.id).maybeSingle();
-    return (data as { show_on_leaderboard?: boolean } | null)?.show_on_leaderboard ?? true;
+    if (!supabase || !account) return null;
+    const { data } = await supabase.from('profiles').select('username, show_on_leaderboard').eq('user_id', account.id).maybeSingle();
+    const row = data as { username?: string; show_on_leaderboard?: boolean } | null;
+    return row ? { username: row.username ?? '', visible: row.show_on_leaderboard ?? true } : null;
   },
 
   async setVisible(show: boolean): Promise<{ ok: boolean; message?: string }> {
     const account = Auth.current;
     if (!supabase || !account) return { ok: false, message: 'Log in first.' };
+    // The profile row exists from sign-up, so only the switch changes (the name stays as it is).
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ show_on_leaderboard: show, updated_at: new Date().toISOString() })
+      .eq('user_id', account.id)
+      .select('user_id');
+    cache.clear();
+    if (error) {
+      const f = fromError(error);
+      return { ok: false, message: f.ok ? undefined : f.message };
+    }
+    if (data?.length) return { ok: true };
+    // No profile yet (database set up before automatic profiles): make one with the chosen name.
     if (!account.username) return { ok: false, message: 'Pick your name first.' };
-    const { error } = await supabase
+    const up = await supabase
       .from('profiles')
       .upsert({ user_id: account.id, username: account.username, show_on_leaderboard: show, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-    cache.clear();
-    if (!error) return { ok: true };
-    const f = fromError(error);
-    return { ok: false, message: f.ok ? undefined : f.message };
+    return up.error ? { ok: false, message: 'Could not change that right now.' } : { ok: true };
   },
 
   clearCache(): void {

@@ -149,20 +149,26 @@ export class ProfileDialog {
     ];
   }
 
-  /** "Show me on the leaderboard" and the player's current place (signed-in players with a name). */
+  /**
+   * "Show me on the leaderboard" and the player's current place. Every signed-in player
+   * is on the board from sign-up; until they pick a name they show under a placeholder.
+   */
   private boardSwitch(): HTMLElement | null {
     const account = Auth.current;
     if (!account || !Auth.available) return null;
-    if (!account.username) return h('p', { class: 'muted lb-hint', text: 'Pick your name to join the leaderboard.' });
     const box = h('input', { attrs: { type: 'checkbox', disabled: '' } });
     const place = h('span', { class: 'muted lb-place' });
+    const hint = h('p', { class: 'muted lb-hint' });
     const error = h('p', { class: 'auth-error', attrs: { role: 'alert' } });
     const showPlace = async (fresh: boolean) => {
       const me = await Leaderboard.myPosition('xp', fresh);
       setText(place, me.ok && me.data?.listed ? `You are #${me.data.position} of ${me.data.total} by XP` : '');
     };
-    void Leaderboard.visible()
-      .then((on) => (box.checked = on))
+    void Leaderboard.myProfile()
+      .then((p) => {
+        box.checked = p?.visible ?? true;
+        if (!account.username && p?.username) setText(hint, `Other players see you as “${p.username}” until you pick your own name.`);
+      })
       .catch(() => (box.checked = true))
       .finally(() => (box.disabled = false));
     void showPlace(false);
@@ -182,6 +188,7 @@ export class ProfileDialog {
     return h('div', { class: 'lb-switch-row' }, [
       h('label', { class: 'lb-switch' }, [box, h('span', { class: 'lb-switch-track', attrs: { 'aria-hidden': 'true' } }), 'Show me on the leaderboard']),
       place,
+      hint,
       error,
     ]);
   }
