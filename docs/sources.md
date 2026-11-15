@@ -117,6 +117,7 @@ Rev1 2018, https://ntrs.nasa.gov/citations/20180001338
 | Pipe tested to 4.0 × working pressure | `src/data/logistics.ts` `PIPE_DESIGN.burstFactor` | S35 | 4.0 × MOP for lines < 1.5 in, 1.5 × for larger | Unverified (search result only); we use the stricter 4.0 on purpose |
 | Titanium grows 8.6 µm per m per °C | `src/data/logistics.ts` `PIPE_DESIGN.expansionPerC` | S38 | 8.6 µm/m·°C | Unverified (search result only) |
 | Ground −91 °C … +3 °C (≈ 0.8 m growth per km) | `src/data/logistics.ts` `PIPE_DESIGN.groundMinC/MaxC`, `thermalGrowthMPerKm` | S36 | Curiosity REMS ground temperature range | Unverified (search result only) |
+| Night heating: outside air −2 °C (day) … −75 °C (night), inside 21 °C, heating half of base power | `src/data/power.ts` `NIGHT_HEATING`, `heatingTimeFactor` | S36 (air range); inside temperature and heat share are game values | Curiosity REMS air temperature range; heat loss ∝ inside–outside gap | Unverified (search result only) |
 | Zigzag route, sliding PTFE shoes, H-frame supports | `src/planet/LogisticsView.ts` `ZIG`, `blender/pipeline.py` | S37 | TAPS zigzag + Teflon shoes on VSMs | Unverified (search result only) |
 | Marsquake twist mentions magnitude 4.7 | `src/data/logistics.ts` `PIPE_DESIGN.biggestMarsquake` | S39 | M4.7, 4 May 2022 | Unverified (news sites only) |
 | Twist chances, pinch shares, repair time | `src/data/logistics.ts` `PIPE_FAULTS`, `PIPE_REPAIR` | none | not applicable | Game value |

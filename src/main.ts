@@ -1,4 +1,5 @@
 import './styles/main.css';
+import './styles/guide.css';
 import { Game } from './core/Game';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;

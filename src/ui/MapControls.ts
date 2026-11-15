@@ -37,7 +37,8 @@ export class MapControls {
     this.scaleLabel = h('span', { class: 'scale-label' });
     this.scaleBar = h('span', { class: 'scale-bar' });
     const readout = h('div', { class: 'coords' }, [h('div', { class: 'scale' }, [this.scaleBar, this.scaleLabel]), this.coords, this.region]);
-    parent.append(controls, readout);
+    // The bottom-left corner: the coordinates, then the guidebook button (ui/GuideBook) beside them.
+    parent.append(controls, h('div', { class: 'bottom-left' }, [readout]));
 
     events.on('pointer:surface', (p) => {
       if (!p) {

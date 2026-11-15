@@ -16,6 +16,8 @@ export interface Prefs {
   lang?: 'en' | 'ru' | 'uz';
   /** Graphics quality, frame-rate limit and FPS counter (see core/Graphics). */
   graphics?: Partial<GraphicsSettings>;
+  /** Guidebook chapters the player has opened (for the NEW badge). */
+  guideSeen?: string[];
 }
 
 const KEY = 'mars-colony:prefs:v1';

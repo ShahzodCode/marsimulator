@@ -1696,10 +1696,16 @@ svg {
   color: var(--text);
 }
 
-.coords {
+.bottom-left {
   position: absolute;
   left: 10px;
   bottom: 12px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.coords {
   padding: 8px 12px;
   border-radius: 12px;
   font-size: 12px;
@@ -1710,7 +1716,7 @@ svg {
   font-variant-numeric: tabular-nums;
 }
 
-.building-panel.open ~ .coords {
+.building-panel.open ~ .bottom-left .coords {
   display: none;
 }
 

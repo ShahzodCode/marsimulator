@@ -1,5 +1,6 @@
 import { BUILDINGS, basePowerKw } from '../data/buildings';
 import { RECIPES, type ProductionRecipe, type RecipeId } from '../data/recipes';
+import { heatingTimeFactor } from '../data/power';
 import { RESOURCES, type ResourceId } from '../data/resources';
 import type { BuildingInstance, BuildingStatus, RecipeState } from '../state/types';
 import { LocalStore, ResourceManager, type ResourceBag } from './ResourceManager';
@@ -27,6 +28,8 @@ export interface ProductionContext {
   dt: number;
   /** Site and research effects for this base (defaults to none). */
   env?: BaseEnv;
+  /** Local time of sol; heaters draw more at night. Without it, the sol average is used. */
+  localSols?: number;
 }
 
 interface RecipePlan {
@@ -95,7 +98,8 @@ export const ProductionManager = {
     const local = def.recipes.length && !reachable ? StorageManager.localStore(b) : null;
     const recipes: RecipePlan[] = [];
     const env = ctx.env ?? NEUTRAL_ENV;
-    let kw = basePowerKw(b.type, env.heating);
+    const night = ctx.localSols === undefined ? 1 : heatingTimeFactor(ctx.localSols);
+    let kw = basePowerKw(b.type, env.heating * night);
     for (const id of def.recipes) {
       const r = RECIPES[id];
       const state = b.recipes[id] ?? { progress: 0, loaded: false };

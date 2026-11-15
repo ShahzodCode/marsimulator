@@ -35,6 +35,7 @@ import { BuildingPanel } from '../ui/BuildingPanel';
 import { Alerts } from '../ui/Alerts';
 import { PlacementHint, Toolbar } from '../ui/Toolbar';
 import { MapControls } from '../ui/MapControls';
+import { GuideBook } from '../ui/GuideBook';
 import { MapLabels } from '../ui/MapLabels';
 import { WorldPopups } from '../ui/WorldPopups';
 import { LoadingScreen, WelcomeScreen } from '../ui/Screens';
@@ -82,6 +83,7 @@ export class Game {
   /** Visiting another player's colony (spectate mode). */
   private spectator!: Spectator;
   private xray!: XrayControl;
+  private guide!: GuideBook;
   private graphics!: GraphicsController;
   private loop = new GameLoop(
     (dt, t) => this.frame(dt, t),
@@ -240,6 +242,7 @@ export class Game {
     this.pauseMenu = new PauseMenu(ui, this.events);
     this.mapControls = new MapControls(ui, this.events, this.camera);
     this.xray = new XrayControl(ui, this.events);
+    this.guide = new GuideBook(ui);
     this.garageArrow = new GarageArrow(ui, terrain, {
       worldOf: (id) => {
         const b = gameStore.getState().buildings.find((x) => x.id === id);
@@ -596,6 +599,9 @@ export class Game {
         return true;
       case 'v':
         this.xray.toggle();
+        return true;
+      case 'k':
+        this.guide.toggle();
         return true;
     }
     const panel = PANEL_KEYS[key];

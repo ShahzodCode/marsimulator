@@ -100,7 +100,7 @@ function stepBase(b: BaseData, state: GameState, dt: number, transportOverride: 
   const batteryCapacityKwh = PowerManager.batteryCapacity(buildings);
   const generationKw = PowerManager.generation(buildings, localSols, env);
   const pool = new PowerPool(generationKw, Math.min(b.power.batteryKwh, batteryCapacityKwh), batteryCapacityKwh, dt);
-  const ctx: ProductionContext = { inventory: inv, deposits: { ...b.deposits }, transport, dt, env };
+  const ctx: ProductionContext = { inventory: inv, deposits: { ...b.deposits }, transport, dt, env, localSols };
   const rates = emptyResources();
   const produced: Partial<Record<ResourceId, number>> = {};
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BUILDINGS, maxPowerKw, type BuildingType } from '../data/buildings';
-import { SOLAR_FARM_PEAK_KW } from '../data/power';
+import { heatingTimeFactor, SOLAR_FARM_PEAK_KW } from '../data/power';
 import { RECIPES, SOL_HOURS } from '../data/recipes';
 import { emptyResources, RESOURCE_IDS } from '../data/resources';
 import { EXPEDITION, GAME_KM_PER_SOL, NASA_ROVER_DATA, rewardFor } from '../data/missions';
@@ -210,6 +210,16 @@ describe('Production', () => {
 });
 
 describe('Power', () => {
+  it('heaters draw more at night but the same on average over a sol', () => {
+    expect(heatingTimeFactor(0.75)).toBeGreaterThan(1.1);
+    expect(heatingTimeFactor(NOON)).toBeLessThan(0.7);
+    let sum = 0;
+    const n = 10000;
+    for (let i = 0; i < n; i++) sum += heatingTimeFactor(i / n);
+    expect(sum / n).toBeCloseTo(1, 3);
+  });
+
+
   it('12. calculates generation, consumption and battery energy correctly', () => {
     const farm = makeBuilding('solar_farm', 0, 0, 0, true, 0);
     expect(PowerManager.generation([farm], NOON)).toBeCloseTo(SOLAR_FARM_PEAK_KW, 6);

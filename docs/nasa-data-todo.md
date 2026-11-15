@@ -28,7 +28,7 @@ When an item is done, tick it and update the matching row in `sources.md`.
 3. [ ] **Water use**: the game counts only drinking and basic hygiene water. A "Mature Planetary Base" adds showers, laundry and dish washing, 9.12 kg per person per day in total (BVAD Table 4-20, p. 72). This could be a later "comfort" upgrade.
 4. [ ] **Building power**: habitat 5 kW, excavator 4 kW, refinery 10 kW and grow-lights 8 kW are guesses. Use BVAD Table 3-2 (typical ISS system power).
 5. [ ] **Seasons and dust storms**: the Mars year is 686.98 days, the tilt is 25.19°, pressure ranges 4.0–8.7 mb, and dust-storm winds reach 17–30 m/s (S1). Change sunlight with the seasons and lower solar output during dust storms.
-6. [ ] **Temperature**: the Viking 1 site ranges from −89 to −31 °C over a day (S1). Use it for habitat heating power at night.
+6. [x] **Temperature**: heaters now draw more at night (`heatingTimeFactor` in `src/data/power.ts`), using the Curiosity air range −2 … −75 °C (S36) instead of Viking 1 (S1).
 7. [ ] **Habitat size**: housing is 6 per habitat (a game value). Use BVAD Table 3-8 (living space for 4- and 6-person crews).
 8. [ ] **Batteries**: the 600 kWh battery bank is a guess. Use BVAD Table 3-17 (advanced rechargeable batteries).
 9. [ ] **Rocket fuel goal**: a crewed launch from Mars needs about 33–50 t of propellant, and Mars-made oxygen can supply more than 75 % of it (S5). Make it a long-term mission that uses the stored hydrogen.
